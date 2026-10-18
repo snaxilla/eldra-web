@@ -60,7 +60,7 @@ const navItems = computed(() => [
     <template v-if="collapsed">
       <div class="flex items-center justify-center p-3">
         <button
-          class="inline-flex h-10 w-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.48)] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-none border border-eldra-accent/24 text-eldra-text-dim transition hover:border-eldra-accent/48 hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
           aria-label="Expand navigation"
           @click="emit('toggle-collapse')"
         >
@@ -70,7 +70,7 @@ const navItems = computed(() => [
 
       <div class="flex items-center justify-center px-2 pb-3">
         <div class="text-center">
-          <div class="eldra-display text-sm text-[#fff7df]">Eldra</div>
+          <div class="eldra-display text-sm text-eldra-text-strong">Eldra</div>
         </div>
       </div>
 
@@ -78,8 +78,8 @@ const navItems = computed(() => [
         <button
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'play'
-            ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
-            : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-accent-text'
+            : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
           @click="emit('set-mode', 'play')"
           title="Play"
           aria-label="Play mode"
@@ -92,8 +92,8 @@ const navItems = computed(() => [
           v-if="canBuild"
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'build'
-            ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
-            : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-accent-text'
+            : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
           @click="emit('set-mode', 'build')"
           title="Build"
           aria-label="Build mode"
@@ -112,12 +112,11 @@ const navItems = computed(() => [
             :key="item.label"
             :text="item.label"
             :content="{ side: 'right' }"
-            :ui="{ content: 'rounded-none bg-eldra-panel text-eldra-text-strong ring-1 ring-eldra-accent/40 shadow-lg' }"
           >
             <NuxtLink
               :to="item.to"
-              class="eldra-sidebar-nav-item flex h-10 items-center justify-center rounded-none border border-transparent text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent-bright"
-              active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
+              class="eldra-sidebar-nav-item flex h-10 items-center justify-center rounded-none border border-transparent text-eldra-text-dim transition hover:border-eldra-accent/24 hover:bg-eldra-accent/8 hover:text-eldra-text-strong focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent-bright"
+              active-class="border-eldra-accent/42 bg-eldra-accent/14 text-eldra-text-strong"
               :aria-label="item.label"
             >
               <UIcon :name="item.icon" class="h-5 w-5" />
@@ -126,13 +125,13 @@ const navItems = computed(() => [
         </div>
       </nav>
 
-      <div class="border-t border-[rgba(201,164,90,0.22)] p-2">
+      <div class="border-t border-eldra-accent/22 p-2">
         <button
           type="button"
           class="mb-2 flex h-10 w-full items-center justify-center rounded-none border text-sm transition"
           :class="showPins
-            ? 'border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#f5e7bd]'
-            : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/42 bg-eldra-accent/14 text-eldra-accent-text'
+            : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
           @click="showPins = !showPins"
           :title="showPins ? 'Pins Visible' : 'Pins Hidden'"
           :aria-label="showPins ? 'Hide map pins' : 'Show map pins'"
@@ -147,7 +146,7 @@ const navItems = computed(() => [
 
         <NuxtLink
           to="/"
-          class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+          class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
           title="Switch World"
           aria-label="Switch World"
         >
@@ -163,13 +162,13 @@ const navItems = computed(() => [
           <div class="flex items-center gap-3">
             <span class="eldra-ornament-emblem" aria-hidden="true" />
             <div>
-              <div class="eldra-sidebar-brandmark eldra-display text-2xl text-[#fff7df]">Eldra</div>
-              <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">World Platform</div>
+              <div class="eldra-sidebar-brandmark eldra-display text-2xl text-eldra-text-strong">Eldra</div>
+              <div class="text-xs uppercase tracking-[0.28em] text-eldra-text-faint">World Platform</div>
             </div>
           </div>
 
           <button
-            class="rounded-none border border-[rgba(201,164,90,0.24)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+            class="rounded-none border border-eldra-accent/24 p-2 text-eldra-text-dim transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
             aria-label="Collapse navigation"
             @click="emit('toggle-collapse')"
           >
@@ -177,7 +176,7 @@ const navItems = computed(() => [
           </button>
         </div>
 
-        <div class="eldra-display mt-4 text-base leading-snug text-[#efe2bd]">
+        <div class="eldra-display mt-4 text-base leading-snug text-eldra-text">
           {{ world?.name }}
         </div>
       </div>
@@ -187,8 +186,8 @@ const navItems = computed(() => [
           <button
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"
             :class="mode === 'play'
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
-              : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-accent-text'
+              : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             @click="emit('set-mode', 'play')"
           >
             Play
@@ -198,8 +197,8 @@ const navItems = computed(() => [
             v-if="canBuild"
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"
             :class="mode === 'build'
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
-              : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-accent-text'
+              : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             @click="emit('set-mode', 'build')"
           >
             Build
@@ -213,8 +212,8 @@ const navItems = computed(() => [
             v-for="item in navItems"
             :key="item.label"
             :to="item.to"
-            class="eldra-sidebar-nav-item flex items-center gap-3 rounded-none border border-transparent px-3 py-2 pl-6 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-            active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
+            class="eldra-sidebar-nav-item flex items-center gap-3 rounded-none border border-transparent px-3 py-2 pl-6 text-sm text-eldra-text-soft transition hover:border-eldra-accent/24 hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
+            active-class="border-eldra-accent/42 bg-eldra-accent/14 text-eldra-text-strong"
           >
             <UIcon :name="item.icon" class="h-4 w-4" />
             <span>{{ item.label }}</span>
@@ -222,12 +221,12 @@ const navItems = computed(() => [
         </div>
       </nav>
 
-      <div class="border-t border-[rgba(201,164,90,0.22)] p-4 space-y-4">
+      <div class="border-t border-eldra-accent/22 p-4 space-y-4">
         <div
             v-if="isMapPage"
-            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-3"
+            class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-3"
           >
-          <div class="mb-2 text-[11px] uppercase tracking-[0.3em] text-[#9f9278]">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.3em] text-eldra-text-faint">
             Map Pins
           </div>
 
@@ -235,15 +234,15 @@ const navItems = computed(() => [
             type="button"
             class="flex w-full items-center justify-between rounded-none border px-3 py-2 text-sm transition"
             :class="showPins
-              ? 'border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#f5e7bd]'
-              : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/42 bg-eldra-accent/14 text-eldra-accent-text'
+              : 'border-eldra-accent/22 text-eldra-text-dim hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             @click="showPins = !showPins"
           >
             <span>{{ showPins ? 'Pins Visible' : 'Pins Hidden' }}</span>
             <UIcon :name="showPins ? 'i-lucide-eye' : 'i-lucide-eye-off'" class="h-4 w-4" />
           </button>
 
-          <div class="mt-2 text-xs text-[#9f9278]">
+          <div class="mt-2 text-xs text-eldra-text-faint">
             Hide map markers without deleting them.
           </div>
         </div>
@@ -252,7 +251,7 @@ const navItems = computed(() => [
 
         <NuxtLink
           to="/"
-          class="eldra-sidebar-switch flex items-center justify-center gap-2 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+          class="eldra-sidebar-switch flex items-center justify-center gap-2 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-3 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
         >
           <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
           <span>Switch World</span>

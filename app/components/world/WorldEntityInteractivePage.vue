@@ -1221,16 +1221,16 @@ async function createLocationArticle() {
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">{{ eyebrow || title }}</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">{{ eyebrow || title }}</div>
               <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || title }}</h1>
-              <p class="mt-2 max-w-3xl text-sm text-[#d8ceb8]">
+              <p class="mt-2 max-w-3xl text-sm text-eldra-text-soft">
                 {{ description || `Browse imported ${title.toLowerCase()} for this world.` }}
               </p>
             </div>
 
             <button
               type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+              class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
               @click="refresh()"
             >
               Refresh
@@ -1242,7 +1242,7 @@ async function createLocationArticle() {
               v-model="search"
               type="text"
               :placeholder="searchPlaceholder || `Search ${title.toLowerCase()}...`"
-              class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
+              class="w-full rounded-none border border-eldra-accent/22 bg-eldra-panel/72 px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
           </div>
 
@@ -1250,20 +1250,20 @@ async function createLocationArticle() {
             data-collection-view-toggle
             class="mt-4 flex flex-wrap items-center justify-between gap-3"
           >
-            <div class="text-xs uppercase tracking-[0.24em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.24em] text-eldra-text-faint">
               Results
-              <span class="text-[#d8ceb8]">({{ filteredEntities.length }})</span>
+              <span class="text-eldra-text-soft">({{ filteredEntities.length }})</span>
             </div>
 
-            <div class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]">
+            <div class="inline-flex overflow-hidden rounded-none border border-eldra-accent/22 bg-eldra-well/42">
               <button
                 v-for="option in collectionViewOptions"
                 :key="option.key"
                 type="button"
-                class="inline-flex items-center gap-2 border-r border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] last:border-r-0 transition"
+                class="inline-flex items-center gap-2 border-r border-eldra-accent/14 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] last:border-r-0 transition"
                 :class="collectionView === option.key
-                  ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                  : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+                  ? 'bg-eldra-accent/16 text-eldra-text-strong'
+                  : 'text-eldra-text-dim hover:bg-eldra-accent/8 hover:text-eldra-text-strong'"
                 @click="collectionView = option.key"
               >
                 <UIcon :name="option.icon" class="h-4 w-4" />
@@ -1284,8 +1284,8 @@ async function createLocationArticle() {
               type="button"
               class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
               :class="activeCollectionFacet === facet.key
-                ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+                ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+                : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
               @click="activeCollectionFacet = facet.key"
             >
               <span>{{ facet.label }}</span>
@@ -1297,7 +1297,7 @@ async function createLocationArticle() {
 
         <section
           v-if="pending"
-          class="mt-6 eldra-panel rounded-none p-6 text-[#d8ceb8] shadow-xl"
+          class="mt-6 eldra-panel rounded-none p-6 text-eldra-text-soft shadow-xl"
         >
           Loading {{ title.toLowerCase() }}...
         </section>
@@ -1307,7 +1307,7 @@ async function createLocationArticle() {
           class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
           <div class="text-lg font-medium text-white">No {{ title.toLowerCase() }} found</div>
-          <p class="mt-2 text-sm text-[#d8ceb8]">
+          <p class="mt-2 text-sm text-eldra-text-soft">
             {{ emptyMessage || `Import ${title.toLowerCase()} from the Importer page, then come back here to browse them.` }}
           </p>
         </section>
@@ -1327,13 +1327,13 @@ async function createLocationArticle() {
 
             v-for="entity in filteredEntities"
             :key="entity.id"
-            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-eldra-accent/62"
             :class="selectedEntityId === String(entity.id)
               ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
           >
             <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
-              <div class="eldra-card-image-well eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
+              <div class="eldra-card-image-well eldra-image-frame border-r border-eldra-accent/22 bg-black/20">
                 <img
                   v-if="imageUrlForEntity(entity)"
                   :src="imageUrlForEntity(entity)"
@@ -1373,7 +1373,7 @@ async function createLocationArticle() {
                     <span
                       v-for="line in collectionMetaLines(entity).slice(0, collectionView === 'list' ? 7 : 4)"
                       :key="line"
-                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]"
+                      class="rounded-none border border-eldra-accent/18 bg-eldra-accent/8 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-eldra-text-soft"
                     >
                       {{ line }}
                     </span>
@@ -1385,13 +1385,13 @@ async function createLocationArticle() {
                     :world-id="worldId"
                     :markdown="summaryForEntity(entity)"
                     :interactive="false"
-                    class="mt-3 line-clamp-4 text-sm leading-7 text-[#d8ceb8]"
+                    class="mt-3 line-clamp-4 text-sm leading-7 text-eldra-text-soft"
                   />
 
                   <div
                     v-else
                     data-collection-card-summary
-                    class="mt-3 line-clamp-3 text-sm leading-7 text-[#9f9278]"
+                    class="mt-3 line-clamp-3 text-sm leading-7 text-eldra-text-faint"
                   >
                     Details available in the context rail.
                   </div>
@@ -1404,7 +1404,7 @@ async function createLocationArticle() {
                 >
                   <button
                     type="button"
-                    class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.56)] hover:bg-[rgba(201,164,90,0.18)]"
+                    class="rounded-none border border-eldra-accent/28 bg-eldra-accent/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-eldra-text-strong transition hover:border-eldra-accent/56 hover:bg-eldra-accent/18"
                     @click.stop="openEntityContext(entity)"
                   >
                     Details
@@ -1412,7 +1412,7 @@ async function createLocationArticle() {
 
                   <button
                     type="button"
-                    class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+                    class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/52 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-eldra-text-soft transition hover:border-eldra-accent/38 hover:text-eldra-text-strong"
                     @click.stop="openEntityArticle(entity)"
                   >
                     Open Article
@@ -1437,8 +1437,8 @@ async function createLocationArticle() {
             >
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Location Tools</div>
-                  <div class="mt-1 text-sm text-[#d8ceb8]">Create a location article manually.</div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Location Tools</div>
+                  <div class="mt-1 text-sm text-eldra-text-soft">Create a location article manually.</div>
                 </div>
 
                 <button
@@ -1456,7 +1456,7 @@ async function createLocationArticle() {
                 @submit.prevent="createLocationArticle"
               >
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Title</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Title</span>
                   <input
                     v-model="newLocationForm.title"
                     class="eldra-input w-full rounded-none px-3 py-2 text-sm"
@@ -1465,16 +1465,16 @@ async function createLocationArticle() {
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Type</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Type</span>
                   <select
                     v-model="newLocationForm.locationType"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
                   >
                     <option
                       v-for="option in LOCATION_TYPE_OPTIONS"
                       :key="option.value"
                       :value="option.value"
-                      class="bg-[#090909] text-[#f5e7bd]"
+                      class="bg-[#090909] text-eldra-accent-text"
                     >
                       {{ option.label }}
                     </option>
@@ -1482,7 +1482,7 @@ async function createLocationArticle() {
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Population</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Population</span>
                   <input
                     v-model="newLocationForm.population"
                     inputmode="numeric"
@@ -1492,17 +1492,17 @@ async function createLocationArticle() {
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Linked Map</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Linked Map</span>
                   <select
                     v-model="newLocationForm.linkedMapId"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
                   >
-                    <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked map</option>
+                    <option value="" class="bg-[#090909] text-eldra-accent-text">No linked map</option>
                     <option
                       v-for="map in mapOptions"
                       :key="map.id"
                       :value="map.id"
-                      class="bg-[#090909] text-[#f5e7bd]"
+                      class="bg-[#090909] text-eldra-accent-text"
                     >
                       {{ map.title }}
                     </option>
@@ -1510,17 +1510,17 @@ async function createLocationArticle() {
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Parent Location</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Parent Location</span>
                   <select
                     v-model="newLocationForm.parentLocationId"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
                   >
-                    <option value="" class="bg-[#090909] text-[#f5e7bd]">No parent location</option>
+                    <option value="" class="bg-[#090909] text-eldra-accent-text">No parent location</option>
                     <option
                       v-for="location in parentLocationOptions"
                       :key="location.id"
                       :value="location.id"
-                      class="bg-[#090909] text-[#f5e7bd]"
+                      class="bg-[#090909] text-eldra-accent-text"
                     >
                       {{ location.title }}
                     </option>
@@ -1528,7 +1528,7 @@ async function createLocationArticle() {
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Summary Blurb</span>
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Summary Blurb</span>
                   <textarea
                     v-model="newLocationForm.summary"
                     rows="4"
@@ -1567,15 +1567,15 @@ async function createLocationArticle() {
         class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
+          <div class="flex items-start justify-between gap-3 border-b border-eldra-accent/22 px-5 py-5">
             <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Summary</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">Summary</div>
               <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ selectedEntity.title }}</h2>
             </div>
 
             <button
               type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-white/[0.08] hover:text-white"
+              class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-2 text-eldra-text-dim transition hover:bg-white/[0.08] hover:text-white"
               @click="clearSelectedEntity"
             >
               <UIcon name="i-lucide-x" class="h-4 w-4" />
@@ -1583,7 +1583,7 @@ async function createLocationArticle() {
           </div>
 
           <div class="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-            <div v-if="selectedPending" class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm text-[#d8ceb8]">
+            <div v-if="selectedPending" class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm text-eldra-text-soft">
               Loading summary...
             </div>
 
@@ -1601,64 +1601,64 @@ async function createLocationArticle() {
 
               <div
                 v-else
-                class="flex h-64 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-4xl font-semibold text-[#d8ceb8]"
+                class="flex h-64 items-center justify-center rounded-none border border-eldra-accent/22 bg-eldra-panel/72 text-4xl font-semibold text-eldra-text-soft"
               >
                 {{ initialsFor(selectedEntity.title) }}
               </div>
 
-              <div class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+              <div class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4">
                 <div class="grid grid-cols-1 gap-3 text-sm">
-                  <div><span class="text-[#b5a88d]">Title:</span> <span class="text-white">{{ selectedEntity.title }}</span></div>
-                  <div><span class="text-[#b5a88d]">Type:</span> <span class="text-white">{{ entityType }}</span></div>
-                  <div><span class="text-[#b5a88d]">Slug:</span> <span class="text-white">{{ selectedEntity.slug || '—' }}</span></div>
+                  <div><span class="text-eldra-text-dim">Title:</span> <span class="text-white">{{ selectedEntity.title }}</span></div>
+                  <div><span class="text-eldra-text-dim">Type:</span> <span class="text-white">{{ entityType }}</span></div>
+                  <div><span class="text-eldra-text-dim">Slug:</span> <span class="text-white">{{ selectedEntity.slug || '—' }}</span></div>
                 </div>
               </div>
 
               <div
                 v-if="entityType === 'item' && itemCore(selectedEntityDetail || selectedEntity)"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Item Details</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Item Details</div>
                 <div v-for="line in itemMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
                 v-if="entityType === 'spell' && spellCore(selectedEntityDetail || selectedEntity)"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Spell Details</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Spell Details</div>
                 <div v-for="line in spellMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
                 v-if="entityType === 'species' && speciesCore(selectedEntityDetail || selectedEntity)"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Species Details</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Species Details</div>
                 <div v-for="line in speciesMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
                 v-if="entityType === 'class' && classCore(selectedEntityDetail || selectedEntity)"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Class Details</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Class Details</div>
                 <div v-for="line in classMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
                 v-if="entityType === 'background' && backgroundCore(selectedEntityDetail || selectedEntity)"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Background Details</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Background Details</div>
                 <div v-for="line in backgroundMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
                 v-if="selectedSummary"
-                class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
-                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary</div>
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Summary</div>
                 <div
                   class="markdown-content eldra-rich-content text-[15px] leading-7 text-slate-200"
                   v-html="renderMarkdown(selectedSummary)"
@@ -1667,7 +1667,7 @@ async function createLocationArticle() {
             </template>
           </div>
 
-          <div class="border-t border-[rgba(201,164,90,0.22)] p-5 space-y-3">
+          <div class="border-t border-eldra-accent/22 p-5 space-y-3">
             <button
               v-if="mode === 'build'"
               type="button"
@@ -1914,15 +1914,15 @@ async function createLocationArticle() {
 }
 
 [data-collection-entity-card][data-selected="true"] {
-  border-color: rgba(201, 164, 90, 0.72) !important;
+  border-color: rgb(var(--eldra-accent-rgb) / 0.72) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(201, 164, 90, 0.20),
-    0 0 0 1px rgba(201, 164, 90, 0.10),
+    inset 0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.20),
+    0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.10),
     0 18px 44px rgba(0, 0, 0, 0.30);
 }
 
 [data-collection-entity-card]:focus-visible {
-  outline: 2px solid rgba(201, 164, 90, 0.58);
+  outline: 2px solid rgb(var(--eldra-accent-rgb) / 0.58);
   outline-offset: 3px;
 }
 

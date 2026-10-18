@@ -327,14 +327,14 @@ function readMore() {
             <button
               v-if="canGoBack"
               type="button"
-              class="mb-3 inline-flex items-center gap-1 text-xs uppercase tracking-[0.24em] text-[#9f9278] transition hover:text-white"
+              class="mb-3 inline-flex items-center gap-1 text-xs uppercase tracking-[0.24em] text-eldra-text-faint transition hover:text-white"
               @click="goBackContext"
             >
               <UIcon name="i-lucide-arrow-left" class="h-4 w-4" />
               Back
             </button>
 
-            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
               {{ eyebrowLabel }}
             </div>
 
@@ -344,7 +344,7 @@ function readMore() {
           </div>
 
           <button
-            class="shrink-0 text-[#9f9278] transition hover:text-white"
+            class="shrink-0 text-eldra-text-faint transition hover:text-white"
             type="button"
             aria-label="Close details"
             @click="close"
@@ -369,7 +369,7 @@ function readMore() {
               class="h-56 w-full object-cover"
             >
 
-            <div class="border-t border-[rgba(201,164,90,0.18)] bg-[rgba(5,5,5,0.62)] px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-[#9f9278] transition group-hover:text-[#f5e7bd]">
+            <div class="border-t border-eldra-accent/18 bg-[rgba(5,5,5,0.62)] px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-eldra-text-faint transition group-hover:text-eldra-accent-text">
               Click to view image
             </div>
           </button>
@@ -378,11 +378,11 @@ function readMore() {
             v-if="detailLines.length"
             class="eldra-glass-section mt-5 rounded-none p-4"
           >
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
               {{ detailHeading }}
             </div>
 
-            <div class="mt-3 grid gap-2 text-sm leading-6 text-[#d8ceb8]">
+            <div class="mt-3 grid gap-2 text-sm leading-6 text-eldra-text-soft">
               <div
                 v-for="line in detailLines"
                 :key="line"
@@ -394,7 +394,7 @@ function readMore() {
           </div>
 
                     <div class="eldra-glass-section mt-5 rounded-none p-4">
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
               Summary
             </div>
 
@@ -406,20 +406,20 @@ function readMore() {
               v-if="entitySummary && isEntityContent"
               :world-id="drawerWorldId || 0"
               :markdown="entitySummary"
-              class="mt-3 text-sm leading-7 text-[#d8ceb8]"
+              class="mt-3 text-sm leading-7 text-eldra-text-soft"
               @open-mention="openNestedMention"
             />
 
             <p
               v-else-if="entitySummary"
-              class="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
+              class="mt-3 whitespace-pre-wrap text-sm leading-7 text-eldra-text-soft"
             >
               {{ entitySummary }}
             </p>
 
             <p
               v-else
-              class="mt-3 text-sm leading-7 text-[#9f9278]"
+              class="mt-3 text-sm leading-7 text-eldra-text-faint"
             >
               {{ isResolved ? 'No summary yet.' : 'No matching world entity was found for this mention.' }}
             </p>
@@ -446,7 +446,7 @@ function readMore() {
             v-if="destinationMapTitle"
             class="eldra-glass-section mt-5 rounded-none p-4"
           >
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
               Destination Map
             </div>
             <div class="mt-2 text-sm font-medium text-white">
@@ -473,10 +473,10 @@ function readMore() {
             v-if="allowBuildActions && mode === 'build'"
             class="eldra-glass-section mt-5 rounded-none p-4"
           >
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
               Build Mode
             </div>
-            <div class="mt-3 text-sm leading-7 text-[#d8ceb8]">
+            <div class="mt-3 text-sm leading-7 text-eldra-text-soft">
               Build controls are provided by the host page. This shared context drawer only handles the quick-glance entity summary.
             </div>
           </div>
@@ -488,14 +488,14 @@ function readMore() {
              rather than being duplicated into this drawer. -->
         <div
           v-if="!isEntityContent && $slots.footer"
-          class="border-t border-[rgba(201,164,90,0.22)] p-5"
+          class="border-t border-eldra-accent/22 p-5"
         >
           <slot name="footer" />
         </div>
 
         <div
           v-else-if="isEntityContent && isResolved"
-          class="border-t border-[rgba(201,164,90,0.22)] p-5"
+          class="border-t border-eldra-accent/22 p-5"
         >
           <div class="flex gap-3">
             <NuxtLink
@@ -561,7 +561,7 @@ function readMore() {
       >
         <button
           type="button"
-          class="absolute right-5 top-5 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.82)] p-3 text-[#c9a45a] transition hover:bg-[rgba(201,164,90,0.16)] hover:text-[#fff7df]"
+          class="absolute right-5 top-5 rounded-none border border-eldra-accent/34 bg-eldra-panel/82 p-3 text-eldra-accent transition hover:bg-eldra-accent/16 hover:text-eldra-text-strong"
           @click="closeImageLightbox"
         >
           <UIcon name="i-lucide-x" class="h-6 w-6" />
@@ -571,10 +571,10 @@ function readMore() {
           <img
             :src="entityImageUrl"
             :alt="entityTitle"
-            class="max-h-[86vh] max-w-[94vw] rounded-none border border-[rgba(201,164,90,0.38)] object-contain shadow-2xl"
+            class="max-h-[86vh] max-w-[94vw] rounded-none border border-eldra-accent/38 object-contain shadow-2xl"
           >
 
-          <figcaption class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-[#c9a45a]">
+          <figcaption class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-eldra-accent">
             {{ entityTitle }}
           </figcaption>
         </figure>

@@ -24,7 +24,7 @@ const emit = defineEmits<{
       class="eldra-ornate-panel eldra-glass-surface isolate fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5"
     >
       <span class="eldra-ornament-frame" aria-hidden="true" />
-      <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+      <div class="mb-1 text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
         {{ formatLocationType(selectedPin.pinType) || 'Location' }}
       </div>
 
@@ -32,7 +32,7 @@ const emit = defineEmits<{
         {{ selectedPin.resolvedTitle }}
       </h2>
 
-      <div class="mt-2 text-sm text-[#9f9278]">
+      <div class="mt-2 text-sm text-eldra-text-faint">
         Icon: {{ iconLabel(selectedPin.icon) }}
       </div>
 

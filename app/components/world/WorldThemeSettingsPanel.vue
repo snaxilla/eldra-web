@@ -90,7 +90,7 @@ onBeforeUnmount(() => {
   <section data-world-theme-settings-panel class="eldra-ornate-panel eldra-frame-corners min-w-0 p-5 shadow-xl">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+        <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
           World Theme
         </div>
 
@@ -98,21 +98,21 @@ onBeforeUnmount(() => {
           Visual Theme
         </h2>
 
-        <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
+        <p class="mt-2 max-w-2xl text-sm leading-6 text-eldra-text-soft">
           Sets the look of this World for everyone in it. Players' own accessibility settings (motion, contrast, transparency) always take precedence.
         </p>
       </div>
 
-      <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#f5e7bd]">
+      <div class="rounded-none border border-eldra-accent/22 bg-eldra-accent/8 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-eldra-accent-text">
         {{ draft.themeKey ? activeTheme.label : `Default · ${platformDefaultLabel}` }}
       </div>
     </div>
 
     <div class="mt-5 grid gap-5 md:grid-cols-2">
       <label class="grid gap-2">
-        <span class="text-[11px] uppercase tracking-[0.3em] text-[#9f9278]">Theme</span>
+        <span class="text-[11px] uppercase tracking-[0.3em] text-eldra-text-faint">Theme</span>
         <select
-          class="eldra-input rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(5,8,12,0.84)] px-3 py-2 text-sm text-[#efe2bd]"
+          class="eldra-input rounded-none border border-eldra-accent/28 bg-[rgba(5,8,12,0.84)] px-3 py-2 text-sm text-eldra-text"
           :value="draft.themeKey ?? ''"
           @change="setThemeKey"
         >
@@ -123,30 +123,30 @@ onBeforeUnmount(() => {
             {{ theme.label }}
           </option>
         </select>
-        <span class="text-xs text-[#9f9278]">{{ activeTheme.description }}</span>
+        <span class="text-xs text-eldra-text-faint">{{ activeTheme.description }}</span>
       </label>
 
-      <label class="flex items-center justify-between gap-3 self-start rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-3 text-sm text-[#d8ceb8]">
+      <label class="flex items-center justify-between gap-3 self-start rounded-none border border-eldra-accent/22 bg-eldra-panel/72 px-3 py-3 text-sm text-eldra-text-soft">
         <span>
           <span class="block">Atmospheric effects</span>
-          <span class="block text-xs text-[#9f9278]">Optional glows and ambient motion.</span>
+          <span class="block text-xs text-eldra-text-faint">Optional glows and ambient motion.</span>
         </span>
         <input
           type="checkbox"
-          class="h-4 w-4 accent-[#c9a45a]"
+          class="h-4 w-4 accent-eldra-accent"
           :checked="effectiveOptions.atmosphere"
           @change="setOption('atmosphere', ($event.target as HTMLInputElement).checked)"
         >
       </label>
 
       <label class="grid gap-2">
-        <span class="flex justify-between text-[11px] uppercase tracking-[0.3em] text-[#9f9278]">
+        <span class="flex justify-between text-[11px] uppercase tracking-[0.3em] text-eldra-text-faint">
           <span>Panel opacity</span>
           <span class="tabular-nums tracking-normal">{{ Math.round(effectiveOptions.panelOpacity * 100) }}%</span>
         </span>
         <input
           type="range"
-          class="accent-[#c9a45a]"
+          class="accent-eldra-accent"
           :min="MIN_PANEL_OPACITY"
           max="1"
           step="0.01"
@@ -156,13 +156,13 @@ onBeforeUnmount(() => {
       </label>
 
       <label class="grid gap-2">
-        <span class="flex justify-between text-[11px] uppercase tracking-[0.3em] text-[#9f9278]">
+        <span class="flex justify-between text-[11px] uppercase tracking-[0.3em] text-eldra-text-faint">
           <span>Panel blur</span>
           <span class="tabular-nums tracking-normal">{{ effectiveOptions.panelBlur }}px</span>
         </span>
         <input
           type="range"
-          class="accent-[#c9a45a]"
+          class="accent-eldra-accent"
           min="0"
           :max="MAX_PANEL_BLUR"
           step="1"
@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
     <div class="mt-5 flex flex-wrap items-center gap-3">
       <button
         type="button"
-        class="eldra-button rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] px-4 py-2 text-sm text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.22)] disabled:opacity-50"
+        class="eldra-button rounded-none border border-eldra-accent/42 bg-eldra-accent/14 px-4 py-2 text-sm text-eldra-accent-text transition hover:bg-eldra-accent/22 disabled:opacity-50"
         :disabled="busy || !dirty"
         @click="save"
       >
@@ -184,7 +184,7 @@ onBeforeUnmount(() => {
 
       <button
         type="button"
-        class="rounded-none border border-[rgba(201,164,90,0.22)] px-4 py-2 text-sm text-[#b5a88d] transition hover:text-[#fff7df] disabled:opacity-50"
+        class="rounded-none border border-eldra-accent/22 px-4 py-2 text-sm text-eldra-text-dim transition hover:text-eldra-text-strong disabled:opacity-50"
         :disabled="busy || !dirty"
         @click="revert"
       >
@@ -193,14 +193,14 @@ onBeforeUnmount(() => {
 
       <button
         type="button"
-        class="rounded-none border border-transparent px-2 py-2 text-xs uppercase tracking-[0.18em] text-[#9f9278] transition hover:text-[#fff7df] disabled:opacity-50"
+        class="rounded-none border border-transparent px-2 py-2 text-xs uppercase tracking-[0.18em] text-eldra-text-faint transition hover:text-eldra-text-strong disabled:opacity-50"
         :disabled="busy"
         @click="resetOptions"
       >
         Use theme defaults
       </button>
 
-      <span v-if="message" class="text-xs text-[#d8ceb8]" role="status">{{ message }}</span>
+      <span v-if="message" class="text-xs text-eldra-text-soft" role="status">{{ message }}</span>
     </div>
   </section>
 </template>

@@ -62,7 +62,7 @@
 }
 
 .eldra-title {
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
   text-shadow: 0 2px 18px rgb(var(--eldra-accent-rgb) / 0.10);
 }
 
@@ -73,19 +73,19 @@
 
 .eldra-button {
   border: 1px solid rgb(var(--eldra-accent-rgb) / 0.34);
-  background: rgba(17, 15, 11, 0.86);
-  color: #f5e7bd;
+  background: rgb(var(--eldra-panel-rgb) / 0.86);
+  color: rgb(var(--eldra-accent-text-rgb));
   transition: background 140ms ease, border-color 140ms ease;
 }
 
 .eldra-button:hover {
   border-color: rgb(var(--eldra-accent-rgb) / 0.58);
-  background: rgba(64, 45, 18, 0.42);
+  background: rgb(var(--eldra-accent-rgb) / 0.16);
 }
 
 .eldra-input {
   border: 1px solid rgb(var(--eldra-accent-rgb) / 0.24);
-  background: rgba(5, 5, 4, 0.72);
+  background: rgb(var(--eldra-ink-rgb) / 0.72);
   color: #f5f0df;
   outline: none;
 }
@@ -147,17 +147,17 @@
   border-color: rgb(var(--eldra-accent-rgb) / 0.42) !important;
   background:
     linear-gradient(180deg, rgb(var(--eldra-accent-rgb) / 0.16), rgba(45,31,12,0.18)) !important;
-  color: #f5e7bd !important;
+  color: rgb(var(--eldra-accent-text-rgb)) !important;
   box-shadow: inset 0 0 10px rgb(var(--eldra-accent-rgb) / 0.08);
 }
 
 .eldra-arcane-link {
-  color: #f5e7bd !important;
+  color: rgb(var(--eldra-accent-text-rgb)) !important;
   text-shadow: 0 0 14px rgb(var(--eldra-accent-rgb) / 0.18);
 }
 
 .eldra-arcane-link:hover {
-  color: #fff7df !important;
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
 }
 
 .eldra-ornate-panel {
@@ -165,7 +165,7 @@
   border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   background:
     radial-gradient(900px 220px at 50% 0%, rgb(var(--eldra-accent-rgb) / 0.11), transparent 68%),
-    linear-gradient(180deg, rgba(20,18,13,0.88), rgba(8,7,5,0.78)) !important;
+    linear-gradient(180deg, rgb(var(--eldra-panel-rgb) / 0.88), rgb(var(--eldra-ink-rgb) / 0.78)) !important;
   box-shadow:
     0 22px 70px rgba(0,0,0,0.42),
     inset 0 0 0 1px rgba(255,238,190,0.035),
@@ -323,7 +323,7 @@
 }
 
 .eldra-sidebar-brandmark {
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
   text-shadow:
     0 0 18px rgb(var(--eldra-accent-rgb) / 0.22),
     0 1px 0 rgba(0,0,0,0.6);
@@ -458,13 +458,13 @@
   border-radius: 0 !important;
   border-bottom: 1px solid rgb(var(--eldra-accent-rgb) / 0.22) !important;
   background: rgba(20,17,12,0.86) !important;
-  color: #fff7df !important;
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
   text-shadow: 0 0 10px rgb(var(--eldra-accent-rgb) / 0.32);
 }
 
 .leaflet-control-zoom a:hover {
   background: rgb(var(--eldra-accent-rgb) / 0.16) !important;
-  color: #fff7df !important;
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
 }
 
 .leaflet-control-zoom a:last-child {
@@ -473,7 +473,7 @@
 
 /* Shared rendered rich text theme: articles, headers, backstories, notes */
 .eldra-rich-content {
-  color: #f5e7bd;
+  color: rgb(var(--eldra-accent-text-rgb));
   font-size: 16px;
   line-height: 1.9;
 }
@@ -484,7 +484,7 @@
 .eldra-rich-content h1,
 .eldra-rich-content h2,
 .eldra-rich-content h3 {
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
   font-weight: 750;
 }
 
@@ -493,8 +493,8 @@
 .eldra-rich-content h3 { margin: 1rem 0 0.55rem; font-size: 1.25rem; line-height: 1.25; }
 
 .eldra-rich-content p { margin: 0.9rem 0; }
-.eldra-rich-content strong { color: #fff7df; font-weight: 700; }
-.eldra-rich-content em { color: #f5e7bd; }
+.eldra-rich-content strong { color: rgb(var(--eldra-text-strong-rgb)); font-weight: 700; }
+.eldra-rich-content em { color: rgb(var(--eldra-accent-text-rgb)); }
 
 .eldra-rich-content ul,
 .eldra-rich-content ol {
@@ -510,7 +510,7 @@
   border-left: 3px solid rgb(var(--eldra-accent-rgb) / 0.62) !important;
   background: rgb(var(--eldra-accent-rgb) / 0.08) !important;
   border-radius: 0 !important;
-  color: #e8d9b5 !important;
+  color: rgb(var(--eldra-parchment-rgb)) !important;
   font-style: italic;
 }
 
@@ -522,11 +522,11 @@
 
 .eldra-rich-content mark {
   background: rgb(var(--eldra-accent-rgb) / 0.30);
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
 }
 
 .eldra-rich-content a {
-  color: #f5e7bd;
+  color: rgb(var(--eldra-accent-text-rgb));
   text-decoration: underline;
   text-decoration-color: rgb(var(--eldra-accent-rgb) / 0.75);
   text-underline-offset: 4px;

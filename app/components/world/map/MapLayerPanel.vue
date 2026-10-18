@@ -29,7 +29,7 @@ function onLayerToggle(layerId: string, event: Event) {
   >
     <UIcon
       name="i-lucide-layers-3"
-      class="h-4 w-4 text-[#f5e7bd]"
+      class="h-4 w-4 text-eldra-accent-text"
     />
     <span>Layers</span>
   </button>
@@ -46,7 +46,7 @@ function onLayerToggle(layerId: string, event: Event) {
     >
       <span class="eldra-ornament-frame" aria-hidden="true" />
 
-      <h2 class="eldra-display text-sm uppercase text-[#efe2bd]">
+      <h2 class="eldra-display text-sm uppercase text-eldra-text">
         Map Layers
       </h2>
       <span class="eldra-ornament-divider mt-2" aria-hidden="true" />
@@ -55,7 +55,7 @@ function onLayerToggle(layerId: string, event: Event) {
         <label
           v-for="layer in props.scene.layers"
           :key="layer.id"
-          class="flex items-center gap-3 text-sm text-[#d8ceb8]"
+          class="flex items-center gap-3 text-sm text-eldra-text-soft"
         >
           <input
             :checked="layer.visible"

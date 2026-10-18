@@ -21,8 +21,18 @@
   --eldra-text-strong-rgb: 255 247 223;    /* #fff7df */
   --eldra-text-muted-rgb: 167 155 133;     /* #a79b85 */
   --eldra-parchment-rgb: 232 217 181;      /* #e8d9b5 */
+  /* Text ramp used across shared components (values unchanged from the
+     literals they replace). */
+  --eldra-text-soft-rgb: 216 206 184;      /* #d8ceb8 */
+  --eldra-text-dim-rgb: 181 168 141;       /* #b5a88d */
+  --eldra-text-faint-rgb: 159 146 120;     /* #9f9278 */
+  --eldra-accent-text-rgb: 245 231 189;    /* #f5e7bd -- gold-tinted label text */
 
   --eldra-leather-rgb: 9 8 6;              /* sidebar binding #090806 */
+  /* Workspace ground behind ordinary (non-map) pages: cool ink. */
+  --eldra-ground-top-rgb: 11 13 18;        /* #0b0d12 */
+  --eldra-ground-mid-rgb: 13 17 23;        /* #0d1117 */
+  --eldra-ground-bottom-rgb: 16 20 27;     /* #10141b */
 
   /* Typography: Cinzel (bundled via @fontsource/cinzel, imported in
      main.css) for display only -- titles, World and place names. */

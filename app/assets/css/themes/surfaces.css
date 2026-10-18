@@ -34,6 +34,16 @@
   }
 }
 
+/* Menus, popovers, select lists, tooltips: quieter, more opaque glass so
+   dense item text stays legible over a busy map. No ornament. */
+.eldra-glass-menu {
+  background:
+    rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.94)) !important;
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.45);
+}
+
 /* Native form controls inside glass panels take the theme accent instead
    of the browser default blue. Appearance only -- controls stay native. */
 .eldra-glass-surface :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) {
@@ -67,6 +77,35 @@
 ------------------------------------------------------------------- */
 
 .eldra-ornament-frame {
+  position: absolute;
+  inset: var(--eldra-ornament-inset);
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--eldra-ornament-color);
+  -webkit-mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  -webkit-mask-position: left top, right top, left bottom, right bottom;
+  mask-position: left top, right top, left bottom, right bottom;
+  -webkit-mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* Pseudo-element variant for surfaces whose markup we don't own (Nuxt UI
+   modal/slideover content, via app.config slots). The host must already be
+   positioned (Nuxt UI overlays are fixed); `isolation` keeps the frame
+   above the host background and beneath its content. */
+.eldra-ornamented {
+  isolation: isolate;
+}
+
+.eldra-ornamented::after {
+  content: "";
   position: absolute;
   inset: var(--eldra-ornament-inset);
   z-index: -1;
@@ -138,6 +177,20 @@
   );
   border-color: var(--eldra-border);
   color: var(--eldra-text);
+}
+
+/* ------------------------------------------------------------------
+   Workspace ground -- the neutral backdrop behind ordinary World pages
+   (the full-bleed World Map covers it). Never a map or image.
+------------------------------------------------------------------- */
+
+.eldra-workspace-ground {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--eldra-ground-top-rgb, var(--eldra-ink-rgb))),
+    rgb(var(--eldra-ground-mid-rgb, var(--eldra-ink-rgb))) 40%,
+    rgb(var(--eldra-ground-bottom-rgb, var(--eldra-charcoal-rgb)))
+  );
 }
 
 /* ------------------------------------------------------------------

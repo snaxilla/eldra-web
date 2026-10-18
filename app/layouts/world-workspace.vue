@@ -287,7 +287,7 @@ const backgroundImageUrl = computed(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#0a0d12]">
+  <div class="eldra-workspace-ground h-screen w-screen overflow-hidden text-eldra-text">
     <div
       class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
       :class="isFullBleedMap ? 'eldra-map-shell' : ''"
@@ -331,7 +331,7 @@ const backgroundImageUrl = computed(() => {
           v-if="mobileDrawerOpen"
           type="button"
           data-drawer-close
-          class="absolute right-3 z-[101] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] md:hidden"
+          class="absolute right-3 z-[101] inline-flex h-11 w-11 items-center justify-center rounded-none border border-eldra-accent/32 bg-eldra-panel/86 text-eldra-text md:hidden"
           style="top: calc(0.75rem + env(safe-area-inset-top));"
           aria-label="Close navigation"
           @click="closeMobileDrawer"
@@ -347,7 +347,7 @@ const backgroundImageUrl = computed(() => {
         v-if="!mobileDrawerOpen"
         ref="hamburgerButtonRef"
         type="button"
-        class="fixed left-3 z-[90] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-[rgba(201,164,90,0.55)] md:hidden"
+        class="fixed left-3 z-[90] inline-flex h-11 w-11 items-center justify-center rounded-none border border-eldra-accent/32 bg-eldra-panel/86 text-eldra-text shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-eldra-accent/55 md:hidden"
         style="top: calc(0.75rem + env(safe-area-inset-top));"
         aria-label="Open navigation"
         aria-haspopup="dialog"
@@ -358,7 +358,7 @@ const backgroundImageUrl = computed(() => {
       </button>
 
       <div class="min-w-0 overflow-hidden relative" :class="mapInsetClass">
-        <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0d12,#0d1117_40%,#10141b)]"></div>
+        <div class="eldra-workspace-ground absolute inset-0"></div>
 
         <div
           v-if="backgroundImageUrl && presentationMode !== 'neutral'"

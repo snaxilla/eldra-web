@@ -51,7 +51,7 @@ const items = computed(() => {
 <template>
   <nav
     v-if="showMobileNav"
-    class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b1119]/92 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 backdrop-blur lg:hidden"
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-eldra-accent/18 bg-eldra-panel-strong/92 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 backdrop-blur lg:hidden"
   >
     <div class="grid grid-cols-3 gap-2">
       <NuxtLink
@@ -59,8 +59,8 @@ const items = computed(() => {
         :key="item.to"
         :to="item.to"
         class="flex flex-col items-center gap-1 rounded-2xl border px-3 py-3 text-xs font-medium transition"
-        active-class="border-sky-500/30 bg-sky-500/10 text-white"
-        :class="'border-white/8 bg-white/[0.02] text-slate-300 hover:bg-white/[0.04]'"
+        active-class="border-eldra-accent/40 bg-eldra-accent/12 text-white"
+        :class="'border-eldra-accent/12 bg-white/[0.02] text-eldra-text-soft hover:bg-white/[0.04]'"
       >
         <UIcon :name="item.icon" class="h-5 w-5" />
         <span>{{ item.label }}</span>

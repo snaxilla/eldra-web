@@ -109,7 +109,7 @@ function removeOverlay() {
         <span class="eldra-ornament-frame" aria-hidden="true" />
         <div class="flex h-full flex-col">
           <header class="relative px-6 pb-5 pt-6">
-            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+            <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
               Image Overlay
             </div>
             <div class="mt-2 flex items-start justify-between gap-4">
@@ -117,14 +117,14 @@ function removeOverlay() {
                 <h2 class="eldra-display text-2xl text-white">
                   {{ cleanText(editingOverlay.objectId) ? 'Edit Overlay' : 'Create Overlay' }}
                 </h2>
-                <p class="mt-1 text-sm text-[#9f9278]">
+                <p class="mt-1 text-sm text-eldra-text-faint">
                   Author one scene-owned overlay object for the current map.
                 </p>
               </div>
 
               <button
                 type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-white"
+                class="rounded-none border border-eldra-accent/24 px-3 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-white"
                 @click="emit('close')"
               >
                 Close
@@ -140,7 +140,7 @@ function removeOverlay() {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Name</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Name</label>
                 <input
                   v-model="editingOverlay.name"
                   type="text"
@@ -151,8 +151,8 @@ function removeOverlay() {
 
               <div>
                 <div class="mb-1.5 flex items-center justify-between gap-3">
-                  <label class="block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Opacity</label>
-                  <span class="text-xs text-[#9f9278]">{{ Math.round((editingOverlay.opacity || 0) * 100) }}%</span>
+                  <label class="block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Opacity</label>
+                  <span class="text-xs text-eldra-text-faint">{{ Math.round((editingOverlay.opacity || 0) * 100) }}%</span>
                 </div>
                 <input
                   v-model.number="editingOverlay.opacity"
@@ -165,7 +165,7 @@ function removeOverlay() {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Image</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Image</label>
 
                 <div
                   v-if="previewUrl"
@@ -190,7 +190,7 @@ function removeOverlay() {
                   <button
                     v-if="previewUrl"
                     type="button"
-                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-2 text-sm font-semibold text-[#fff7df]"
+                    class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm font-semibold text-eldra-text-strong"
                     @click="clearImage"
                   >
                     Clear
@@ -199,34 +199,34 @@ function removeOverlay() {
 
                 <div
                   v-if="previewUrl"
-                  class="mt-3 rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(4,8,14,0.40)] p-4"
+                  class="mt-3 rounded-none border border-eldra-accent/12 bg-[rgba(4,8,14,0.40)] p-4"
                 >
-                  <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">
+                  <div class="text-[10px] uppercase tracking-[0.2em] text-eldra-text-faint">
                     Selected
                   </div>
-                  <div class="mt-2 break-words text-sm font-semibold text-[#fff7df]">
+                  <div class="mt-2 break-words text-sm font-semibold text-eldra-text-strong">
                     {{ overlayLabel }}
                   </div>
-                  <div class="mt-2 break-all text-xs text-[#9f9278]">
+                  <div class="mt-2 break-all text-xs text-eldra-text-faint">
                     {{ cleanText(editingOverlay.imageFileId) || previewUrl }}
                   </div>
                 </div>
 
                 <div
                   v-else
-                  class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] bg-[rgba(4,8,14,0.34)] p-4 text-sm leading-6 text-[#9f9278]"
+                  class="mt-3 rounded-none border border-dashed border-eldra-accent/22 bg-[rgba(4,8,14,0.34)] p-4 text-sm leading-6 text-eldra-text-faint"
                 >
                   Select or upload a single image to represent the overlay.
                 </div>
               </div>
 
-              <div class="eldra-glass-section rounded-none px-4 py-2 text-xs text-[#9f9278]">
+              <div class="eldra-glass-section rounded-none px-4 py-2 text-xs text-eldra-text-faint">
                 The overlay uses the current map bounds and is toggled through the Image Overlays layer.
               </div>
             </div>
           </div>
 
-          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+          <div class="border-t border-eldra-accent/22 p-5">
             <div class="flex gap-3">
               <button
                 type="button"

@@ -644,6 +644,7 @@ const {
   hitDieSize,
   armorClass,
   proficiencyBonus,
+  speed,
   characterLevel,
   spellcastingIsCaster,
   spellcastingAbilityMod,
@@ -1010,22 +1011,23 @@ function openSkillContext(skill: CharacterSkillRow) {
        the same treatment WorldEntityInteractivePage.vue's panels already
        use successfully over this exact backdrop system today. -->
   <div class="h-full overflow-y-auto bg-transparent">
-    <!-- Sheet width, not dashboard width. Corrective Phase 2R capped this
-         at max-w-4xl to stop the rejected 3-column layout from stretching
-         to a 2560px monitor; a reference region beside a working region
-         needs more than one folio column but far less than the whole
-         viewport, so it opens up only at `xl` and stops at 1400px -- about
-         the measure a real two-column character sheet is printed at.
+    <!-- Sheet width, not dashboard width: capped at 1400px -- about the
+         measure a real two-column character sheet is printed at.
 
-         The right padding is how Eldra's EXISTING context drawer gets its
-         space: when the drawer is open at desktop width the sheet
-         compresses rather than being covered, which is both this app's
-         prior behaviour and the reference sheet's. Below `xl` the drawer
-         goes full-width over the sheet, as every other page's drawer
-         already does on a phone. -->
+         Phase 4B-0: this element is the `sheet` CONTAINER. Layout inside
+         the sheet (reference rail, skills split, command-center portrait
+         grid) responds to the width actually available here -- after the
+         workspace rail -- via `@container/sheet` queries, not to the
+         viewport. Below the rail threshold the sheet is one readable
+         column at whatever width it has.
+
+         Eldra's EXISTING context drawer (WorldEntityContextDrawer) floats
+         over the sheet instead of compressing it: it is `fixed` to the
+         viewport's right edge, so opening it never reflows the center
+         workspace. On a phone it goes full-width over the sheet, as on
+         every other page. -->
     <div
-      class="mx-auto max-w-4xl px-4 py-6 transition-[padding] duration-200 sm:px-6 sm:py-8 xl:max-w-[1400px]"
-      :class="context ? 'xl:pr-[472px]' : ''"
+      class="@container/sheet mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8"
     >
       <div
         v-if="pending"
@@ -1052,7 +1054,6 @@ function openSkillContext(skill: CharacterSkillRow) {
         v-else-if="blueprint"
         :tabs="tabs"
         :active-tab="activeTab"
-        :drawer-open="Boolean(context)"
         @select-tab="setActiveTab"
       >
         <!-- Command center: sticky within THIS page's own overflow-y-auto
@@ -1079,6 +1080,7 @@ function openSkillContext(skill: CharacterSkillRow) {
             :hit-dice-available="hitDiceAvailable"
             :hit-die-size="hitDieSize"
             :armor-class="armorClass"
+            :speed="speed"
             :proficiency-bonus="proficiencyBonus"
             :is-caster="spellcastingIsCaster"
             :spell-save-dc="spellcastingSaveDc"
@@ -1109,7 +1111,7 @@ function openSkillContext(skill: CharacterSkillRow) {
 
         <!-- Left region: reference data, read constantly, changed almost
              never. Desktop only -- the same content is rendered again
-             inside the Character tab below `xl` (see that copy, and
+             inside the Character tab when the sheet container is narrower than 64rem (see that copy, and
              CharacterReferencePanels.vue's header, for why duplicating
              THESE panels specifically is safe).
 
@@ -1233,7 +1235,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                  NOT break is the one about never duplicating Recovery or
                  Encounter, which mutate and are still rendered once). -->
             <CharacterReferencePanels
-              class="xl:hidden"
+              class="@5xl/sheet:hidden"
               :ability-entries="abilityEntries"
               :save-entries="saveEntries"
               :reference-regions="referenceRegions"

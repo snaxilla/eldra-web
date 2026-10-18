@@ -124,6 +124,24 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 // holds and no Player/Observer holds, per WORLD_ROLE_CAPABILITIES -- there is
 // no dedicated "may enter Build mode" capability in the vocabulary, and the
 // task's own IMPORTANT section forbids inventing one.
+// Theming Architecture, Phase 2: the GM-selected World theme, inherited by
+// everyone in this World (see .github/docs/architecture/theming.md). A
+// failed fetch (e.g. collection not yet provisioned) leaves `selection`
+// null, which resolves to the platform default -- never a broken shell.
+const { data: worldPresentationSettings } = await useFetch(() => `/api/worlds/${worldId.value}/presentation-settings`, {
+  default: () => null
+})
+
+watch(
+  [worldId, worldPresentationSettings],
+  ([id, settings]) => {
+    // Ignore a response still belonging to the previous World mid-switch.
+    if (!id || (settings && String(settings.worldId) !== id)) return
+    setWorldTheme(id, settings)
+  },
+  { immediate: true }
+)
+
 const canBuild = computed(() => Array.isArray(world.value?.capabilities) && world.value.capabilities.includes('world.entity.edit'))
 
 watch(canBuild, (allowed) => {

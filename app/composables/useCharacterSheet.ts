@@ -30,7 +30,9 @@ import {
   DERIVED_SHEET_REGIONS,
   findDerivedBoolean,
   findDerivedNumber,
+  selectPresentedValues,
   type DerivedCharacterResponse,
+  type DerivedValue,
   type DerivedCharacterView
 } from '~/components/characters/characterDerivedValues'
 import {
@@ -41,6 +43,7 @@ import {
   isDerivedInitialLoading
 } from './characterDerivedRefreshLifecycle'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
+import type { RuleCategory } from '~/lib/rules/types'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
 import { emptyCharacterNotes, type StoredCharacterNotes } from '~/lib/characters/character-notes'
@@ -374,6 +377,29 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // (Initiative has no package Value yet, so the header keeps its '—'.)
   const speed = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.proficiency', 'value:speed.walking'))
 
+  // Header summary strip -- Phase 4B (F1). Package-authored first: every
+  // Value whose Definition declares `presentation.sheet: 'summary'`, in the
+  // package's own order. TEMPORARY FALLBACK: a package that declares no
+  // summary presentation (today's D&D 2024 package, whose published
+  // definitions are integrity-hashed and so are not edited in place) gets
+  // the same named reads the header has always used -- Armor Class, Speed,
+  // Proficiency Bonus -- so nothing disappears. Remove the fallback once
+  // the package ships `presentation` on those Values.
+  const summaryValues = computed<DerivedValue[]>(() => {
+    const byCategory = derived.value?.byCategory ?? {}
+    const presented = selectPresentedValues(byCategory, 'summary')
+    if (presented.length) return presented
+    const fallback: Array<[RuleCategory, string, NonNullable<DerivedValue['presentation']>]> = [
+      ['core.defenses', 'value:defenses.armor_class', { emphasis: 'primary', format: 'number' }],
+      ['core.proficiency', 'value:speed.walking', { format: 'number' }],
+      ['core.proficiency', 'value:proficiency_bonus', { format: 'signed' }]
+    ]
+    return fallback.flatMap(([category, id, presentation]) => {
+      const entry = (byCategory[category] ?? []).find((candidate) => candidate.id === id)
+      return entry ? [{ ...entry, presentation: { ...presentation, sheet: 'summary' as const, ...entry.presentation } }] : []
+    })
+  })
+
   // Read-only Spellcasting summaries.
   const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
   const spellcastingAbilityMod = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.ability_mod'))
@@ -606,6 +632,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     armorClass,
     proficiencyBonus,
     speed,
+    summaryValues,
     characterLevel,
     spellcastingIsCaster,
     spellcastingAbilityMod,

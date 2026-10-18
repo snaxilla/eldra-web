@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDerivedValue,
   groupDerivedValues,
+  isHiddenOnSheet,
+  selectPresentedValues,
   type DerivedValue
 } from '../../../app/components/characters/characterDerivedValues'
 
@@ -194,5 +196,37 @@ describe('formatDerivedValue', () => {
 
   it('passes a string value through untouched', () => {
     expect(formatDerivedValue(value({ id: 'a', value: 'Darkvision 60 ft.' }))).toBe('Darkvision 60 ft.')
+  })
+})
+
+describe('formatDerivedValue presentation.format (Phase 4B F1)', () => {
+  it('lets a package-authored format override the tag guess', () => {
+    expect(formatDerivedValue(value({ id: 'a', value: 3, tags: ['skill'], presentation: { format: 'number' } }))).toBe('3')
+    expect(formatDerivedValue(value({ id: 'b', value: 3, presentation: { format: 'signed' } }))).toBe('+3')
+  })
+})
+
+describe('selectPresentedValues (Phase 4B F1)', () => {
+  it('returns nothing for a package that declares no presentation', () => {
+    expect(selectPresentedValues({ 'core.skills': [value({ id: 'a', value: 1 })] }, 'summary')).toEqual([])
+  })
+
+  it('collects across categories and sorts by order, then declaration order', () => {
+    const byCategory = {
+      'core.defenses': [value({ id: 'guard', category: 'core.defenses', presentation: { sheet: 'summary', order: 2 } })],
+      'core.proficiency': [
+        value({ id: 'pace', category: 'core.proficiency', presentation: { sheet: 'summary' } }),
+        value({ id: 'knack', category: 'core.proficiency', presentation: { sheet: 'summary', order: 1 } }),
+        value({ id: 'quiet', category: 'core.proficiency', presentation: { sheet: 'reference' } }),
+        value({ id: 'tail', category: 'core.proficiency', presentation: { sheet: 'summary' } })
+      ]
+    }
+    expect(selectPresentedValues(byCategory, 'summary').map((entry) => entry.id)).toEqual(['knack', 'guard', 'pace', 'tail'])
+    expect(selectPresentedValues(byCategory, 'reference').map((entry) => entry.id)).toEqual(['quiet'])
+  })
+
+  it('flags hidden values', () => {
+    expect(isHiddenOnSheet(value({ id: 'a', presentation: { sheet: 'hidden' } }))).toBe(true)
+    expect(isHiddenOnSheet(value({ id: 'b' }))).toBe(false)
   })
 })

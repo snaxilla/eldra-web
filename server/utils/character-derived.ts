@@ -43,7 +43,7 @@
 
 import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
-import type { ContentCatalogueFilter, ItemCatalogueFilter } from '../../app/lib/rules/types'
+import type { ContentCatalogueFilter, ItemCatalogueFilter, ValuePresentation } from '../../app/lib/rules/types'
 import type {
   CollectionSlotDefinition,
   DefinitionId,
@@ -135,6 +135,9 @@ export type DerivedValue = {
   label?: string
   category: RuleCategory
   tags?: string[]
+  // Phase 4B (F1): the Definition's optional ValuePresentation, passed
+  // through verbatim for the sheet's layout only -- never evaluated.
+  presentation?: ValuePresentation
   value?: RuleValue
   error?: string
 }
@@ -658,7 +661,8 @@ async function getDerivedCharacterInternal(
       id: definition.id,
       label: definition.label,
       category,
-      tags: definition.tags
+      tags: definition.tags,
+      ...(definition.presentation ? { presentation: definition.presentation } : {})
     }
 
     if (isRulesError(result)) {

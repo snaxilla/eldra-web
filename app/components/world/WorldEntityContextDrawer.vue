@@ -322,7 +322,7 @@ function readMore() {
       <span class="eldra-ornament-frame" aria-hidden="true" />
 
       <div class="flex h-full flex-col">
-        <div class="relative flex items-start justify-between gap-3 px-5 pb-5 pt-4">
+        <div class="relative flex items-start justify-between gap-3 px-6 pb-5 pt-6">
           <div class="min-w-0">
             <button
               v-if="canGoBack"
@@ -352,7 +352,7 @@ function readMore() {
             <UIcon name="i-lucide-x" class="h-5 w-5" />
           </button>
 
-          <span class="eldra-ornament-divider absolute inset-x-5 bottom-0" aria-hidden="true" />
+          <span class="eldra-ornament-divider absolute inset-x-6 bottom-0" aria-hidden="true" />
         </div>
 
         <div class="flex-1 overflow-y-auto p-5">

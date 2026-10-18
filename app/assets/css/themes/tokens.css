@@ -27,7 +27,7 @@
   --eldra-text-muted: rgb(var(--eldra-text-muted-rgb));
 
   /* Darkglass (runtime-overridable by resolveTheme) */
-  --eldra-panel-alpha: 0.86;
+  --eldra-panel-alpha: 0.74;
   --eldra-panel-blur: 12px;
 
   /* Shape, depth, glow */
@@ -54,7 +54,7 @@
   --eldra-ornament-divider: none;
   --eldra-ornament-emblem: none;
   --eldra-ornament-color: transparent;
-  --eldra-ornament-size: 56px;
+  --eldra-ornament-size: 44px;
   --eldra-ornament-inset: 6px;
 
   /* Display typography treatment */

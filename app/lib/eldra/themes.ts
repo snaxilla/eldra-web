@@ -86,7 +86,7 @@ export const ELDRA_THEMES: readonly EldraThemeDefinition[] = [
     label: 'Fantasy',
     description: 'Antique gold, ornate frames, smoky darkglass.',
     defaults: {
-      panelOpacity: 0.86,
+      panelOpacity: 0.74,
       panelBlur: 12,
       atmosphere: true
     },

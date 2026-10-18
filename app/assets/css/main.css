@@ -78,6 +78,9 @@
   --color-eldra-text-dim: rgb(var(--eldra-text-dim-rgb, var(--eldra-text-muted-rgb)));
   --color-eldra-text-faint: rgb(var(--eldra-text-faint-rgb, var(--eldra-text-muted-rgb)));
   --color-eldra-accent-text: rgb(var(--eldra-accent-text-rgb, var(--eldra-text-strong-rgb)));
+  --color-eldra-text-ghost: rgb(var(--eldra-text-ghost-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-positive: rgb(var(--eldra-positive-rgb, 158 195 125));
+  --color-eldra-caution: rgb(var(--eldra-caution-rgb, 224 169 74));
 
   --font-eldra-display: var(--eldra-font-display);
   --font-eldra-body: var(--eldra-font-body);

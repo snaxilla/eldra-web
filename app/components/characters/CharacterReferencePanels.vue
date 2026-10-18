@@ -73,14 +73,14 @@ const emit = defineEmits<{
   <div class="grid gap-4">
     <p
       v-if="pending"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       Evaluating this character against the World’s rules…
     </p>
 
     <p
       v-else-if="unavailableMessage"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       {{ unavailableMessage }}
     </p>

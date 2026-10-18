@@ -106,7 +106,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
   <div class="min-w-0">
     <p
       v-if="!rows.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -118,7 +118,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
            only add noise. -->
       <div
         aria-hidden="true"
-        class="grid grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem_1.25rem] items-center gap-2 border-b border-[rgba(201,164,90,0.16)] px-2 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754]"
+        class="grid grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem_1.25rem] items-center gap-2 border-b border-eldra-accent/16 px-2 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-eldra-text-ghost"
       >
         <span>Prof</span>
         <span>Mod</span>
@@ -146,16 +146,16 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
             >
               <span
                 class="text-xs"
-                :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+                :class="row.proficient ? 'text-eldra-text-strong' : 'text-eldra-text-ghost'"
               >
                 <span aria-hidden="true">{{ row.proficient === null ? '·' : row.proficient ? '●' : '○' }}</span>
               </span>
 
-              <span class="truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+              <span class="truncate text-[0.6rem] uppercase tracking-[0.12em] text-eldra-text-faint">
                 {{ row.qualifier || '' }}
               </span>
 
-              <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+              <span class="min-w-0 truncate text-sm text-eldra-text-soft">
                 {{ row.label }}
               </span>
 
@@ -167,7 +167,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
 
               <span
                 v-else
-                class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
+                class="text-right text-sm font-semibold tabular-nums text-eldra-text-strong"
               >{{ row.value }}</span>
             </button>
 
@@ -177,7 +177,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
                  component always sent. -->
             <button
               type="button"
-              class="flex items-center justify-center rounded-none text-[#6f6754] transition hover:text-[#d8ceb8]"
+              class="flex items-center justify-center rounded-none text-eldra-text-ghost transition hover:text-eldra-text-soft"
               :aria-label="`View ${row.label} details`"
               @click="emit('select', row)"
             >

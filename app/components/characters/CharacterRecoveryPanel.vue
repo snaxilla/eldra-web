@@ -207,15 +207,15 @@ function applyHealingAction() {
     <!-- Hit Points ----------------------------------------------------- -->
     <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Hit Points</span>
-        <span class="text-xs text-[#9f9278]">
-          Maximum: <span class="text-[#fff7df]">{{ maxHp ?? '—' }}</span>
+        <span class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Hit Points</span>
+        <span class="text-xs text-eldra-text-faint">
+          Maximum: <span class="text-eldra-text-strong">{{ maxHp ?? '—' }}</span>
         </span>
       </div>
 
       <div class="mt-3 grid grid-cols-2 gap-3">
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Current</span>
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Current</span>
           <input
             v-model="currentHpDraft"
             inputmode="numeric"
@@ -227,7 +227,7 @@ function applyHealingAction() {
         </label>
 
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Temporary</span>
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Temporary</span>
           <input
             v-model="temporaryHpDraft"
             inputmode="numeric"
@@ -242,9 +242,9 @@ function applyHealingAction() {
       <!-- Recovery: Damage/Healing apply a RULE (temp-absorbs-first,
            capped at Maximum HP) neither field above expresses -- see this
            file's own RECOVERY header note. -->
-      <div class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-4">
+      <div class="mt-4 border-t border-eldra-accent/14 pt-4">
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Amount</span>
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Amount</span>
           <input
             v-model="amountDraft"
             inputmode="numeric"
@@ -279,8 +279,8 @@ function applyHealingAction() {
     <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">{{ hitDiceLabel }}</span>
-          <p class="mt-1 text-sm text-[#d8ceb8]">
+          <span class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">{{ hitDiceLabel }}</span>
+          <p class="mt-1 text-sm text-eldra-text-soft">
             {{ hitDiceAvailable ?? '—' }} of {{ hitDiceMax ?? '—' }} available
           </p>
         </div>
@@ -288,7 +288,7 @@ function applyHealingAction() {
         <div class="flex items-center gap-1">
           <button
             type="button"
-            class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+            class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="saving || health.hitDiceSpent <= 0"
             aria-label="Restore a Hit Die manually, without healing"
             title="Manual correction -- restores a die without healing"
@@ -317,12 +317,12 @@ function applyHealingAction() {
 
     <!-- Rest --------------------------------------------------------------- -->
     <div class="eldra-well rounded-none p-4">
-      <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Rest</span>
+      <span class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Rest</span>
 
       <div class="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
-          class="min-h-11 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+          class="min-h-11 rounded-none border border-eldra-accent/24 px-3 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="saving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
           title="Spends one Hit Die, plus recovers Pact Magic slots for a Pact caster"
           @click="emitRecovery('short-rest')"
@@ -342,25 +342,25 @@ function applyHealingAction() {
 
     <!-- Death Saves -------------------------------------------------------- -->
     <div class="eldra-well rounded-none p-4">
-      <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Death Saves</span>
+      <span class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Death Saves</span>
 
       <div
         v-for="kind in (['successes', 'failures'] as const)"
         :key="kind"
         class="mt-3 flex items-center justify-between gap-3"
       >
-        <span class="text-sm capitalize text-[#d8ceb8]">{{ kind }}</span>
+        <span class="text-sm capitalize text-eldra-text-soft">{{ kind }}</span>
         <div class="flex gap-2">
           <button
             v-for="mark in [1, 2, 3]"
             :key="mark"
             type="button"
-            class="size-11 rounded-full border text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
+            class="size-11 rounded-full border text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed"
             :class="mark <= health.deathSaves[kind]
               ? (kind === 'successes'
-                ? 'border-[#9ec37d] bg-[rgba(158,195,125,0.22)]'
+                ? 'border-eldra-positive bg-eldra-positive/22'
                 : 'border-red-500 bg-red-950/40')
-              : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
+              : 'border-eldra-accent/24 bg-transparent'"
             :disabled="saving"
             :aria-label="`${kind} mark ${mark}`"
             :aria-pressed="mark <= health.deathSaves[kind]"
@@ -371,7 +371,7 @@ function applyHealingAction() {
 
       <button
         type="button"
-        class="mt-4 min-h-11 w-full rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+        class="mt-4 min-h-11 w-full rounded-none border border-eldra-accent/24 px-3 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="saving || (health.deathSaves.successes === 0 && health.deathSaves.failures === 0)"
         @click="emitRecovery('reset-death-saves')"
       >

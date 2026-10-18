@@ -117,7 +117,7 @@ const rows = computed<CharacterAbilityRow[]>(() =>
         :aria-label="`Roll ${row.label}${row.modifier ? `, ${row.modifier}` : ''}`"
         @click="emit('roll', row)"
       >
-        <span class="min-w-0 truncate text-sm font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]">
+        <span class="min-w-0 truncate text-sm font-semibold uppercase tracking-[0.12em] text-eldra-text-soft">
           {{ row.label }}
         </span>
 
@@ -129,12 +129,12 @@ const rows = computed<CharacterAbilityRow[]>(() =>
 
         <span
           v-else
-          class="text-right text-lg font-semibold tabular-nums text-[#fff7df]"
+          class="text-right text-lg font-semibold tabular-nums text-eldra-text-strong"
         >
           {{ row.score }}
           <span
             v-if="row.modifier"
-            class="text-sm font-normal text-[#9f9278]"
+            class="text-sm font-normal text-eldra-text-faint"
           >({{ row.modifier }})</span>
         </span>
       </button>

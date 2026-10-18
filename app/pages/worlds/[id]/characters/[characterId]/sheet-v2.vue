@@ -1031,7 +1031,7 @@ function openSkillContext(skill: CharacterSkillRow) {
     >
       <div
         v-if="pending"
-        class="text-sm text-[#9f9278]"
+        class="text-sm text-eldra-text-faint"
       >
         Loading this character's Assembly…
       </div>
@@ -1253,10 +1253,10 @@ function openSkillContext(skill: CharacterSkillRow) {
                  own "if the Builder/Edit action still needs a home,
                  relocate only that action; do not duplicate the
                  information." -->
-            <p class="text-sm text-[#9f9278]">
+            <p class="text-sm text-eldra-text-faint">
               <NuxtLink
                 :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
-                class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
+                class="text-eldra-accent underline underline-offset-2 hover:text-eldra-accent-text"
               >
                 {{ blueprint.abilityScores ? 'Edit ability scores' : 'Assign ability scores' }}
               </NuxtLink>
@@ -1295,7 +1295,7 @@ function openSkillContext(skill: CharacterSkillRow) {
               <template #heading-end>
                 <p
                   v-if="derived"
-                  class="break-words text-xs text-[#6f6754]"
+                  class="break-words text-xs text-eldra-text-ghost"
                 >
                   {{ derived.packageId }}@{{ derived.packageVersion }}
                 </p>
@@ -1303,14 +1303,14 @@ function openSkillContext(skill: CharacterSkillRow) {
 
               <p
                 v-if="derivedPending"
-                class="mt-3 text-sm text-[#9f9278]"
+                class="mt-3 text-sm text-eldra-text-faint"
               >
                 Evaluating this character against the World's rules…
               </p>
 
               <p
                 v-else-if="!derived"
-                class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+                class="mt-3 rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
               >
                 {{ derivedUnavailable }}
               </p>
@@ -1330,7 +1330,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                   :key="region.category"
                   class="min-w-0"
                 >
-                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
                     {{ region.label }}
                   </h3>
                   <CharacterDerivedPanel :entries="region.entries" />
@@ -1341,7 +1341,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                   :key="collection.id"
                   class="min-w-0"
                 >
-                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
                     {{ collection.label || 'Equipment Slots' }}
                   </h3>
                   <div class="flex flex-wrap gap-2">
@@ -1356,14 +1356,14 @@ function openSkillContext(skill: CharacterSkillRow) {
 
                 <p
                   v-if="derived.pendingChoices.length"
-                  class="text-xs leading-5 text-[#6f6754]"
+                  class="text-xs leading-5 text-eldra-text-ghost"
                 >
                   {{ derived.pendingChoices.length }} proficiency
                   {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
                   still outstanding, so those proficiencies show as unselected.
                   <NuxtLink
                     :to="`/worlds/${worldId}/characters/${characterId}/proficiencies`"
-                    class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
+                    class="text-eldra-accent underline underline-offset-2 hover:text-eldra-accent-text"
                   >
                     Choose them
                   </NuxtLink>.
@@ -1392,7 +1392,7 @@ function openSkillContext(skill: CharacterSkillRow) {
               >
                 <button
                   type="button"
-                  class="text-sm text-[#9f9278] underline-offset-4 transition hover:text-[#d8ceb8] hover:underline"
+                  class="text-sm text-eldra-text-faint underline-offset-4 transition hover:text-eldra-text-soft hover:underline"
                   @click="openFeatureContext(section.label, section.slot.entry.presentation, section.slot.entry.title)"
                 >
                   Details
@@ -1422,7 +1422,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                 <!-- Which bound pack this choice resolved through -- a fact
                      about this character, not about the Species/Class/
                      Background. -->
-                <p class="mt-4 break-words border-t border-[rgba(201,164,90,0.14)] pt-3 text-xs text-[#6f6754]">
+                <p class="mt-4 break-words border-t border-eldra-accent/14 pt-3 text-xs text-eldra-text-ghost">
                   Resolved from {{ section.slot.entry.packageId }}@{{ section.slot.entry.packageVersion }}
                 </p>
               </template>
@@ -1544,7 +1544,7 @@ function openSkillContext(skill: CharacterSkillRow) {
           <button
             type="button"
             class="rounded-none px-2 py-1 transition"
-            :class="rollVisibility === 'private' ? 'eldra-well text-[#fff7df]' : 'text-[#9f9278] hover:text-[#d8ceb8]'"
+            :class="rollVisibility === 'private' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
             @click="rollVisibility = 'private'"
           >
             Private
@@ -1552,7 +1552,7 @@ function openSkillContext(skill: CharacterSkillRow) {
           <button
             type="button"
             class="rounded-none px-2 py-1 transition"
-            :class="rollVisibility === 'table' ? 'eldra-well text-[#fff7df]' : 'text-[#9f9278] hover:text-[#d8ceb8]'"
+            :class="rollVisibility === 'table' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
             @click="rollVisibility = 'table'"
           >
             Table

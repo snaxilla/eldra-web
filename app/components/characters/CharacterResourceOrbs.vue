@@ -163,7 +163,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
       v-for="group in groups"
       :key="group.id"
     >
-      <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
+      <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
         {{ group.label }}
       </div>
 
@@ -175,7 +175,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
         >
           <span
             v-if="pool.label"
-            class="shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#d8ceb8]"
+            class="shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-eldra-text-soft"
           >
             {{ pool.label }}
           </span>
@@ -189,7 +189,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
                inferred here from `pool.label`/`group.label` text. -->
           <span
             v-if="pool.dieFaces"
-            class="shrink-0 rounded-none border border-[rgba(201,164,90,0.4)] px-1 text-[0.6rem] font-semibold tabular-nums text-[#c9a45a]"
+            class="shrink-0 rounded-none border border-eldra-accent/40 px-1 text-[0.6rem] font-semibold tabular-nums text-eldra-accent"
           >
             d{{ pool.dieFaces }}
           </span>
@@ -201,7 +201,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
             v-if="pool.style === 'points'"
             class="flex flex-wrap items-center gap-1.5"
           >
-            <span class="text-sm tabular-nums text-[#d8ceb8]">
+            <span class="text-sm tabular-nums text-eldra-text-soft">
               {{ pool.max - pool.expended }} / {{ pool.max }}
             </span>
             <input
@@ -224,7 +224,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
             </button>
             <button
               type="button"
-              class="h-8 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] px-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-50"
+              class="h-8 rounded-none border border-eldra-accent/50 bg-eldra-accent/12 px-2 text-xs font-semibold text-eldra-text-strong disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="poolDisabled(pool) || pool.expended <= 0"
               @click="onPointsRestore(group, pool)"
             >
@@ -240,10 +240,10 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
               v-for="position in pool.max"
               :key="position"
               type="button"
-              class="size-6 shrink-0 rounded-full border transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:hover:scale-100"
+              class="size-6 shrink-0 rounded-full border transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:hover:scale-100"
               :class="orbAvailable(pool, position)
-                ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.55)] shadow-[0_0_6px_rgba(201,164,90,0.35)]'
-                : 'border-[rgba(201,164,90,0.24)] bg-transparent opacity-50'"
+                ? 'border-eldra-accent/85 bg-eldra-accent/55 shadow-[0_0_6px_rgb(var(--eldra-accent-rgb)/0.35)]'
+                : 'border-eldra-accent/24 bg-transparent opacity-50'"
               :disabled="poolDisabled(pool)"
               :aria-label="orbAriaLabel(group, pool, position)"
               :aria-pressed="orbAvailable(pool, position)"

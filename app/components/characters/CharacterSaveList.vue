@@ -95,7 +95,7 @@ const rows = computed<CharacterSaveRow[]>(() =>
   <div class="min-w-0">
     <p
       v-if="!rows.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -118,14 +118,14 @@ const rows = computed<CharacterSaveRow[]>(() =>
           <span
             v-if="row.proficient !== null"
             class="text-xs"
-            :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+            :class="row.proficient ? 'text-eldra-text-strong' : 'text-eldra-text-ghost'"
           >
             <span aria-hidden="true">{{ row.proficient ? '●' : '○' }}</span>
             <span class="sr-only">{{ row.proficient ? 'Proficient' : 'Not proficient' }}</span>
           </span>
           <span v-else />
 
-          <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+          <span class="min-w-0 truncate text-sm text-eldra-text-soft">
             {{ row.label }}
           </span>
 
@@ -137,7 +137,7 @@ const rows = computed<CharacterSaveRow[]>(() =>
 
           <span
             v-else
-            class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
+            class="text-right text-sm font-semibold tabular-nums text-eldra-text-strong"
           >{{ row.value }}</span>
         </button>
       </li>

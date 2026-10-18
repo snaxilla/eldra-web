@@ -280,7 +280,7 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
            share a row and Temp HP takes its own row below, rather than
            three cramped equal-width buttons or widening the block. -->
       <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
-        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
+        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
           Damage / Heal
         </div>
         <input
@@ -311,7 +311,7 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
         </div>
         <button
           type="button"
-          class="mt-1.5 min-h-11 w-full rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+          class="mt-1.5 min-h-11 w-full rounded-none border border-eldra-accent/50 bg-eldra-accent/12 text-xs font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="recoverySaving || parsedAmount === null"
           @click="applyTempHpAction"
         >
@@ -347,7 +347,7 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
            authoritative roll). Spending a Hit Die during a Short Rest is
            now always this sheet's own explicit "Spend Hit Die" click. -->
       <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
-        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
+        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
           Rest
         </div>
 
@@ -387,9 +387,9 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
           </button>
         </div>
 
-        <div class="mt-2 flex items-center justify-between gap-2 border-t border-[rgba(201,164,90,0.14)] pt-1.5">
-          <span class="min-w-0 truncate text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">{{ hitDiceLabel }}</span>
-          <span class="shrink-0 text-sm tabular-nums text-[#d8ceb8]">{{ hitDiceAvailable ?? '—' }} / {{ hitDiceMax ?? '—' }}</span>
+        <div class="mt-2 flex items-center justify-between gap-2 border-t border-eldra-accent/14 pt-1.5">
+          <span class="min-w-0 truncate text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">{{ hitDiceLabel }}</span>
+          <span class="shrink-0 text-sm tabular-nums text-eldra-text-soft">{{ hitDiceAvailable ?? '—' }} / {{ hitDiceMax ?? '—' }}</span>
         </div>
         <button
           type="button"

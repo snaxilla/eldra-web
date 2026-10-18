@@ -27,6 +27,12 @@
   --eldra-text-dim-rgb: 181 168 141;       /* #b5a88d */
   --eldra-text-faint-rgb: 159 146 120;     /* #9f9278 */
   --eldra-accent-text-rgb: 245 231 189;    /* #f5e7bd -- gold-tinted label text */
+  --eldra-text-ghost-rgb: 111 103 84;      /* #6f6754 -- quietest captions */
+  /* Status tints (Phase 4B, V2 sheet migration). Not Nuxt UI semantic
+     colors -- those stay untouched -- but the theme's own positive/caution
+     hues for HP, turn emphasis, and prepared/expended state. */
+  --eldra-positive-rgb: 158 195 125;       /* #9ec37d */
+  --eldra-caution-rgb: 224 169 74;         /* #e0a94a */
 
   --eldra-leather-rgb: 9 8 6;              /* sidebar binding #090806 */
   /* Workspace ground behind ordinary (non-map) pages: cool ink. */

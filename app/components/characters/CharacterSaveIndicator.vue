@@ -23,7 +23,7 @@ withDefaults(defineProps<{
   <span
     v-if="saving || error"
     class="inline-flex items-center gap-1.5 text-xs"
-    :class="error ? 'text-red-300' : 'text-[#9f9278]'"
+    :class="error ? 'text-red-300' : 'text-eldra-text-faint'"
   >
     <UIcon
       v-if="saving"

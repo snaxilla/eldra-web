@@ -181,12 +181,12 @@ const groupedSpells = computed<SpellGroup[]>(() => {
 
     <!-- Spellcasting summary -- Ability, Save DC, Attack Bonus. Read-only:
          all three are Rules Engine output. -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="rounded-none border border-eldra-accent/20 bg-eldra-panel/55 p-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spellcasting</span>
+        <span class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Spellcasting</span>
         <span
           v-if="isCaster === false"
-          class="text-xs text-[#9f9278]"
+          class="text-xs text-eldra-text-faint"
         >
           This character has no spellcasting ability
         </span>
@@ -194,26 +194,26 @@ const groupedSpells = computed<SpellGroup[]>(() => {
 
       <div class="mt-3 grid grid-cols-3 gap-3 text-center">
         <div>
-          <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <div class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Ability Mod
           </div>
-          <div class="mt-1 text-lg font-semibold tabular-nums text-[#fff7df]">
+          <div class="mt-1 text-lg font-semibold tabular-nums text-eldra-text-strong">
             {{ abilityMod ?? '—' }}
           </div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <div class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Save DC
           </div>
-          <div class="mt-1 text-lg font-semibold tabular-nums text-[#fff7df]">
+          <div class="mt-1 text-lg font-semibold tabular-nums text-eldra-text-strong">
             {{ saveDc ?? '—' }}
           </div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <div class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Attack Bonus
           </div>
-          <div class="mt-1 text-lg font-semibold tabular-nums text-[#fff7df]">
+          <div class="mt-1 text-lg font-semibold tabular-nums text-eldra-text-strong">
             {{ attackBonus != null ? (attackBonus >= 0 ? `+${attackBonus}` : attackBonus) : '—' }}
           </div>
         </div>
@@ -222,16 +222,16 @@ const groupedSpells = computed<SpellGroup[]>(() => {
 
     <!-- Add ---------------------------------------------------------------- -->
     <div class="eldra-well rounded-none p-4">
-      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+      <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
         Add Spell
       </div>
-      <div class="mt-1 text-sm text-[#d8ceb8]">
+      <div class="mt-1 text-sm text-eldra-text-soft">
         Add a published spell, or a homebrew spell of your own.
       </div>
 
       <div class="mt-4 grid gap-3">
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Search published spells
           </span>
           <input
@@ -248,7 +248,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
           >
             <option
               value=""
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               No published spell selected
             </option>
@@ -256,7 +256,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
               v-for="option in filteredOptions"
               :key="optionKey(option)"
               :value="optionKey(option)"
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
             </option>
@@ -264,7 +264,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
         </label>
 
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Homebrew spell name
           </span>
           <input
@@ -288,7 +288,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
     <!-- Known / Prepared ----------------------------------------------------- -->
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
           Spells
         </div>
         <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
@@ -298,7 +298,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
 
       <p
         v-if="!spells.length"
-        class="mt-3 text-sm text-[#9f9278]"
+        class="mt-3 text-sm text-eldra-text-faint"
       >
         No spells recorded yet.
       </p>
@@ -316,7 +316,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
           v-for="group in groupedSpells"
           :key="group.key"
         >
-          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
             {{ group.label }}
           </div>
 
@@ -324,7 +324,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
             <article
               v-for="entry in group.entries"
               :key="entry.instanceId"
-              class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
+              class="min-w-0 rounded-none p-3 text-sm text-eldra-text-soft"
               :class="entry.status === 'missing'
                 ? 'border border-red-900/60 bg-red-950/20'
                 : 'eldra-well'"
@@ -333,13 +333,13 @@ const groupedSpells = computed<SpellGroup[]>(() => {
                 <div class="min-w-0">
                   <button
                     type="button"
-                    class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
+                    class="block w-full truncate text-left font-semibold text-eldra-text-strong underline-offset-4 transition hover:underline"
                     :aria-label="`${entry.title} — open details`"
                     @click="emit('select', entry)"
                   >
                     {{ entry.title }}
                   </button>
-                  <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
+                  <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-eldra-text-faint">
                     <span v-if="entry.entry?.sourceBook">{{ entry.entry.sourceBook }}</span>
                     <span v-else-if="entry.status === 'custom'">Homebrew</span>
                     <!-- School, where useful -- only when the canonical
@@ -353,7 +353,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
 
                 <button
                   type="button"
-                  class="min-h-11 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-xs font-semibold text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
+                  class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-xs font-semibold text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                   :disabled="saving"
                   @click="emit('remove', entry.instanceId)"
                 >
@@ -374,12 +374,12 @@ const groupedSpells = computed<SpellGroup[]>(() => {
                   :key="flag"
                   class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
                   :class="entry[flag]
-                    ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)] text-[#fff7df]'
-                    : 'border-[rgba(201,164,90,0.24)] text-[#d8ceb8]'"
+                    ? 'border-eldra-accent/65 bg-eldra-accent/12 text-eldra-text-strong'
+                    : 'border-eldra-accent/24 text-eldra-text-soft'"
                 >
                   <input
                     type="checkbox"
-                    class="size-4 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
+                    class="size-4 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
                     :checked="entry[flag]"
                     :disabled="saving"
                     @change="emit('toggle-flag', { instanceId: entry.instanceId, flag })"

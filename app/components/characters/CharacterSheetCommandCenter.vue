@@ -271,7 +271,7 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
         <button
           v-else-if="canEditPortrait"
           type="button"
-          class="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-1 text-center text-[#9f9278] transition hover:bg-[rgba(201,164,90,0.1)] focus-visible:bg-[rgba(201,164,90,0.1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
+          class="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-1 text-center text-eldra-text-faint transition hover:bg-eldra-accent/10 focus-visible:bg-eldra-accent/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent/65 disabled:cursor-not-allowed"
           :disabled="portraitSaving"
           aria-label="Add character portrait"
           @click="triggerPortraitUpload"
@@ -281,7 +281,7 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
         </button>
         <div
           v-else
-          class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-[#9f9278]"
+          class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-eldra-text-faint"
         >
           No portrait
         </div>
@@ -394,13 +394,13 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
             <h1 class="eldra-title truncate text-2xl font-semibold leading-tight sm:text-3xl">
               {{ characterTitle || 'Character' }}
             </h1>
-            <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5 truncate text-sm text-[#d8ceb8]">
-              <span class="text-[#9f9278]">Level {{ level }}</span>
+            <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5 truncate text-sm text-eldra-text-soft">
+              <span class="text-eldra-text-faint">Level {{ level }}</span>
               <template
                 v-for="row in identityRows"
                 :key="row.key"
               >
-                <span class="text-[#9f9278]">·</span>
+                <span class="text-eldra-text-faint">·</span>
                 <span :class="row.missing ? 'text-red-300' : ''">{{ row.value }}</span>
               </template>
             </p>

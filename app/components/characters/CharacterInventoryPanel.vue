@@ -169,10 +169,10 @@ function submitAdd() {
     <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+          <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
             Add Inventory
           </div>
-          <div class="mt-1 text-sm text-[#d8ceb8]">
+          <div class="mt-1 text-sm text-eldra-text-soft">
             Add published equipment, or a custom item of your own.
           </div>
         </div>
@@ -180,7 +180,7 @@ function submitAdd() {
 
       <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_140px]">
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Search published items
           </span>
           <input
@@ -197,7 +197,7 @@ function submitAdd() {
           >
             <option
               value=""
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               No published item selected
             </option>
@@ -205,7 +205,7 @@ function submitAdd() {
               v-for="option in filteredOptions"
               :key="optionKey(option)"
               :value="optionKey(option)"
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
             </option>
@@ -213,7 +213,7 @@ function submitAdd() {
         </label>
 
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Quantity
           </span>
           <input
@@ -224,7 +224,7 @@ function submitAdd() {
         </label>
 
         <label class="block lg:col-span-2">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Custom item name
           </span>
           <input
@@ -235,7 +235,7 @@ function submitAdd() {
         </label>
 
         <label class="block lg:col-span-2">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
             Notes
           </span>
           <input
@@ -266,7 +266,7 @@ function submitAdd() {
     <!-- Carried ------------------------------------------------------------ -->
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
           Carried
         </div>
         <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
@@ -276,7 +276,7 @@ function submitAdd() {
 
       <p
         v-if="!items.length"
-        class="mt-3 text-sm text-[#9f9278]"
+        class="mt-3 text-sm text-eldra-text-faint"
       >
         Nothing carried yet.
       </p>
@@ -288,7 +288,7 @@ function submitAdd() {
         <article
           v-for="item in items"
           :key="item.instanceId"
-          class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
+          class="min-w-0 rounded-none p-3 text-sm text-eldra-text-soft"
           :class="item.status === 'missing'
             ? 'border border-red-900/60 bg-red-950/20'
             : 'eldra-well'"
@@ -297,13 +297,13 @@ function submitAdd() {
             <div class="min-w-0">
               <button
                 type="button"
-                class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
+                class="block w-full truncate text-left font-semibold text-eldra-text-strong underline-offset-4 transition hover:underline"
                 :aria-label="`${item.title} — open details`"
                 @click="emit('select', item)"
               >
                 {{ item.title }}
               </button>
-              <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
+              <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-eldra-text-faint">
                 <span>x{{ item.quantity }}</span>
                 <span v-if="item.container">Container: {{ item.container }}</span>
                 <!-- Category, when the item's Rules Facet naturally carries
@@ -326,7 +326,7 @@ function submitAdd() {
 
             <button
               type="button"
-              class="min-h-11 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-xs font-semibold text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
+              class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-xs font-semibold text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
               :disabled="saving"
               @click="emit('remove', item.instanceId)"
             >
@@ -344,7 +344,7 @@ function submitAdd() {
 
           <p
             v-if="item.notes"
-            class="mt-2 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2 text-xs leading-5 text-[#9f9278]"
+            class="mt-2 rounded-none border border-eldra-accent/14 bg-eldra-well/42 p-2 text-xs leading-5 text-eldra-text-faint"
           >
             {{ item.notes }}
           </p>
@@ -353,7 +353,7 @@ function submitAdd() {
             <div class="flex items-center gap-1">
               <button
                 type="button"
-                class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
+                class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                 :disabled="saving || item.quantity <= 1"
                 :aria-label="`Decrease quantity of ${item.title}`"
                 @click="emit('change-quantity', { instanceId: item.instanceId, delta: -1 })"
@@ -362,7 +362,7 @@ function submitAdd() {
               </button>
               <button
                 type="button"
-                class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
+                class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                 :disabled="saving"
                 :aria-label="`Increase quantity of ${item.title}`"
                 @click="emit('change-quantity', { instanceId: item.instanceId, delta: 1 })"
@@ -376,12 +376,12 @@ function submitAdd() {
               :key="flag"
               class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
               :class="item[flag]
-                ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)] text-[#fff7df]'
-                : 'border-[rgba(201,164,90,0.24)] text-[#d8ceb8]'"
+                ? 'border-eldra-accent/65 bg-eldra-accent/12 text-eldra-text-strong'
+                : 'border-eldra-accent/24 text-eldra-text-soft'"
             >
               <input
                 type="checkbox"
-                class="size-4 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
+                class="size-4 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
                 :checked="item[flag]"
                 :disabled="saving"
                 @change="emit('toggle-flag', { instanceId: item.instanceId, flag })"

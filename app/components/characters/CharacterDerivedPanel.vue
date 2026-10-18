@@ -52,7 +52,7 @@ const rows = computed(() => props.entries)
   <div class="@container min-w-0">
     <p
       v-if="!rows.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -64,9 +64,9 @@ const rows = computed(() => props.entries)
       <div
         v-for="entry in rows"
         :key="entry.id"
-        class="flex min-w-0 items-baseline justify-between gap-3 border-b border-[rgba(201,164,90,0.12)] pb-1"
+        class="flex min-w-0 items-baseline justify-between gap-3 border-b border-eldra-accent/12 pb-1"
       >
-        <dt class="min-w-0 break-words text-sm text-[#d8ceb8]">
+        <dt class="min-w-0 break-words text-sm text-eldra-text-soft">
           {{ entry.label || entry.id }}
         </dt>
 
@@ -82,7 +82,7 @@ const rows = computed(() => props.entries)
           <span
             v-else-if="isBoolean(entry)"
             class="text-sm font-semibold"
-            :class="entry.value ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+            :class="entry.value ? 'text-eldra-text-strong' : 'text-eldra-text-ghost'"
           >
             <span aria-hidden="true">{{ entry.value ? '●' : '○' }}</span>
             <span class="sr-only">{{ entry.value ? 'Proficient' : 'Not proficient' }}</span>
@@ -90,7 +90,7 @@ const rows = computed(() => props.entries)
 
           <span
             v-else
-            class="text-base font-semibold tabular-nums text-[#fff7df]"
+            class="text-base font-semibold tabular-nums text-eldra-text-strong"
           >{{ display(entry) }}</span>
         </dd>
       </div>

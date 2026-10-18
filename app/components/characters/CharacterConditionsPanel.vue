@@ -35,8 +35,8 @@ defineProps<{
 </script>
 
 <template>
-  <div class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-4">
-    <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Conditions</span>
+  <div class="mt-4 border-t border-eldra-accent/14 pt-4">
+    <span class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Conditions</span>
 
     <div
       v-if="!conditions.myCombatant?.conditions.length"
@@ -57,11 +57,11 @@ defineProps<{
         :key="condition.id"
         class="flex flex-wrap items-center justify-between gap-2 text-xs"
       >
-        <span class="text-[#d8ceb8]">
+        <span class="text-eldra-text-soft">
           <span class="eldra-gold-chip rounded-none border px-2 py-0.5 uppercase tracking-[0.06em]">{{ condition.label }}</span>
           <span
             v-if="condition.source"
-            class="ml-2 text-[#6f6754]"
+            class="ml-2 text-eldra-text-ghost"
           >from {{ condition.source }}</span>
         </span>
 
@@ -69,16 +69,16 @@ defineProps<{
           <template v-if="condition.duration !== null">
             <button
               type="button"
-              class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
+              class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-eldra-text-soft disabled:opacity-50"
               :disabled="pending"
               @click="mutations.tick(condition.id, -1)"
             >
               −
             </button>
-            <span class="min-w-6 text-center tabular-nums text-[#fff7df]">{{ condition.duration }}</span>
+            <span class="min-w-6 text-center tabular-nums text-eldra-text-strong">{{ condition.duration }}</span>
             <button
               type="button"
-              class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
+              class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-eldra-text-soft disabled:opacity-50"
               :disabled="pending"
               @click="mutations.tick(condition.id, 1)"
             >

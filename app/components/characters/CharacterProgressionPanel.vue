@@ -312,7 +312,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
   <div class="grid gap-3">
     <p
       v-if="pending"
-      class="text-sm text-[#9f9278]"
+      class="text-sm text-eldra-text-faint"
     >
       Loading progression…
     </p>
@@ -325,14 +325,14 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
     </p>
 
     <template v-else>
-      <p class="text-sm text-[#d8ceb8]">
-        <span class="text-[#6f6754]">Current Level</span>
-        <span class="ml-2 text-base font-semibold text-[#fff7df]">{{ currentLevel }}</span>
+      <p class="text-sm text-eldra-text-soft">
+        <span class="text-eldra-text-ghost">Current Level</span>
+        <span class="ml-2 text-base font-semibold text-eldra-text-strong">{{ currentLevel }}</span>
       </p>
 
       <p
         v-if="availableTargetLevels.length === 0"
-        class="text-sm text-[#9f9278]"
+        class="text-sm text-eldra-text-faint"
       >
         This character is already at the maximum level.
       </p>
@@ -342,14 +342,14 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
         class="flex flex-wrap items-end gap-2"
       >
         <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Target Level</span>
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Target Level</span>
           <select
             v-model.number="selectedTargetLevel"
             class="eldra-input min-h-11 rounded-none px-3 py-2 text-sm text-white"
           >
             <option
               :value="null"
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               Select a level…
             </option>
@@ -357,7 +357,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
               v-for="level in availableTargetLevels"
               :key="level"
               :value="level"
-              class="bg-[#090909] text-[#f5e7bd]"
+              class="bg-eldra-ink text-eldra-accent-text"
             >
               {{ level }}
             </option>
@@ -385,7 +385,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
         v-if="plan"
         class="eldra-well grid gap-3 rounded-none p-3"
       >
-        <p class="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+        <p class="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
           <span>Plan: Level {{ plan.currentLevel }} → Level {{ plan.targetLevel }}</span>
           <!-- D&D 2024 Character Rules Phase 2A.1 UX Correction -- the plan
                itself stays rendered during a re-preview (see `previewPlan`'s
@@ -395,7 +395,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                never a reason to hide the plan it describes. -->
           <span
             v-if="planPending"
-            class="text-[#e0a94a]"
+            class="text-eldra-caution"
           >
             Recalculating…
           </span>
@@ -404,15 +404,15 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
         <div
           v-for="step in plan.steps"
           :key="step.level"
-          class="border-l-2 border-[rgba(201,164,90,0.3)] pl-3"
+          class="border-l-2 border-eldra-accent/30 pl-3"
         >
-          <p class="text-sm font-semibold text-[#fff7df]">
+          <p class="text-sm font-semibold text-eldra-text-strong">
             Level {{ step.level }}
           </p>
 
           <ul
             v-if="step.automaticConsequences.length"
-            class="mt-1 grid gap-0.5 text-xs text-[#d8ceb8]"
+            class="mt-1 grid gap-0.5 text-xs text-eldra-text-soft"
           >
             <li
               v-for="consequence in step.automaticConsequences"
@@ -423,7 +423,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
           </ul>
           <p
             v-else
-            class="mt-1 text-xs text-[#6f6754]"
+            class="mt-1 text-xs text-eldra-text-ghost"
           >
             No automatic changes at this level.
           </p>
@@ -446,7 +446,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
               :key="choice.id"
               class="eldra-well rounded-none p-2"
             >
-              <p class="text-xs font-semibold text-[#e0a94a]">
+              <p class="text-xs font-semibold text-eldra-caution">
                 Requires: {{ choice.label }} (choose {{ choice.count }})
                 <span v-if="choice.answered">✓</span>
               </p>
@@ -471,7 +471,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                   :key="slotIndex"
                   class="block"
                 >
-                  <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-[#9f9278]">
+                  <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-eldra-text-faint">
                     Selection {{ slotIndex + 1 }}
                   </span>
                   <select
@@ -481,7 +481,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                   >
                     <option
                       value=""
-                      class="bg-[#090909] text-[#f5e7bd]"
+                      class="bg-eldra-ink text-eldra-accent-text"
                     >
                       Select…
                     </option>
@@ -489,7 +489,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                       v-for="option in choice.options"
                       :key="option.id"
                       :value="option.id"
-                      class="bg-[#090909] text-[#f5e7bd]"
+                      class="bg-eldra-ink text-eldra-accent-text"
                     >
                       {{ option.label }}
                     </option>
@@ -504,7 +504,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                 <label
                   v-for="option in choice.options"
                   :key="option.id"
-                  class="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-[#d8ceb8]"
+                  class="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-eldra-text-soft"
                 >
                   <input
                     v-if="isSingleSelect(choice)"
@@ -537,14 +537,14 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
           v-if="plan.spellPlan && plan.spellPlan.requirements.some((requirement) => requirement.target > 0)"
           class="eldra-well grid gap-2 rounded-none p-3"
         >
-          <p class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Spell Selections</p>
+          <p class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Spell Selections</p>
 
           <div
             v-for="requirement in plan.spellPlan.requirements.filter((requirement) => requirement.target > 0)"
             :key="requirement.requirementId"
             class="eldra-well rounded-none p-2"
           >
-            <p class="text-xs font-semibold text-[#e0a94a]">
+            <p class="text-xs font-semibold text-eldra-caution">
               {{ requirement.label }}: {{ requirement.legalCount }} of {{ requirement.target }} selected
               <span v-if="requirement.satisfied">✓</span>
             </p>
@@ -558,7 +558,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                 :key="slot"
                 class="block"
               >
-                <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-[#9f9278]">
+                <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-eldra-text-faint">
                   Choose {{ requirement.label }} ({{ slot }} of {{ requirement.missing }} still missing)
                 </span>
                 <select
@@ -568,7 +568,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                 >
                   <option
                     value=""
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-eldra-ink text-eldra-accent-text"
                   >
                     Select…
                   </option>
@@ -576,7 +576,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
                     v-for="option in requirement.options"
                     :key="option.ref"
                     :value="option.ref"
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-eldra-ink text-eldra-accent-text"
                   >
                     {{ option.title }}
                   </option>
@@ -605,7 +605,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
 
           <button
             type="button"
-            class="min-h-11 rounded-none px-3 text-xs text-[#9f9278] transition hover:text-[#d8ceb8]"
+            class="min-h-11 rounded-none px-3 text-xs text-eldra-text-faint transition hover:text-eldra-text-soft"
             @click="emit('clearPlan')"
           >
             Cancel
@@ -614,7 +614,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
           <!-- PHASE 0 -- a mandatory decision Eldra cannot record yet is named, never omitted. -->
           <div
             v-if="plan.unresolvedDecisions?.length"
-            class="space-y-1 rounded-none border border-[rgba(224,169,74,0.4)] p-3 text-xs text-[#e0a94a]"
+            class="space-y-1 rounded-none border border-eldra-caution/40 p-3 text-xs text-eldra-caution"
           >
             <p
               v-for="item in plan.unresolvedDecisions"
@@ -626,7 +626,7 @@ function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: str
 
           <p
             v-if="!plan.valid && !plan.unresolvedDecisions?.length"
-            class="text-xs text-[#e0a94a]"
+            class="text-xs text-eldra-caution"
           >
             Resolve every required choice above before confirming.
           </p>

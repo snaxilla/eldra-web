@@ -46,7 +46,7 @@ withDefaults(defineProps<{
   <div class="@container min-w-0">
     <p
       v-if="!scores"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -58,13 +58,13 @@ withDefaults(defineProps<{
       <div
         v-for="key in ABILITY_KEYS"
         :key="key"
-        class="min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.55)] px-3 py-3 text-center"
+        class="min-w-0 rounded-none border border-eldra-accent/24 bg-eldra-panel/55 px-3 py-3 text-center"
       >
-        <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           {{ ABILITY_ABBREVIATIONS[key] }}
           <span class="sr-only">{{ ABILITY_LABELS[key] }}</span>
         </dt>
-        <dd class="mt-1 text-2xl font-semibold tabular-nums text-[#fff7df]">
+        <dd class="mt-1 text-2xl font-semibold tabular-nums text-eldra-text-strong">
           {{ scores[key] }}
         </dd>
       </div>

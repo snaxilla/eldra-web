@@ -107,7 +107,7 @@ const slots = useSlots()
          one-off background color. Phone only (`md:hidden`) -- the top
          `tabs` nav above already covers tablet and desktop. -->
     <div
-      class="eldra-leather fixed inset-x-0 bottom-0 z-30 border-t border-[rgba(201,164,90,0.24)] backdrop-blur md:hidden"
+      class="eldra-leather fixed inset-x-0 bottom-0 z-30 border-t border-eldra-accent/24 backdrop-blur md:hidden"
       style="padding-bottom: env(safe-area-inset-bottom);"
     >
       <CharacterSheetNav

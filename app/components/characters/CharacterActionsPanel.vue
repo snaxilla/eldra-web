@@ -583,7 +583,7 @@ function resolvedDamageText(action: CharacterAction): string {
 
     <p
       v-else-if="notice"
-      class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.4)] p-3 text-sm text-[#d8ceb8]"
+      class="rounded-none border border-eldra-accent/24 bg-eldra-panel/40 p-3 text-sm text-eldra-text-soft"
     >
       {{ notice }}
     </p>
@@ -600,8 +600,8 @@ function resolvedDamageText(action: CharacterAction): string {
         type="button"
         class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
         :class="activeFilter === ALL_FILTER
-          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
-          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+          ? 'border-eldra-accent/55 text-eldra-text-strong'
+          : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
         :aria-pressed="activeFilter === ALL_FILTER"
         @click="activeFilter = ALL_FILTER"
       >
@@ -614,8 +614,8 @@ function resolvedDamageText(action: CharacterAction): string {
         type="button"
         class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
         :class="activeFilter === category
-          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
-          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+          ? 'border-eldra-accent/55 text-eldra-text-strong'
+          : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
         :aria-pressed="activeFilter === category"
         @click="activeFilter = category"
       >
@@ -629,14 +629,14 @@ function resolvedDamageText(action: CharacterAction): string {
       v-if="targetOptions.length"
       class="block"
     >
-      <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Target</span>
+      <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Target</span>
       <select
         v-model="targetCharacterId"
         class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
       >
         <option
           value=""
-          class="bg-[#090909] text-[#f5e7bd]"
+          class="bg-eldra-ink text-eldra-accent-text"
         >
           No target selected
         </option>
@@ -644,7 +644,7 @@ function resolvedDamageText(action: CharacterAction): string {
           v-for="option in targetOptions"
           :key="option.id"
           :value="option.id"
-          class="bg-[#090909] text-[#f5e7bd]"
+          class="bg-eldra-ink text-eldra-accent-text"
         >
           {{ option.title }}
         </option>
@@ -653,21 +653,21 @@ function resolvedDamageText(action: CharacterAction): string {
 
     <p
       v-if="pending"
-      class="text-sm text-[#9f9278]"
+      class="text-sm text-eldra-text-faint"
     >
       Loading actions…
     </p>
 
     <p
       v-else-if="!actions.length"
-      class="text-sm text-[#9f9278]"
+      class="text-sm text-eldra-text-faint"
     >
       Nothing yet — equip a weapon, prepare a spell, or check back once Species/Class/Background are set.
     </p>
 
     <p
       v-else-if="!visibleActions.length"
-      class="text-sm text-[#9f9278]"
+      class="text-sm text-eldra-text-faint"
     >
       No actions match this filter.
     </p>
@@ -678,7 +678,7 @@ function resolvedDamageText(action: CharacterAction): string {
            already carries its own labelled values. -->
       <div
         aria-hidden="true"
-        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem_7.75rem] md:gap-3"
+        class="hidden border-b border-eldra-accent/16 px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-eldra-text-ghost md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem_7.75rem] md:gap-3"
       >
         <span>Action</span>
         <span>Range</span>
@@ -702,14 +702,14 @@ function resolvedDamageText(action: CharacterAction): string {
           >
             <button
               type="button"
-              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
+              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
               :disabled="rolling"
               :aria-label="`Roll ${action.name} Attack, bonus ${hitOrDc(action)}`"
               @click="attack(action.id)"
             >
               <span class="block min-w-0">
-                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
-                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                <span class="block truncate text-sm font-semibold text-eldra-text-strong">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-eldra-text-faint">
                   {{ CATEGORY_LABELS[action.category] }}
                 </span>
               </span>
@@ -718,17 +718,17 @@ function resolvedDamageText(action: CharacterAction): string {
                    line, each value still carrying its own label. Damage
                    shows the RESOLVED mechanic (Phase 1A.1 Browser Polish),
                    never raw formula prose -- see `resolvedDamageText`. -->
-              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
-                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
-                <span><span class="text-[#6f6754]">Attack</span> {{ hitOrDc(action) }}</span>
-                <span><span class="text-[#6f6754]">Damage</span> {{ resolvedDamageText(action) }}</span>
-                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-eldra-text-soft md:hidden">
+                <span v-if="action.range"><span class="text-eldra-text-ghost">Range</span> {{ action.range }}</span>
+                <span><span class="text-eldra-text-ghost">Attack</span> {{ hitOrDc(action) }}</span>
+                <span><span class="text-eldra-text-ghost">Damage</span> {{ resolvedDamageText(action) }}</span>
+                <span v-if="action.actionType"><span class="text-eldra-text-ghost">Timing</span> {{ action.actionType }}</span>
               </span>
 
-              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
-              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
-              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ resolvedDamageText(action) }}</span>
-              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-soft md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-eldra-text-strong md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-eldra-text-soft md:block">{{ resolvedDamageText(action) }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-faint md:block">{{ action.usage || action.actionType || '—' }}</span>
             </button>
 
             <!-- Info + Damage: independently focusable siblings of the
@@ -739,7 +739,7 @@ function resolvedDamageText(action: CharacterAction): string {
             <div class="flex w-full items-center gap-1.5 md:w-auto">
               <button
                 type="button"
-                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-[#6f6754] transition hover:text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-eldra-text-ghost transition hover:text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
                 :aria-label="`View ${action.name} details`"
                 @click="emit('select', action)"
               >
@@ -751,7 +751,7 @@ function resolvedDamageText(action: CharacterAction): string {
 
               <button
                 type="button"
-                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
                 :disabled="rolling"
                 :aria-label="`Roll ${action.name} Damage`"
                 @click="damage(action.id)"
@@ -779,35 +779,35 @@ function resolvedDamageText(action: CharacterAction): string {
           >
             <button
               type="button"
-              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
+              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
               :disabled="casting || !castConfigurationOf(action).canCast"
               :aria-label="`Cast ${action.name}`"
               @click="onCastPrimaryClick(action)"
             >
               <span class="block min-w-0">
-                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
-                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                <span class="block truncate text-sm font-semibold text-eldra-text-strong">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-eldra-text-faint">
                   {{ CATEGORY_LABELS[action.category] }}
                 </span>
               </span>
 
-              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
-                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
-                <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
-                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
-                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-eldra-text-soft md:hidden">
+                <span v-if="action.range"><span class="text-eldra-text-ghost">Range</span> {{ action.range }}</span>
+                <span><span class="text-eldra-text-ghost">Hit/DC</span> {{ hitOrDc(action) }}</span>
+                <span v-if="action.damage"><span class="text-eldra-text-ghost">Damage</span> {{ action.damage }}</span>
+                <span v-if="action.actionType"><span class="text-eldra-text-ghost">Timing</span> {{ action.actionType }}</span>
               </span>
 
-              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
-              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
-              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
-              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-soft md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-eldra-text-strong md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-eldra-text-soft md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-faint md:block">{{ action.usage || action.actionType || '—' }}</span>
             </button>
 
             <div class="flex w-full items-center gap-1.5 md:w-auto">
               <button
                 type="button"
-                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-[#6f6754] transition hover:text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-eldra-text-ghost transition hover:text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
                 :aria-label="`View ${action.name} details`"
                 @click="emit('select', action)"
               >
@@ -820,7 +820,7 @@ function resolvedDamageText(action: CharacterAction): string {
               <button
                 v-if="showsIndependentSpellDamage(action)"
                 type="button"
-                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
                 :disabled="casting"
                 :aria-label="`Roll ${action.name} Damage`"
                 @click="onSpellDamageRowClick(action)"
@@ -843,22 +843,22 @@ function resolvedDamageText(action: CharacterAction): string {
                  selected. -->
             <div
               v-if="openConfigActionId === action.id"
-              class="w-full border-t border-[rgba(201,164,90,0.16)] pt-2"
+              class="w-full border-t border-eldra-accent/16 pt-2"
             >
               <div
                 v-if="castConfigurationOf(action).castLevels.length > 1"
                 class="mb-2"
               >
-                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">Cast At</span>
+                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">Cast At</span>
                 <div class="flex flex-wrap gap-1.5">
                   <button
                     v-for="level in castConfigurationOf(action).castLevels"
                     :key="level.level"
                     type="button"
-                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-40"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-40"
                     :class="selectedCastLevelFor(action) === level.level
-                      ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
-                      : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+                      ? 'border-eldra-accent/55 text-eldra-text-strong'
+                      : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
                     :disabled="!level.available"
                     :aria-pressed="selectedCastLevelFor(action) === level.level"
                     @click="selectCastLevel(action, level.level)"
@@ -873,16 +873,16 @@ function resolvedDamageText(action: CharacterAction): string {
                 :key="choice.id"
                 class="mb-2"
               >
-                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">{{ choice.label }}</span>
+                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">{{ choice.label }}</span>
                 <div class="flex flex-wrap gap-1.5">
                   <button
                     v-for="option in choice.options"
                     :key="option.id"
                     type="button"
-                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
                     :class="selectedChoices[action.id]?.[choice.id] === option.id
-                      ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
-                      : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+                      ? 'border-eldra-accent/55 text-eldra-text-strong'
+                      : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
                     :aria-pressed="selectedChoices[action.id]?.[choice.id] === option.id"
                     @click="selectChoiceOption(action, choice.id, option.id)"
                   >
@@ -894,7 +894,7 @@ function resolvedDamageText(action: CharacterAction): string {
               <div class="flex gap-1.5">
                 <button
                   type="button"
-                  class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                  class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
                   :disabled="casting || !hasCompleteSelection(action, castConfigurationOf(action))"
                   @click="confirmCast(action)"
                 >
@@ -916,25 +916,25 @@ function resolvedDamageText(action: CharacterAction): string {
               @click="emit('select', action)"
             >
               <span class="block min-w-0">
-                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
-                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                <span class="block truncate text-sm font-semibold text-eldra-text-strong">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-eldra-text-faint">
                   {{ CATEGORY_LABELS[action.category] }}
                 </span>
               </span>
 
               <!-- Below `md` the four table columns become one wrapped meta
                    line, each value still carrying its own label. -->
-              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
-                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
-                <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
-                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
-                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-eldra-text-soft md:hidden">
+                <span v-if="action.range"><span class="text-eldra-text-ghost">Range</span> {{ action.range }}</span>
+                <span><span class="text-eldra-text-ghost">Hit/DC</span> {{ hitOrDc(action) }}</span>
+                <span v-if="action.damage"><span class="text-eldra-text-ghost">Damage</span> {{ action.damage }}</span>
+                <span v-if="action.actionType"><span class="text-eldra-text-ghost">Timing</span> {{ action.actionType }}</span>
               </span>
 
-              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
-              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
-              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
-              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-soft md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-eldra-text-strong md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-eldra-text-soft md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs text-eldra-text-faint md:block">{{ action.usage || action.actionType || '—' }}</span>
             </button>
 
             <template v-if="action.resolution">
@@ -951,8 +951,8 @@ function resolvedDamageText(action: CharacterAction): string {
                 v-if="results[action.id]"
                 class="mt-1 rounded-none border p-2 text-xs leading-5"
                 :class="results[action.id]!.hit
-                  ? 'border-[rgba(158,195,125,0.4)] bg-[rgba(158,195,125,0.08)] text-[#d8ceb8]'
-                  : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.4)] text-[#9f9278]'"
+                  ? 'border-eldra-positive/40 bg-eldra-positive/8 text-eldra-text-soft'
+                  : 'border-eldra-accent/20 bg-eldra-panel/40 text-eldra-text-faint'"
               >
                 <template v-if="results[action.id]!.attackRoll">
                   <div>
@@ -981,7 +981,7 @@ function resolvedDamageText(action: CharacterAction): string {
                   </template>
                 </div>
 
-                <div class="mt-1 text-[#6f6754]">
+                <div class="mt-1 text-eldra-text-ghost">
                   Target HP remaining: {{ results[action.id]!.targetHealth.currentHp }}
                 </div>
               </div>

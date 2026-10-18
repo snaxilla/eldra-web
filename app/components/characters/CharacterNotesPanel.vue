@@ -95,11 +95,11 @@ function onBlur(field: CharacterNoteField) {
       :key="field"
       class="block"
     >
-      <span class="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+      <span class="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
         {{ CHARACTER_NOTE_FIELD_LABELS[field] }}
         <span
           v-if="saving"
-          class="normal-case tracking-normal text-[10px] text-[#9f9278]"
+          class="normal-case tracking-normal text-[10px] text-eldra-text-faint"
         >
           Saving…
         </span>

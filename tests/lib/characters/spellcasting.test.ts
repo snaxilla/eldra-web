@@ -6,6 +6,7 @@
 // rather than trusted, and every mutation is a total, non-mutating
 // function.
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -311,5 +312,112 @@ describe('deriveSpellSlotLevels', () => {
     deriveSpellSlotLevels({ casterType: 'full', tableRows, characterLevel: 1, expendedSlots })
     expect(expendedSlots).toEqual({ '1': 1 })
     expect(tableRows).toEqual([{ key: 1, slot_1: 2 }])
+  })
+
+  // A2 WORKSTREAM 4 -- THIRD-CASTER SUPPORT. `casterType: 'third'` reuses this SAME generic
+  // `slot_1`..`slot_9`-column loop (never the Pact special case) -- no new branch was needed in
+  // this function at all, confirmed by these tests passing with zero changes to the function
+  // itself. The real table (`table:spellcasting.slots_third`, packages/eldra-dnd5e-2024/
+  // definitions.json) is re-derived directly from native XPHB corpus: class-fighter.json's own
+  // Eldritch Knight "Spell Slots per Spell Level" `rowsSpellProgression` and class-rogue.json's own
+  // identical Arcane Trickster table (both confirmed byte-identical), never a 2014 assumption.
+  describe('third caster (Eldritch Knight / Arcane Trickster, re-derived from native XPHB corpus)', () => {
+    const REAL_THIRD_CASTER_ROWS = [
+      { key: 1, slot_1: 0, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 2, slot_1: 0, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 3, slot_1: 2, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 4, slot_1: 3, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 5, slot_1: 3, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 6, slot_1: 3, slot_2: 0, slot_3: 0, slot_4: 0 },
+      { key: 7, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0 },
+      { key: 8, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0 },
+      { key: 9, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0 },
+      { key: 10, slot_1: 4, slot_2: 3, slot_3: 0, slot_4: 0 },
+      { key: 11, slot_1: 4, slot_2: 3, slot_3: 0, slot_4: 0 },
+      { key: 12, slot_1: 4, slot_2: 3, slot_3: 0, slot_4: 0 },
+      { key: 13, slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0 },
+      { key: 14, slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0 },
+      { key: 15, slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0 },
+      { key: 16, slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 0 },
+      { key: 17, slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 0 },
+      { key: 18, slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 0 },
+      { key: 19, slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 1 },
+      { key: 20, slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 1 }
+    ]
+
+    it('no premature slots at Levels 1-2 (before the subclass\'s own real Level-3 Spellcasting feature)', () => {
+      for (const level of [1, 2]) {
+        const row = REAL_THIRD_CASTER_ROWS.find((r) => r.key === level)!
+        expect(deriveSpellSlotLevels({ casterType: 'third', tableRows: [row], characterLevel: level, expendedSlots: {} })).toEqual([])
+      }
+    })
+
+    it('Level 3: exactly two 1st-level slots, the real XPHB minimum for both subclasses', () => {
+      const row = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 3)!
+      expect(deriveSpellSlotLevels({ casterType: 'third', tableRows: [row], characterLevel: 3, expendedSlots: {} }))
+        .toEqual([{ level: 1, max: 2, expended: 0 }])
+    })
+
+    it('Level 7: a SECOND spell level unlocks (1st + 2nd), never higher', () => {
+      const row = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 7)!
+      expect(deriveSpellSlotLevels({ casterType: 'third', tableRows: [row], characterLevel: 7, expendedSlots: {} }))
+        .toEqual([{ level: 1, max: 4, expended: 0 }, { level: 2, max: 2, expended: 0 }])
+    })
+
+    it('Level 19: the maximum spell level this progression ever reaches is 4th, never higher -- the real "1/3 of a full caster, capped at 4th level" shape', () => {
+      const row = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 19)!
+      const levels = deriveSpellSlotLevels({ casterType: 'third', tableRows: [row], characterLevel: 19, expendedSlots: {} })
+      expect(Math.max(...levels.map((l) => l.level))).toBe(4)
+      expect(levels).toEqual([
+        { level: 1, max: 4, expended: 0 },
+        { level: 2, max: 3, expended: 0 },
+        { level: 3, max: 3, expended: 0 },
+        { level: 4, max: 1, expended: 0 }
+      ])
+    })
+
+    it('Level 20: the correct final state, unchanged from Level 19 (the real table\'s own last two rows are identical)', () => {
+      const row20 = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 20)!
+      const row19 = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 19)!
+      expect(deriveSpellSlotLevels({ casterType: 'third', tableRows: [row20], characterLevel: 20, expendedSlots: {} }))
+        .toEqual(deriveSpellSlotLevels({ casterType: 'third', tableRows: [row19], characterLevel: 19, expendedSlots: {} }))
+    })
+
+    it('a DIRECT level jump (reading straight to Level 13\'s own row) produces the identical result a level-by-level walk would -- the function is pure and stateless, never an incremental accumulator', () => {
+      const row13 = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 13)!
+      const direct = deriveSpellSlotLevels({ casterType: 'third', tableRows: [row13], characterLevel: 13, expendedSlots: {} })
+      const again = deriveSpellSlotLevels({ casterType: 'third', tableRows: [row13], characterLevel: 13, expendedSlots: {} })
+      expect(direct).toEqual(again)
+      expect(direct).toEqual([
+        { level: 1, max: 4, expended: 0 },
+        { level: 2, max: 3, expended: 0 },
+        { level: 3, max: 2, expended: 0 }
+      ])
+    })
+
+    it('expended slots are read correctly at every spell level simultaneously, exactly like a full/half caster', () => {
+      const row = REAL_THIRD_CASTER_ROWS.find((r) => r.key === 13)!
+      const levels = deriveSpellSlotLevels({ casterType: 'third', tableRows: [row], characterLevel: 13, expendedSlots: { '1': 2, '3': 1 } })
+      expect(levels).toEqual([
+        { level: 1, max: 4, expended: 2 },
+        { level: 2, max: 3, expended: 0 },
+        { level: 3, max: 2, expended: 1 }
+      ])
+    })
+
+    it('the REAL registered table:spellcasting.slots_third Definition matches this re-derived corpus table exactly, row for row', () => {
+      const definitions = JSON.parse(readFileSync('packages/eldra-dnd5e-2024/definitions.json', 'utf8')) as { id: string, rows?: unknown[] }[]
+      const table = definitions.find((d) => d.id === 'table:spellcasting.slots_third')
+      expect(table, 'table:spellcasting.slots_third must exist in the authored package').toBeDefined()
+      expect(table!.rows).toEqual(REAL_THIRD_CASTER_ROWS)
+    })
+
+    it('the REAL registered value:spellcasting.caster_type.third Definition exists, mirroring full/half/pact exactly', () => {
+      const definitions = JSON.parse(readFileSync('packages/eldra-dnd5e-2024/definitions.json', 'utf8')) as { id: string, kind: string, valueType?: string }[]
+      const value = definitions.find((d) => d.id === 'value:spellcasting.caster_type.third')
+      expect(value).toBeDefined()
+      expect(value!.kind).toBe('value')
+      expect(value!.valueType).toBe('boolean')
+    })
   })
 })

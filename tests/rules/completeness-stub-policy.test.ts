@@ -47,6 +47,7 @@ const UNIT_STUBBING = [
   'tests/server/utils/character-progression-plan-weapon-mastery.test.ts',
   'tests/server/utils/character-progression-plan-spell-acquisition.test.ts',
   'tests/server/utils/character-progression-plan.test.ts',
+  'tests/server/utils/character-progression-subclass-acceptance.test.ts',
   'tests/server/utils/character-progression-published-package.test.ts'
 ]
 

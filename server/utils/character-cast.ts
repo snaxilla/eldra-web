@@ -196,7 +196,8 @@ function findBoolean(byCategory: ByCategory, id: string): boolean {
 }
 
 const CHARACTER_LEVEL_ID = 'value:level'
-const CASTER_TYPE_IDS = ['full', 'half', 'pact'] as const
+// A2 WORKSTREAM 4 -- `third` added; see character-spell-acquisition.ts's own identical note.
+const CASTER_TYPE_IDS = ['full', 'half', 'pact', 'third'] as const
 
 // ---------------------------------------------------------------------------
 // resolveCastableSpell -- the untargeted, spell-shaped counterpart to

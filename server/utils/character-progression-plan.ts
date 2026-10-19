@@ -422,6 +422,17 @@ export type CurrentProgressionState = {
   spells: readonly AssembledSpellEntry[]
   expendedSlots: Record<string, number>
   classFacet: RulesFacet | null
+  // A2 WORKSTREAM 2 -- SUBCLASS PROGRESSION OWNERSHIP. Mirrors `classFacet`/`classPackageId`
+  // exactly, for the identical reason: a subclass-owned spellRequirement/fixedSpellGrant
+  // (Workstream 3) needs the CURRENTLY resolved subclass facet to gather against, without
+  // re-deriving `assembly.blueprint.subclass` a second time. Identity is NEVER stored here --
+  // this is a per-call, re-derived READ of the canonical `progression.classes[].subclassRef`
+  // (via `assembleCharacter`'s own existing `subclass` slot resolution, character-assembly.ts),
+  // the exact same "no second store" posture `classFacet` already has. `null` for an unselected
+  // subclass (every historical character predating subclass selection, and every character that
+  // has not yet reached Level 3) -- legal, never a failure on its own, exactly like `classFacet`
+  // being `null` for an unresolved class slot.
+  subclassFacet: RulesFacet | null
   // FEAT-OWNED SPELL ACQUISITION PHASE -- every PERSISTED feat acquisition's own already-resolved
   // facet (`assembly.blueprint.feats`, the SAME resolution species/class/background already go
   // through -- zero extra fetch). A feat's own `spellRequirements`/`fixedSpellGrants` flow through
@@ -449,6 +460,9 @@ export type CurrentProgressionState = {
   // exactly (an unresolved slot has neither).
   speciesPackageId: string | null
   classPackageId: string | null
+  // A2 WORKSTREAM 2 -- mirrors `classPackageId` exactly; `null` under the identical conditions
+  // `subclassFacet` above is `null`.
+  subclassPackageId: string | null
   backgroundPackageId: string | null
   // FEAT-OWNED SPELL ACQUISITION PHASE -- the character's own PERSISTED choice answers
   // (`rules_choices`), needed to decide whether a conditionally-gated `SpellRequirement`
@@ -473,6 +487,18 @@ export async function resolveCurrentProgression(
   const classFacet = assembly.blueprint.class.status === 'resolved'
     ? (assembly.blueprint.class.entry.rulesFacet ?? null)
     : null
+  // A2 WORKSTREAM 2 -- `assembly.blueprint.subclass` is ALREADY resolved by character-assembly.ts
+  // (from the canonical `progression.classes[].subclassRef`, re-verified against the World's
+  // current catalogue on every call, never a snapshot) -- this mirrors `classFacet`'s own read
+  // exactly, no second subclass store, no new resolution path.
+  // Read defensively via `?.`, exactly like `speciesFacet`/`backgroundFacet` below (never a bare
+  // `.status`, which is only safe for `class` -- the one slot every test fixture in this codebase
+  // already guarantees): `blueprint.subclass` is typed as always-present in a REAL
+  // `assembleCharacter` result, but numerous pre-existing test fixtures across this codebase
+  // construct a hand-built blueprint that omits it entirely (it was never read before this phase).
+  const subclassFacet = assembly.blueprint.subclass?.status === 'resolved'
+    ? (assembly.blueprint.subclass.entry.rulesFacet ?? null)
+    : null
   const featFacets = (assembly.blueprint.feats ?? []).map((slot) => ({
     facet: slot.status === 'resolved' ? (slot.entry.rulesFacet ?? null) : null,
     choiceKey: slot.choiceKey
@@ -480,6 +506,8 @@ export async function resolveCurrentProgression(
   const speciesFacet = assembly.blueprint.species?.status === 'resolved' ? (assembly.blueprint.species.entry.rulesFacet ?? null) : null
   const backgroundFacet = assembly.blueprint.background?.status === 'resolved' ? (assembly.blueprint.background.entry.rulesFacet ?? null) : null
   const classPackageId = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.packageId : null
+  // A2 WORKSTREAM 2 -- mirrors `classPackageId` exactly.
+  const subclassPackageId = assembly.blueprint.subclass?.status === 'resolved' ? assembly.blueprint.subclass.entry.packageId : null
   const speciesPackageId = assembly.blueprint.species?.status === 'resolved' ? assembly.blueprint.species.entry.packageId : null
   const backgroundPackageId = assembly.blueprint.background?.status === 'resolved' ? assembly.blueprint.background.entry.packageId : null
 
@@ -512,11 +540,13 @@ export async function resolveCurrentProgression(
       spells: assembly.blueprint.spells ?? [],
       expendedSlots: assembly.blueprint.expendedSlots ?? {},
       classFacet,
+      subclassFacet,
       featFacets,
       speciesFacet,
       backgroundFacet,
       speciesPackageId,
       classPackageId,
+      subclassPackageId,
       backgroundPackageId,
       rulesChoiceSelections: { ...presetSelections, ...(assembly.blueprint.rulesChoices?.selections ?? {}) }
     }
@@ -1126,6 +1156,21 @@ export async function planProgression(
     resolveContentBindingFingerprint(worldId)
   ])
 
+  // A2 WORKSTREAM 3 -- the subclass facet for THIS preview: the one tentatively chosen in THIS
+  // same call (`tentativeContent.subclassRef`, already resolved above for Phase 0) takes priority
+  // over the already-persisted one (`current.state.subclassFacet`) -- a player previewing the
+  // VERY transition that selects their subclass must see that subclass's own spells in the SAME
+  // preview, never only on a second, later call. Mirrors `tentativeSubclassRef`'s own identical
+  // "this call's tentative choice wins" priority used for derived-state/prerequisite checks
+  // elsewhere in this file.
+  let previewSubclassFacet = current.state.subclassFacet
+  if (tentativeContent.subclassRef) {
+    const subclassCatalogue = await getWorldContentCatalogue(worldId)
+    previewSubclassFacet = subclassCatalogue.subclasses.find(
+      (entry) => entry.packageId === tentativeContent.subclassRef!.packageId && entry.slug === tentativeContent.subclassRef!.slug
+    )?.rulesFacet ?? null
+  }
+
   // D&D 2024 Character Rules P3.4 -- TARGET-STATE spell acquisition, computed exactly ONCE against
   // `targetLevel` (never per crossed level -- see character-progression-spell-acquisition.ts's own
   // header). `[]` for a class with no `spellRequirements` at all and no spell-granting feat
@@ -1141,6 +1186,11 @@ export async function planProgression(
     [
       { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
       { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+      // A2 WORKSTREAM 3 -- the subclass facet joins the SAME owners array, SAME ownerKey
+      // convention, zero new code in gatherSpellRequirements itself (already generic over any
+      // owner). `null`/`''` when no subclass is selected is legal and contributes nothing,
+      // exactly like `classFacet`/`classPackageId` being `null` for an unresolved class.
+      { packageId: tentativeContent.subclassRef?.packageId ?? current.state.subclassPackageId ?? '', facet: previewSubclassFacet, ownerKey: 'subclass' },
       { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' },
       ...current.state.featFacets.map((f) => ({ packageId: '', facet: f.facet, ownerKey: `feat:${f.choiceKey}` }))
     ],
@@ -1214,6 +1264,21 @@ export async function confirmProgression(
   if (!current.ok) return current
 
   const { progression, currentLevel } = current.state
+  // A2 WORKSTREAM 3 -- the SAME "this call's own tentative subclass choice wins" resolution
+  // `planProgression` now does, re-derived here independently (this function never trusts the
+  // client's own plan -- see this file's own header). `answers` is scanned directly through the
+  // IDENTICAL `extractTentativeContentAnswers` heuristic `planProgression` uses, so a subclass
+  // selected in THIS SAME confirm call has its own spellRequirements/fixedSpellGrants recognized
+  // immediately, not only on a later confirm.
+  const confirmLookup = await loadContentChoiceLookup(worldId)
+  const confirmTentativeSubclassRef = extractTentativeContentAnswers(answers, confirmLookup).subclassRef
+  let confirmSubclassFacet = current.state.subclassFacet
+  if (confirmTentativeSubclassRef) {
+    const subclassCatalogue = await getWorldContentCatalogue(worldId)
+    confirmSubclassFacet = subclassCatalogue.subclasses.find(
+      (entry) => entry.packageId === confirmTentativeSubclassRef.packageId && entry.slug === confirmTentativeSubclassRef.slug
+    )?.rulesFacet ?? null
+  }
   // FEAT-OWNED SPELL ACQUISITION PHASE -- see the identical widening in `planProgression` above for
   // the full reasoning. `answers` (this call's own final parameter) plays the exact role
   // `tentativeAnswers` plays there.
@@ -1221,6 +1286,9 @@ export async function confirmProgression(
     [
       { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
       { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+      // A2 WORKSTREAM 3 -- the subclass facet joins the SAME owners array, SAME ownerKey
+      // convention, zero new code in gatherSpellRequirements itself.
+      { packageId: confirmTentativeSubclassRef?.packageId ?? current.state.subclassPackageId ?? '', facet: confirmSubclassFacet, ownerKey: 'subclass' },
       { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' },
       ...current.state.featFacets.map((f) => ({ packageId: '', facet: f.facet, ownerKey: `feat:${f.choiceKey}` }))
     ],
@@ -1821,14 +1889,30 @@ export async function confirmProgression(
   // since the window spans the whole jump. Feats are deliberately NOT included here -- their own
   // fixed grants are gated by ACQUISITION, not a level threshold, and remain on the untouched call
   // below.
+  // A2 WORKSTREAM 3 -- reuses `confirmSubclassFacet`/`confirmTentativeSubclassRef`, already
+  // resolved above (this call's own tentative subclass choice, else the already-persisted one) --
+  // never a second, independent resolution of the same fact.
   const levelGatedOwners = [
     { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
     { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+    { packageId: confirmTentativeSubclassRef?.packageId ?? current.state.subclassPackageId ?? '', facet: confirmSubclassFacet, ownerKey: 'subclass' },
     { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' }
   ].filter((owner) => (owner.facet?.fixedSpellGrants ?? []).some((grant) => (grant.minLevel ?? 1) > 1))
 
+  // A2 WORKSTREAM 3 -- a NEWLY SELECTED subclass's own minLevel<=1 fixed grants ("you always have
+  // that spell prepared the moment you choose this subclass") are gated by ACQUISITION, not a
+  // level threshold -- the identical reason feats' own fixedSpellGrants are resolved via
+  // `resolvedFeatAcquisitions` below, never via the windowed `levelGatedOwners` above (whose own
+  // filter deliberately excludes any grant with `minLevel <= 1`, exactly like a feat's). Fires
+  // ONLY in the one transition that actually selects the subclass (`confirmTentativeSubclassRef`
+  // set) -- never again afterward, since subclass selection happens exactly once, the same
+  // "acquired exactly once, resolved exactly once" posture a feat acquisition already has.
+  const newSubclassAcquisitionOwners = confirmTentativeSubclassRef && confirmSubclassFacet
+    ? [{ packageId: confirmTentativeSubclassRef.packageId, facet: confirmSubclassFacet, ownerKey: 'subclass' }]
+    : []
+
   let fixedSpellGrantEntries: StoredSpellEntry[] = []
-  if (levelGatedOwners.length > 0 || resolvedFeatAcquisitions.length > 0) {
+  if (levelGatedOwners.length > 0 || resolvedFeatAcquisitions.length > 0 || newSubclassAcquisitionOwners.length > 0) {
     const catalogue = await getWorldContentCatalogue(worldId)
 
     if (levelGatedOwners.length > 0) {
@@ -1843,6 +1927,24 @@ export async function confirmProgression(
         return { ok: false, reason: 'illegal-feat-selection', message: levelGatedResolution.reason }
       }
       fixedSpellGrantEntries = levelGatedResolution.entries
+    }
+
+    if (newSubclassAcquisitionOwners.length > 0) {
+      // Window `{from: 0, to: 1}` -- include ONLY `minLevel <= 1` grants (the ones gated by
+      // ACQUISITION, resolved here exactly once); a `minLevel > 1` grant on the SAME subclass is
+      // deliberately excluded here and remains the windowed `levelGatedOwners` call's own job once
+      // the character actually reaches that level, never double-resolved.
+      const subclassAcquisitionResolution = resolveFixedSpellGrants(
+        newSubclassAcquisitionOwners,
+        catalogue.spells,
+        [...nextAcquiredSpells, ...fixedSpellGrantEntries],
+        { ...current.state.rulesChoiceSelections, ...answers },
+        { from: 0, to: 1 }
+      )
+      if (!subclassAcquisitionResolution.ok) {
+        return { ok: false, reason: 'illegal-feat-selection', message: subclassAcquisitionResolution.reason }
+      }
+      fixedSpellGrantEntries = [...fixedSpellGrantEntries, ...subclassAcquisitionResolution.entries]
     }
 
     if (resolvedFeatAcquisitions.length > 0) {

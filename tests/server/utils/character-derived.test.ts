@@ -228,7 +228,10 @@ describe('getDerivedCharacter -- tables (Spellcasting System)', () => {
       'table:conditions.catalog',
       'table:spellcasting.slots_full',
       'table:spellcasting.slots_half',
-      'table:spellcasting.slots_pact'
+      'table:spellcasting.slots_pact',
+      // A2 WORKSTREAM 4 -- third-caster slot table (Eldritch Knight/Arcane Trickster). Sorted
+      // after 'pact' ('p' < 't'), matching this array's own `.sort()`'d comparison exactly.
+      'table:spellcasting.slots_third'
     ])
   })
 

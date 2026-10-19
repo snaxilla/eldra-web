@@ -2546,6 +2546,20 @@
     ]
   },
   {
+    "id": "value:spellcasting.caster_type.third",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Third Caster",
+    "tags": [
+      "spellcasting",
+      "caster-type"
+    ]
+  },
+  {
     "id": "value:spellcasting.is_caster",
     "kind": "value",
     "category": "spellcasting",
@@ -3344,6 +3358,62 @@
     "default": {
       "slots": 0,
       "slot_level": 0
+    }
+  },
+  {
+    "id": "table:spellcasting.slots_third",
+    "kind": "table",
+    "category": "spellcasting",
+    "label": "Spell Slots (Third Caster)",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      {
+        "key": "slot_1",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_2",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_3",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_4",
+        "valueType": "number"
+      }
+    ],
+    "rows": [
+      { "key": 1, "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 2, "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 3, "slot_1": 2, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 4, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 5, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 6, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0 },
+      { "key": 7, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0 },
+      { "key": 8, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0 },
+      { "key": 9, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0 },
+      { "key": 10, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0 },
+      { "key": 11, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0 },
+      { "key": 12, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0 },
+      { "key": 13, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0 },
+      { "key": 14, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0 },
+      { "key": 15, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0 },
+      { "key": 16, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0 },
+      { "key": 17, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0 },
+      { "key": 18, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0 },
+      { "key": 19, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1 },
+      { "key": 20, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1 }
+    ],
+    "default": {
+      "slot_1": 0,
+      "slot_2": 0,
+      "slot_3": 0,
+      "slot_4": 0
     }
   },
   {
@@ -4502,6 +4572,21 @@
         "resources": [
           "resource:tireless"
         ]
+      }
+    ]
+  },
+  {
+    "id": "progression:a2.synthetic-subclass-growth-proof",
+    "kind": "progression",
+    "category": "progression",
+    "label": "A2 Synthetic Subclass Growth Proof",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 6,
+        "sets": {
+          "value:skill.survival.expertise": true
+        }
       }
     ]
   },

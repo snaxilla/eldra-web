@@ -1649,33 +1649,45 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   // Content Pack requires that Pack to be rebuilt/republished against this
   // corpus -- a separate, out-of-this-phase content-pack operation, not a
   // Rules Package change.
-  // D&D 2024 Character Rules Phase 2A.2 (SUBCLASS AUDIT follow-up) --
-  // `battle-master-xphb` is the ONLY subclass facet authored this phase.
-  // War Priest (Cleric, War Domain), Warding Flare (Cleric, Light Domain),
-  // and Dark One's Own Luck (Warlock, Fiend Patron) were identified as
-  // real, structurally clean finite-pool resources (all three
-  // corpus-verified, all three the same `max(1, ability modifier)` shape
-  // Bardic Inspiration/Tireless already prove) but DELIBERATELY NOT wired
-  // here -- a real correctness gap, caught before authoring: a subclass
-  // facet is consumed unconditionally the moment `progression.classes[].
-  // subclassRef` resolves (character-actor-bridge.ts's ordinary SLOT_ORDER
-  // 'subclass' slot), with no subclass-INTERNAL level gate -- there is no
-  // mechanism analogous to `ProgressionRow.resources` (class-scoped, keyed
-  // by `value:level`) for "this subclass facet's OWN feature arrives at
-  // ITS level N, independent of when the subclass itself was selected."
-  // Battle Master happens to have no gap (Fighter selects its subclass AND
-  // Combat Superiority both land at level 3), which is why it was safe to
-  // author -- but Cleric/Warlock select their subclass at level 1 while
-  // War Priest/Warding Flare are real level-3 features and Dark One's Own
-  // Luck is a real level-6 feature; wiring any of the three today would
-  // grant access 2-5 levels early, a CORRECTNESS REGRESSION, not merely an
-  // incomplete one. The three Resource Definitions themselves are left
-  // unauthored in definitions.json for the identical reason -- an
-  // unreferenced Definition serves no purpose and risks being mistaken for
-  // "done." Missing primitive, precisely named: a subclass-scoped,
-  // feature-level-keyed resource-acquisition row (the subclass-facet
-  // counterpart of `ProgressionRow.resources`) -- deferred, not solved, by
-  // this phase.
+  // D&D 2024 Character Rules A2 WORKSTREAM 1 -- CORRECTION OF A STALE CLAIM.
+  // The paragraph this replaces (Phase 2A.2, SUBCLASS AUDIT follow-up) asserted that
+  // `ProgressionRow.resources` was "class-scoped" and that no mechanism existed for a
+  // subclass's OWN feature to arrive at a level LATER than the subclass's own
+  // selection level -- and on that basis left War Priest (Cleric, War Domain),
+  // Warding Flare (Cleric, Light Domain), and Dark One's Own Luck (Warlock, Fiend
+  // Patron) deliberately unwired, naming a "missing primitive."
+  //
+  // That claim is WRONG, disproven by direct test (tests/server/utils/character-
+  // actor-bridge.test.ts, "A2 Workstream 1 -- a subclass selected at Level 3
+  // independently activates its own later-level features"): `consumeFacet`
+  // (character-actor-bridge.ts) consumes EVERY SLOT_ORDER slot -- species, class,
+  // subclass, background -- through the IDENTICAL generic loop, including
+  // `facet.progression` -> ProgressionRow.sets/.grants/.resources/.choices, gated by
+  // `rowAt <= currentLevel` against the character's own CURRENT LEVEL, never against
+  // "levels since this facet was consumed." Nothing in that loop singles out
+  // `subclass` for different (or missing) treatment; a class's own facet already
+  // relies on the exact same mechanism for later-level growth (Weapon Mastery
+  // growth, Metamagic growth, Skill Expertise growth, Primal Knowledge). The
+  // confusion: Battle Master's own `resources: ['resource:superiority_dice']` below
+  // is a flat, unconditional `facet.resources` grant (correct ONLY because Fighter
+  // selects its subclass AND Combat Superiority both land at Level 3) -- it was
+  // mistaken for the ONLY shape a subclass facet can use, when `facet.progression`
+  // (gated, later-level) was available the whole time, unchanged, no new engine code.
+  //
+  // PROVEN AUTHORING PATTERN for a subclass-internal feature arriving after subclass
+  // selection: give the subclass's own RulesFacet a `progression: ['progression:
+  // subclass.<name>-growth']` array, exactly mirroring a class's own growth-cadence
+  // Progression Definition (e.g. `progression:class.weapon-mastery-growth-4-10`) --
+  // same Definition kind, same `keyedBy: 'value:level'`, same row shape (`at`, plus
+  // `sets`/`grants`/`resources`/`choices`), just referenced from a `subclass` facet.
+  // War Priest/Warding Flare/Dark One's Own Luck are real, structurally clean
+  // finite-pool resources (all three corpus-verified, all three the same
+  // `max(1, ability modifier)` shape Bardic Inspiration/Tireless already prove) that
+  // this exact pattern can now unblock -- left unauthored here deliberately (A2's own
+  // scope is proving/wiring the GENERIC infrastructure, not authoring the subclass
+  // corpus), but no longer blocked on any missing primitive. Their own three Resource
+  // Definitions remain unauthored in definitions.json for the same "an unreferenced
+  // Definition risks being mistaken for done" reason as before.
   subclass: {
     'battle-master-xphb': {
       resources: ['resource:superiority_dice']

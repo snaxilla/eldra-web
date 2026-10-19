@@ -387,14 +387,19 @@ export type SpellSlotLevel = { level: number; max: number; expended: number }
 // lives under -- exported so server/utils/character-cast.ts and
 // useCharacterSheet.ts both name the SAME three ids rather than each
 // typing their own copy of the strings.
-export const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact', string> = {
+// A2 WORKSTREAM 4 -- `third` added for Eldritch Knight/Arcane Trickster's own real third-caster
+// progression table (re-derived from native XPHB corpus, both subclasses' own `rowsSpellProgression`
+// identical). Reuses the SAME `slot_1`..`slot_9`-column shape `full`/`half` already use -- never
+// the Pact special case -- so `deriveSpellSlotLevels` below needs no new branch for it.
+export const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact' | 'third', string> = {
   full: 'table:spellcasting.slots_full',
   half: 'table:spellcasting.slots_half',
-  pact: 'table:spellcasting.slots_pact'
+  pact: 'table:spellcasting.slots_pact',
+  third: 'table:spellcasting.slots_third'
 }
 
 export function deriveSpellSlotLevels(input: {
-  casterType: 'full' | 'half' | 'pact' | null
+  casterType: 'full' | 'half' | 'pact' | 'third' | null
   // The ALREADY-SELECTED table (SLOT_TABLE_BY_CASTER_TYPE[casterType])'s
   // rows -- callers on both sides already have a `DerivedTable`-shaped
   // value in hand (client: `derived.tables`; server: `getDerivedCharacter`'s

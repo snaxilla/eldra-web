@@ -56,7 +56,11 @@ import {
 } from '../../app/lib/characters/spellcasting'
 
 const CASTER_TYPE_GRANT_PREFIX = 'value:spellcasting.caster_type.'
-const CASTER_TYPES = ['full', 'half', 'pact'] as const
+// A2 WORKSTREAM 4 -- `third` added for Eldritch Knight/Arcane Trickster's own real third-caster
+// progression (re-derived from native XPHB corpus: class-fighter.json's/class-rogue.json's own
+// `rowsSpellProgression`, both identical). No class name anywhere in this file -- a homebrew
+// third-caster subclass authors the identical `value:spellcasting.caster_type.third` grant.
+const CASTER_TYPES = ['full', 'half', 'pact', 'third'] as const
 export type CasterType = (typeof CASTER_TYPES)[number]
 
 // The class facet's own unconditional grant names its caster type -- the SAME fact

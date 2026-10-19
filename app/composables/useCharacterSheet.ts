@@ -499,7 +499,9 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // second, independently-drifting copy of this loop.
   const slotLevels = computed(() => {
     const byCategory = derived.value?.byCategory ?? {}
-    const casterType = (['full', 'half', 'pact'] as const).find((type) =>
+    // A2 WORKSTREAM 4 -- `third` added; see server/utils/character-spell-acquisition.ts's own
+    // identical note.
+    const casterType = (['full', 'half', 'pact', 'third'] as const).find((type) =>
       findDerivedBoolean(byCategory, 'spellcasting', `value:spellcasting.caster_type.${type}`)
     ) ?? null
 

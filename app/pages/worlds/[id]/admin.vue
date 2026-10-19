@@ -527,7 +527,10 @@ async function refreshAdmin() {
 </script>
 
 <template>
-  <div class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
+  <div
+    data-eldra-ambient-ground
+    class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]"
+  >
     <WorldChooserThpace mode="sticky" />
     <div
       class="relative z-10 -mt-[100dvh] mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"

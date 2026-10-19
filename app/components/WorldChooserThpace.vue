@@ -73,7 +73,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div :class="thpaceBackdropClass">
+  <div
+    :class="thpaceBackdropClass"
+    data-eldra-ambient
+  >
     <canvas ref="canvasRef" class="absolute inset-0 h-full w-full" />
     <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,17,0.18)_0%,rgba(2,6,17,0.10)_42%,rgba(2,6,17,0.34)_100%)]" />
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_35%)]" />

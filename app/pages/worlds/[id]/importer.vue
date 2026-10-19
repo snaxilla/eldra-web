@@ -714,7 +714,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div data-world-importer-page class="importer-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
+  <div data-world-importer-page data-eldra-ambient-ground class="importer-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
     <WorldChooserThpace mode="sticky" />
 
 <div data-importer-content-shell class="relative z-10 -mt-[100dvh] mx-auto max-w-[1800px] p-6">

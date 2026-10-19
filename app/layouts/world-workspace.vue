@@ -312,14 +312,30 @@ const backgroundImageUrl = computed(() => {
 // whole workspace -- navigation included -- rather than inside the content
 // column, so every surface above it is glass over the same artwork. Neutral
 // shows no artwork. The full-bleed World Map draws its own scene instead.
+//
+// A page can instead declare Eldra's animated universe as its backdrop
+// (`definePageMeta({ eldraBackdrop: 'universe' })` -- Game Admin): the same
+// WorldChooserThpace the World Selection screen shows, drawn here behind the
+// whole workspace, and never replaced by a World's page background.
+const usesUniverseBackdrop = computed(() => !isFullBleedMap.value && route.meta.eldraBackdrop === 'universe')
+
 const hasPageBackdrop = computed(() =>
-  !isFullBleedMap.value && Boolean(backgroundImageUrl.value) && presentationMode.value !== 'neutral'
+  !isFullBleedMap.value &&
+  !usesUniverseBackdrop.value &&
+  Boolean(backgroundImageUrl.value) &&
+  presentationMode.value !== 'neutral'
 )
 const backdropTone = computed(() => (presentationMode.value === 'immersive' ? 'immersive' : 'muted'))
 
-// The sidebar is glass wherever it sits over artwork: the map, or a page
-// backdrop. Over the plain ground it keeps its solid binding.
-const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.value)
+// Read by WorldChooserThpace on pages that yield to a GM page background.
+const pageBackdropActive = useState<boolean>('world-page-backdrop-active', () => false)
+watchEffect(() => {
+  pageBackdropActive.value = hasPageBackdrop.value
+})
+
+// The sidebar is glass wherever it sits over artwork: the map, a page
+// backdrop or the universe. Over the plain ground it keeps its solid binding.
+const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.value || usesUniverseBackdrop.value)
 </script>
 
 <template>
@@ -352,6 +368,10 @@ const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.valu
           :style="{ background: `var(--eldra-backdrop-${backdropTone}-scrim)` }"
         />
       </template>
+      <WorldChooserThpace
+        v-else-if="usesUniverseBackdrop"
+        mode="absolute"
+      />
       <!-- Mobile drawer backdrop. Dismiss-by-tap; not rendered at all at
            `md`+, matching the fixed-backdrop convention already used by
            SheetItemDetailDrawer.vue / SheetSpellDetailDrawer.vue. -->

@@ -332,16 +332,12 @@
   box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-bright-rgb) / 0.7);
 }
 
-/* Phase 3C: pages that paint their own ambient ground (Game Admin and the
-   Importer: an opaque fill plus the Thpace starfield) yield to a GM page
-   background when one is active, so the GM's Page Setup choice is what
-   shows. The starfield keeps its box (the content is offset against it). */
+/* Phase 3C: a page that paints its own ambient ground (the Importer: an
+   opaque fill plus the universe, WorldChooserThpace with
+   `yield-to-page-backdrop`) yields it to a GM page background when one is
+   active. The universe hides and stops rendering itself. */
 [data-eldra-page-backdrop-active] [data-eldra-ambient-ground] {
   background-color: transparent;
-}
-
-[data-eldra-page-backdrop-active] [data-eldra-ambient] {
-  visibility: hidden;
 }
 
 /* A V2 character sheet region surface (Phase 4C): the reference column,

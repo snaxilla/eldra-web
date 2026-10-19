@@ -1,7 +1,10 @@
 <script setup lang="ts">
 definePageMeta({
   layout: 'world-workspace',
-  middleware: 'admin'
+  middleware: 'admin',
+  // Phase 3C: Game Admin floats in Eldra's animated universe (the World
+  // Selection backdrop), drawn by the layout behind the whole workspace.
+  eldraBackdrop: 'universe'
 })
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
@@ -527,16 +530,12 @@ async function refreshAdmin() {
 </script>
 
 <template>
-  <div
-    data-eldra-ambient-ground
-    class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]"
-  >
-    <WorldChooserThpace mode="sticky" />
+  <div class="game-admin-space relative isolate h-full overflow-y-auto text-[#efe2bd]">
     <div
-      class="relative z-10 -mt-[100dvh] mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
+      class="relative z-10 mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
       :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
     >
-      <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.74),rgba(7,7,6,0.54))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgb(var(--eldra-panel-rgb)/var(--eldra-surface-reading-alpha)),rgb(var(--eldra-ink-rgb)/var(--eldra-surface-reading-alpha)))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] [backdrop-filter:blur(var(--eldra-panel-blur))]">
         <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">

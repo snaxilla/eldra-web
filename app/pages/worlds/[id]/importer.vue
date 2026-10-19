@@ -715,7 +715,10 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page data-eldra-ambient-ground class="importer-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
-    <WorldChooserThpace mode="sticky" />
+    <WorldChooserThpace
+      mode="sticky"
+      yield-to-page-backdrop
+    />
 
 <div data-importer-content-shell class="relative z-10 -mt-[100dvh] mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">

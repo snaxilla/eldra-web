@@ -69,3 +69,30 @@ describe('workspace page backdrop', () => {
     expect(workspace).toMatch(/hasPageBackdrop = computed\(\(\) =>[\s\S]*presentationMode\.value !== 'neutral'/)
   })
 })
+
+describe('Eldra universe backdrop (Game Admin, World Selection)', () => {
+  const admin = read('app/pages/worlds/[id]/admin.vue')
+  const universe = read('app/components/WorldChooserThpace.vue')
+
+  it('Game Admin declares the universe and no longer draws its own copy', () => {
+    expect(admin).toMatch(/eldraBackdrop: 'universe'/)
+    expect(admin).not.toContain('<WorldChooserThpace')
+    expect(admin).not.toContain('-mt-[100dvh]')
+  })
+
+  it('the layout draws the universe behind the whole workspace, never replaced by a page background', () => {
+    expect(workspace).toMatch(/usesUniverseBackdrop = computed\(\(\) => !isFullBleedMap\.value && route\.meta\.eldraBackdrop === 'universe'\)/)
+    expect(workspace).toMatch(/hasPageBackdrop = computed\(\(\) =>[\s\S]*!usesUniverseBackdrop\.value/)
+    expect(workspace).toMatch(/<WorldChooserThpace\s+v-else-if="usesUniverseBackdrop"\s+mode="absolute"/)
+  })
+
+  it('stops rendering when hidden or under reduced motion, and tears down on unmount', () => {
+    expect(universe).toContain("matchMedia?.('(prefers-reduced-motion: reduce)')")
+    expect(universe).toContain('accessibility.value.reducedMotion')
+    expect(universe).toMatch(/if \(hidden\.value\) \{\s+instance\.stop\(\)/)
+    expect(universe).toContain("window.removeEventListener('resize', instance.resize)")
+    expect(universe).toContain("getExtension?.('WEBGL_lose_context')?.loseContext()")
+    // thpace has no remove(); calling it was a silent no-op.
+    expect(universe).not.toContain('.remove()')
+  })
+})

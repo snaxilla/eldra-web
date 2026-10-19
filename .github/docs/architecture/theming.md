@@ -158,6 +158,51 @@ var(--eldra-accent)`. They stay native controls with no ornament.
   offline.
 - A future theme's fonts must follow the same pattern.
 
+### Surface hierarchy and page backdrops (Phase 3C)
+
+Every glass level is **derived** from the GM's panel opacity and blur (`--eldra-panel-alpha`,
+`--eldra-panel-blur`; Game Admin → theme). There are no new GM controls. Raising or lowering the GM
+values moves every level together, and the accessibility overrides (alpha 1, blur 0) make every
+level solid. The tokens are in `themes/tokens.css`. A theme may re-declare the offsets, never the GM
+values.
+
+| Level | Token | Derivation (floor) | Used by |
+|---|---|---|---|
+| L1 navigation | `--eldra-surface-nav-alpha` | panel alpha (no floor) | `.eldra-glass-surface`: the workspace sidebar over the map, a page backdrop or the universe |
+| L2 cards | `--eldra-surface-card-alpha`, `--eldra-surface-card-blur` | panel alpha, ¾ blur (≥ 0.62) | `.eldra-ornate-card` (roster, collections) |
+| L3 reading | `--eldra-surface-reading-alpha` | panel alpha + 0.10 (≥ 0.82) | `.eldra-ornate-panel` (articles, admin, page headers), `.eldra-sheet-panel` (V2 sheet) |
+| L4 inspectors | `--eldra-surface-inspector-alpha` | panel alpha (≥ 0.74) | `WorldEntityContextDrawer` in every placement; any fixed `.eldra-ornate-panel` |
+| L5 overlays | `--eldra-surface-overlay-alpha` | max(panel alpha, 0.94) | `.eldra-glass-menu`; inputs and wells stay near-opaque |
+
+**Readability floors.** The floors were measured at the GM minimum (opacity 0.55, blur 0) over
+bright and pure-white artwork. They keep long-form text readable when a GM picks very transparent
+panels:
+- Reading surfaces keep body text ≥ 7:1 even over raw white.
+- Inspectors sit over the unscrimmed map, so they never drop below the platform default.
+- Navigation has no floor and stays the most transparent level.
+- At the default opacity (0.74) no floor applies.
+- Accessibility (alpha 1) still makes every level solid.
+
+**Page backdrops.** A GM page background (Page Setup) is drawn once by `world-workspace.vue`,
+**behind the whole workspace**: both grid columns, with the sidebar lifted above it. Every surface is
+then glass over the same artwork, as on the World Map. Strength comes from tokens:
+`--eldra-backdrop-{immersive,muted}-opacity` and `--eldra-backdrop-{immersive,muted}-scrim` (the scrim
+uses the theme's own ground colors).
+- **Neutral** shows no artwork.
+- Over a backdrop the sidebar becomes `.eldra-glass-surface`. Over the plain ground it keeps its
+  solid binding.
+- The World Map draws its own scene and gets no page backdrop.
+- **Eldra's universe.** A page can declare `definePageMeta({ eldraBackdrop: 'universe' })`; Game Admin
+  does. The layout then draws `WorldChooserThpace` behind the whole workspace instead. This is the
+  same animated universe as the World Selection screen, and a World's page background never replaces
+  it. The Importer keeps the universe in its own column with `yield-to-page-backdrop`, which hides it
+  under a GM page background.
+- **Universe lifecycle.** `WorldChooserThpace` only renders while it is shown. Hidden, it stops.
+  Under reduced motion (Eldra's preference or the OS setting) it draws one frame and stops. On
+  unmount it ends thpace's render loop, removes its resize listener and releases the WebGL context;
+  thpace has no teardown of its own.
+- Upload, the media library, persistence and positioning are unchanged; only the drawing moved.
+
 ### Full-bleed World Map shell (Phase 3A)
 
 Only on the World Map route (`pageKey === 'world-map'`, i.e. `/worlds/:id`), and only at `md` and
@@ -282,6 +327,9 @@ follow-up.
 - `tests/lib/themes/themes.test.ts`: registry, platform fallback, World inheritance, accessibility
   overrides, invalid/missing configuration, World scoping, CSS import order (accessibility last
   overall), no hardcoded colors in shared surfaces, ornaments non-interactive.
+- `tests/lib/themes/surfaceHierarchy.test.ts`: every surface level derives from the GM panel
+  opacity/blur, the shared glass classes fill from those tokens, accessibility reaches them, and the
+  page backdrop uses its tokens and stays off in neutral.
 - `tests/server/utils/world-presentation-settings.test.ts`: load, save and patch parsing against a
   fake Directus, the 502-vs-absent distinction, and clamping on write.
 - `tests/server/api/worlds/[id]/presentation-settings.test.ts`: real `can()`. Players can read, only

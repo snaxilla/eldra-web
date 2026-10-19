@@ -237,8 +237,11 @@ watchEffect(() => {
     : 0
 })
 
+// Phase 3C: on ordinary pages the sidebar keeps its own grid column but is
+// lifted (relative + z-10) above the page backdrop, which now spans the
+// whole workspace beneath both columns.
 const sidebarWrapperDesktopClass = computed(() => {
-  if (!isFullBleedMap.value) return 'md:static md:z-auto md:w-auto'
+  if (!isFullBleedMap.value) return 'md:relative md:z-10 md:w-auto'
   return [
     'md:absolute md:inset-y-0 md:left-0 md:z-40',
     leftCollapsed.value ? 'md:w-[68px]' : 'md:w-[280px]'
@@ -304,6 +307,35 @@ const backgroundImageUrl = computed(() => {
   }
   return ''
 })
+
+// Phase 3C: a GM page background (Page Setup) is drawn once, behind the
+// whole workspace -- navigation included -- rather than inside the content
+// column, so every surface above it is glass over the same artwork. Neutral
+// shows no artwork. The full-bleed World Map draws its own scene instead.
+//
+// A page can instead declare Eldra's animated universe as its backdrop
+// (`definePageMeta({ eldraBackdrop: 'universe' })` -- Game Admin): the same
+// WorldChooserThpace the World Selection screen shows, drawn here behind the
+// whole workspace, and never replaced by a World's page background.
+const usesUniverseBackdrop = computed(() => !isFullBleedMap.value && route.meta.eldraBackdrop === 'universe')
+
+const hasPageBackdrop = computed(() =>
+  !isFullBleedMap.value &&
+  !usesUniverseBackdrop.value &&
+  Boolean(backgroundImageUrl.value) &&
+  presentationMode.value !== 'neutral'
+)
+const backdropTone = computed(() => (presentationMode.value === 'immersive' ? 'immersive' : 'muted'))
+
+// Read by WorldChooserThpace on pages that yield to a GM page background.
+const pageBackdropActive = useState<boolean>('world-page-backdrop-active', () => false)
+watchEffect(() => {
+  pageBackdropActive.value = hasPageBackdrop.value
+})
+
+// The sidebar is glass wherever it sits over artwork: the map, a page
+// backdrop or the universe. Over the plain ground it keeps its solid binding.
+const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.value || usesUniverseBackdrop.value)
 </script>
 
 <template>
@@ -312,7 +344,34 @@ const backgroundImageUrl = computed(() => {
       class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
       :class="isFullBleedMap ? 'eldra-map-shell' : ''"
       :style="gridStyle"
+      :data-eldra-page-backdrop-active="hasPageBackdrop ? '' : undefined"
     >
+      <!-- Page backdrop (Phase 3C): spans both grid columns, beneath the
+           sidebar and the content. Strength and scrim are theme tokens
+           (--eldra-backdrop-*), not literals. -->
+      <template v-if="hasPageBackdrop">
+        <div
+          class="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
+          aria-hidden="true"
+          data-eldra-page-backdrop
+          :style="{
+            backgroundImage: `url('${backgroundImageUrl}')`,
+            opacity: `var(--eldra-backdrop-${backdropTone}-opacity)`,
+            filter: backdropTone === 'immersive'
+              ? 'saturate(1.02) contrast(1.01) brightness(0.98)'
+              : 'grayscale(0.08) saturate(0.78) brightness(0.92)'
+          }"
+        />
+        <div
+          class="pointer-events-none absolute inset-0"
+          aria-hidden="true"
+          :style="{ background: `var(--eldra-backdrop-${backdropTone}-scrim)` }"
+        />
+      </template>
+      <WorldChooserThpace
+        v-else-if="usesUniverseBackdrop"
+        mode="absolute"
+      />
       <!-- Mobile drawer backdrop. Dismiss-by-tap; not rendered at all at
            `md`+, matching the fixed-backdrop convention already used by
            SheetItemDetailDrawer.vue / SheetSpellDetailDrawer.vue. -->
@@ -336,7 +395,7 @@ const backgroundImageUrl = computed(() => {
         aria-label="World navigation"
       >
         <WorldWorkspaceSidebar
-          :class="isFullBleedMap ? 'eldra-glass-surface' : ''"
+          :class="sidebarGlass ? 'eldra-glass-surface' : ''"
           :world="world"
           :collapsed="leftCollapsed"
           :mode="mode"
@@ -378,30 +437,6 @@ const backgroundImageUrl = computed(() => {
       </button>
 
       <div class="min-w-0 overflow-hidden relative" :class="mapInsetClass">
-        <div class="eldra-workspace-ground absolute inset-0"></div>
-
-        <div
-          v-if="backgroundImageUrl && presentationMode !== 'neutral'"
-          class="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
-          :style="{
-            backgroundImage: `url('${backgroundImageUrl}')`,
-            opacity: presentationMode === 'immersive' ? '0.42' : '0.18',
-            filter: presentationMode === 'immersive'
-              ? 'saturate(1.02) contrast(1.01) brightness(0.98)'
-              : 'grayscale(0.08) saturate(0.78) brightness(0.92)'
-          }"
-        />
-
-        <div
-          v-if="presentationMode !== 'neutral'"
-          class="absolute inset-0"
-          :style="{
-            background: presentationMode === 'immersive'
-              ? 'linear-gradient(to bottom, rgba(9,11,15,0.20), rgba(12,15,20,0.34) 32%, rgba(14,18,24,0.48) 72%, rgba(16,20,26,0.60))'
-              : 'linear-gradient(to bottom, rgba(10,12,16,0.36), rgba(13,16,21,0.50) 38%, rgba(16,20,26,0.64))'
-          }"
-        />
-
         <div class="relative h-full w-full overflow-hidden">
           <slot />
         </div>

@@ -30,6 +30,48 @@
   --eldra-panel-alpha: 0.74;
   --eldra-panel-blur: 12px;
 
+  /* Surface hierarchy (Phase 3C). Every level is DERIVED from the GM's
+     panel opacity/blur above, so the GM controls stay authoritative while
+     the levels keep their order; the accessibility overrides (which force
+     alpha 1 / blur 0 on <html>) make every level solid. Themes may
+     re-declare the offsets, never the GM values.
+       nav       L1 workspace navigation, the World Map chrome
+       card      L2 browse cards (roster, collections)
+       reading   L3 articles, admin panels, character sheet panels
+       inspector L4 context inspectors (same glass as navigation)
+       overlay   L5 modals, menus, forms -- near-opaque
+     Readability floors (measured at the GM minimum, 0.55 with no blur,
+     over bright and pure-white artwork): reading surfaces never drop
+     below 0.82 (body text >= 7:1 even over raw white), inspectors never
+     below the platform default 0.74 (they sit over the unscrimmed map),
+     cards keep a small margin at 0.62. Navigation has no floor, so it
+     stays the most transparent level. At the default 0.74 no floor
+     applies. */
+  --eldra-surface-nav-alpha: var(--eldra-panel-alpha);
+  --eldra-surface-card-alpha: max(var(--eldra-panel-alpha), 0.62);
+  --eldra-surface-reading-alpha: min(1, max(calc(var(--eldra-panel-alpha) + 0.1), 0.82));
+  --eldra-surface-inspector-alpha: max(var(--eldra-panel-alpha), 0.74);
+  --eldra-surface-overlay-alpha: max(var(--eldra-panel-alpha), 0.94);
+  --eldra-surface-card-blur: calc(var(--eldra-panel-blur) * 0.75);
+
+  /* Page backdrop strength (Phase 3C) -- how much of a GM's page
+     background (Page Setup) shows through, per presentation mode. The
+     scrims use the theme's own ground colors. Neutral shows no artwork. */
+  --eldra-backdrop-immersive-opacity: 0.78;
+  --eldra-backdrop-muted-opacity: 0.36;
+  --eldra-backdrop-immersive-scrim: linear-gradient(
+    to bottom,
+    rgb(var(--eldra-ground-top-rgb, var(--eldra-ink-rgb)) / 0.08),
+    rgb(var(--eldra-ground-mid-rgb, var(--eldra-ink-rgb)) / 0.2) 36%,
+    rgb(var(--eldra-ground-bottom-rgb, var(--eldra-ink-rgb)) / 0.36)
+  );
+  --eldra-backdrop-muted-scrim: linear-gradient(
+    to bottom,
+    rgb(var(--eldra-ground-top-rgb, var(--eldra-ink-rgb)) / 0.34),
+    rgb(var(--eldra-ground-mid-rgb, var(--eldra-ink-rgb)) / 0.5) 38%,
+    rgb(var(--eldra-ground-bottom-rgb, var(--eldra-ink-rgb)) / 0.64)
+  );
+
   /* Shape, depth, glow */
   --eldra-radius: 0;
   /* Nuxt UI component radius (must carry a unit). */

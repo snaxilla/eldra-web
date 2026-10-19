@@ -128,7 +128,14 @@
   border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   background:
     radial-gradient(420px 160px at 18% 0%, rgb(var(--eldra-accent-rgb) / 0.13), transparent 62%),
-    linear-gradient(180deg, rgba(16,15,12,0.90), rgba(7,7,6,0.82)) !important;
+    linear-gradient(
+      180deg,
+      rgb(var(--eldra-panel-rgb) / var(--eldra-surface-card-alpha)),
+      rgb(var(--eldra-ink-rgb) / var(--eldra-surface-card-alpha))
+    ) !important;
+  /* Phase 3C: L2 card glass -- derived from the GM panel opacity/blur. */
+  -webkit-backdrop-filter: blur(var(--eldra-surface-card-blur));
+  backdrop-filter: blur(var(--eldra-surface-card-blur));
   box-shadow:
     0 18px 48px rgba(0,0,0,0.35),
     inset 0 0 0 1px rgba(255,235,180,0.035),
@@ -165,7 +172,14 @@
   border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   background:
     radial-gradient(900px 220px at 50% 0%, rgb(var(--eldra-accent-rgb) / 0.11), transparent 68%),
-    linear-gradient(180deg, rgb(var(--eldra-panel-rgb) / 0.88), rgb(var(--eldra-ink-rgb) / 0.78)) !important;
+    linear-gradient(
+      180deg,
+      rgb(var(--eldra-panel-rgb) / var(--eldra-surface-reading-alpha)),
+      rgb(var(--eldra-ink-rgb) / var(--eldra-surface-reading-alpha))
+    ) !important;
+  /* Phase 3C: L3 reading glass -- derived from the GM panel opacity/blur. */
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
   box-shadow:
     0 22px 70px rgba(0,0,0,0.42),
     inset 0 0 0 1px rgba(255,238,190,0.035),
@@ -290,6 +304,14 @@
 
 .eldra-ornate-panel.fixed {
   position: fixed;
+}
+
+/* Phase 3C: a fixed ornate panel is a context inspector (L4) -- the same
+   smoky glass as WorldEntityContextDrawer and the World Map chrome. */
+.eldra-ornate-panel.fixed:not(.eldra-glass-surface) {
+  background:
+    radial-gradient(900px 220px at 50% 0%, rgb(var(--eldra-accent-rgb) / 0.08), transparent 68%),
+    rgb(var(--eldra-panel-rgb) / var(--eldra-surface-inspector-alpha)) !important;
 }
 
 .eldra-sidebar-ornate {

@@ -10,8 +10,8 @@
   --eldra-panel-blur: 0px;
 }
 
-:root[data-eldra-transparency="reduced"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control),
-:root[data-eldra-contrast="high"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control),
+:root[data-eldra-transparency="reduced"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control, .eldra-ornate-panel, .eldra-ornate-card, .eldra-sheet-panel),
+:root[data-eldra-contrast="high"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control, .eldra-ornate-panel, .eldra-ornate-card, .eldra-sheet-panel),
 :root[data-eldra-transparency="reduced"] .leaflet-control-zoom,
 :root[data-eldra-contrast="high"] .leaflet-control-zoom {
   -webkit-backdrop-filter: none;

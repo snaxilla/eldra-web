@@ -274,12 +274,18 @@ export function evaluate(
       continue
     }
 
-    // A gated pool's maximum level is derived, never authored, so only `classList` is judged by
-    // the shared P2 resolver here; the <= comparison against `maxSpellLevel` is this file's own,
-    // applied separately below. A non-gated pool (cantrip/arcanum) hands its FULL filter (exact
-    // level included) to the same resolver, which can then refuse on EITHER dimension -- reported
-    // as the specific reason spellOptionVerdict itself names, never collapsed to one label.
-    const filterForVerdict = gated ? { classList: requirement.filter.classList } : requirement.filter
+    // A gated pool's maximum level is derived, never authored, so `level` is the ONE dimension
+    // withheld from the shared P2 resolver here; the <= comparison against `maxSpellLevel` is
+    // this file's own, applied separately below. Every OTHER filter dimension (classList,
+    // school, ritual) still passes through unchanged -- A3 WORKSTREAM (WIZARD ARCANE
+    // TRADITIONS) found this had silently NOT been true: the prior `{ classList: ... }` literal
+    // dropped `school`/`ritual` for any gated requirement, not just `level`, so a school
+    // -restricted `spellbook`/`spell` pool (Abjurer/Diviner/Evoker/Illusionist's own bonus
+    // spells) would have silently accepted a spell of the WRONG school. No authored facet
+    // before A3 ever set `school`/`ritual` on a gated pool (confirmed by inspection), so this
+    // fix changes behavior for zero pre-A3 requirement. A non-gated pool (cantrip/arcanum/fixed)
+    // still hands its FULL filter (exact level included) to the same resolver, unchanged.
+    const filterForVerdict = gated ? { ...requirement.filter, level: undefined } : requirement.filter
     const verdict = spellOptionVerdict({ mechanics: candidate.mechanics, filter: filterForVerdict })
     if (!verdict.eligible) {
       if (!gated && verdict.reason === 'wrong-level') {

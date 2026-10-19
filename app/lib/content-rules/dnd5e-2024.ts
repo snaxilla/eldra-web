@@ -1688,11 +1688,586 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   // corpus), but no longer blocked on any missing primitive. Their own three Resource
   // Definitions remain unauthored in definitions.json for the same "an unreferenced
   // Definition risks being mistaken for done" reason as before.
-  subclass: {
-    'battle-master-xphb': {
-      resources: ['resource:superiority_dice']
-    }
-  },
+    // ---------------------------------------------------------------------
+    // A3 -- SUBCLASS SPELL AUTHORING. Re-derived directly from the real XPHB corpus
+    // (class-<name>.json's own `subclass[].additionalSpells`), via A2's already-proven,
+    // zero-new-code generic machinery (subclassFacet/subclassPackageId ownership,
+    // gatherSpellRequirements/resolveFixedSpellGrants treating `subclass` as an ordinary
+    // owner alongside class/species/background). Every entry below is a FixedSpellGrant
+    // (no "of your choice" clause in the real text -- a domain/patron/circle's own always-
+    // prepared or permanently-known spells, growing by `minLevel`, omitted at Level 3 since
+    // no subclass facet is ever active before its own subclass-selection level) or a
+    // SpellRequirement (a real "of your choice" pick, reusing the IDENTICAL pool-kind/
+    // level-gating machinery a class's own normal spellcasting already uses -- see each
+    // group's own header below for why no new engine primitive was needed).
+    //
+    // DELIBERATELY NOT AUTHORED HERE, WITH THE EXACT REASON (never silently dropped):
+    //   - Archfey Patron's Charisma-per-day Misty Step, Psi Warrior's 1/Long-Rest
+    //     Telekinesis, Warrior of Shadow's Focus-Point Darkness: each is a spell usable
+    //     ONLY via a specific finite resource/charge pool, never via the character's normal
+    //     spell slots. `FixedSpellGrant` has exactly two flags ('known'/'prepared'), both of
+    //     which mean "usable like any other known/prepared spell through normal casting" --
+    //     neither honestly represents "usable only by spending this one resource." Modeling
+    //     either as a plain FixedSpellGrant would misrepresent the real rule (letting the
+    //     spell be freely prepared/cast via a normal slot, which the real text does not
+    //     allow). No generic "spell gated behind a specific resource pool" primitive exists
+    //     today -- a genuine gap, reported in this phase's own final report, not fabricated.
+    //   - Eldritch Knight / Arcane Trickster's own LEVELED "expanded" Wizard spell pool
+    //     (preparedSpellsProgression -- 3rd-level spells and up): see the THIRD-CASTER
+    //     header below. Their CANTRIP pool is authored; their leveled pool is a reported
+    //     STOP, not an omission.
+    //   - Battle Master's Combat Superiority maneuvers, every subclass's own non-spell
+    //     feature-option/proficiency/damage-type/feat-choice decision (Aspect of the Wilds,
+    //     Champion's Additional Fighting Style, ...): out of A3's spell-only scope, per the
+    //     task brief itself; still their own separate, pre-existing blocked ledger rows.
+    //   - College of Glamour's own Level-6 "innate" Command: the SAME spell the Level-6
+    //     "prepared" grant already names -- the "innate" tag only means it can ALSO be cast
+    //     without expending a slot (a casting-mechanic variant of the identical acquisition
+    //     fact, not a second one). Authoring a second FixedSpellGrant for the same slug would
+    //     violate StoredSpellEntry's own "never two physical rows for the same spell
+    //     identity" invariant (app/lib/characters/spellcasting.ts) -- the single `prepared`
+    //     entry below is the honest, complete acquisition fact; the free-cast mechanic is
+    //     the same deferred runtime-effect category every other subclass feature's own
+    //     combat/utility text already sits in (Weapon Mastery property, Fighting Style
+    //     effect, ...).
+    subclass: {
+      'battle-master-xphb': {
+        resources: ['resource:superiority_dice']
+      },
+
+      // -- FIXED SPELL GRANTS (prepared/known, no player choice at all) -----------------
+      // One `minLevel`-windowed FixedSpellGrant per spell; `resolveFixedSpellGrants`'s own
+      // existing windowing (app/lib/characters/spell-requirement-ownership.ts) already
+      // de-duplicates a level-by-level progression walk, and `confirmProgression`
+      // (server/utils/character-progression-plan.ts) already passes `subclass` through
+      // the identical owners array as class/species/background -- zero new code below this
+      // header, every subclass is a pure data entry.
+      'path-of-the-wild-heart-xphb': { // Path of the Wild Heart (Barbarian)
+        fixedSpellGrants: [
+          { slug: 'beast-sense-xphb', flag: 'known', minLevel: 3 },
+          { slug: 'speak-with-animals-xphb', flag: 'known', minLevel: 3 },
+          { slug: 'commune-with-nature-xphb', flag: 'known', minLevel: 10 }
+        ]
+      },
+      'college-of-glamour-xphb': { // College of Glamour (Bard)
+        fixedSpellGrants: [
+          { slug: 'charm-person-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'mirror-image-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'command-xphb', flag: 'prepared', minLevel: 6 }
+        ]
+      },
+      'life-domain-xphb': { // Life Domain (Cleric)
+        fixedSpellGrants: [
+          { slug: 'aid-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'bless-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'cure-wounds-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'lesser-restoration-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'mass-healing-word-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'revivify-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'aura-of-life-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'death-ward-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'greater-restoration-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'mass-cure-wounds-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'light-domain-xphb': { // Light Domain (Cleric)
+        fixedSpellGrants: [
+          { slug: 'burning-hands-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'faerie-fire-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'scorching-ray-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'see-invisibility-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'daylight-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fireball-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'arcane-eye-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'wall-of-fire-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'flame-strike-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'scrying-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'trickery-domain-xphb': { // Trickery Domain (Cleric)
+        fixedSpellGrants: [
+          { slug: 'charm-person-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'disguise-self-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'invisibility-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'pass-without-trace-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'hypnotic-pattern-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'nondetection-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'confusion-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'dimension-door-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'dominate-person-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'modify-memory-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'war-domain-xphb': { // War Domain (Cleric)
+        fixedSpellGrants: [
+          { slug: 'guiding-bolt-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'magic-weapon-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'shield-of-faith-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'spiritual-weapon-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'crusaders-mantle-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'spirit-guardians-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fire-shield-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'freedom-of-movement-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'hold-monster-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'steel-wind-strike-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'circle-of-the-moon-xphb': { // Circle of the Moon (Druid)
+        fixedSpellGrants: [
+          { slug: 'cure-wounds-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'moonbeam-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'starry-wisp-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'conjure-animals-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fount-of-moonlight-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'mass-cure-wounds-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'circle-of-the-sea-xphb': { // Circle of the Sea (Druid)
+        fixedSpellGrants: [
+          { slug: 'fog-cloud-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'gust-of-wind-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'ray-of-frost-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'shatter-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'thunderwave-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'lightning-bolt-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'water-breathing-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'control-water-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'ice-storm-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'conjure-elemental-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'hold-monster-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'circle-of-the-stars-xphb': { // Circle of the Stars (Druid)
+        fixedSpellGrants: [
+          { slug: 'guidance-xphb', flag: 'known', minLevel: 3 },
+          { slug: 'guiding-bolt-xphb', flag: 'prepared', minLevel: 3 }
+        ]
+      },
+      'warrior-of-shadow-xphb': { // Warrior of Shadow (Monk)
+        fixedSpellGrants: [
+          { slug: 'minor-illusion-xphb', flag: 'known', minLevel: 3 }
+        ]
+      },
+      'warrior-of-the-elements-xphb': { // Warrior of the Elements (Monk)
+        fixedSpellGrants: [
+          { slug: 'elementalism-xphb', flag: 'known', minLevel: 3 }
+        ]
+      },
+      'oath-of-devotion-xphb': { // Oath of Devotion (Paladin)
+        fixedSpellGrants: [
+          { slug: 'protection-from-evil-and-good-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'shield-of-faith-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'aid-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'zone-of-truth-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'beacon-of-hope-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'dispel-magic-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'freedom-of-movement-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'guardian-of-faith-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'commune-xphb', flag: 'prepared', minLevel: 17 },
+          { slug: 'flame-strike-xphb', flag: 'prepared', minLevel: 17 }
+        ]
+      },
+      'oath-of-glory-xphb': { // Oath of Glory (Paladin)
+        fixedSpellGrants: [
+          { slug: 'guiding-bolt-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'heroism-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'enhance-ability-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'magic-weapon-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'haste-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'protection-from-energy-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'compulsion-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'freedom-of-movement-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'legend-lore-xphb', flag: 'prepared', minLevel: 17 },
+          { slug: 'yolandes-regal-presence-xphb', flag: 'prepared', minLevel: 17 }
+        ]
+      },
+      'oath-of-the-ancients-xphb': { // Oath of the Ancients (Paladin)
+        fixedSpellGrants: [
+          { slug: 'ensnaring-strike-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'speak-with-animals-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'misty-step-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'moonbeam-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'plant-growth-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'protection-from-energy-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'ice-storm-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'stoneskin-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'commune-with-nature-xphb', flag: 'prepared', minLevel: 17 },
+          { slug: 'tree-stride-xphb', flag: 'prepared', minLevel: 17 }
+        ]
+      },
+      'oath-of-vengeance-xphb': { // Oath of Vengeance (Paladin)
+        fixedSpellGrants: [
+          { slug: 'bane-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'hunters-mark-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'hold-person-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'misty-step-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'haste-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'protection-from-energy-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'banishment-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'dimension-door-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'hold-monster-xphb', flag: 'prepared', minLevel: 17 },
+          { slug: 'scrying-xphb', flag: 'prepared', minLevel: 17 }
+        ]
+      },
+      'fey-wanderer-xphb': { // Fey Wanderer (Ranger)
+        fixedSpellGrants: [
+          { slug: 'charm-person-xphb', flag: 'known', minLevel: 3 },
+          { slug: 'misty-step-xphb', flag: 'known', minLevel: 5 },
+          { slug: 'summon-fey-xphb', flag: 'known', minLevel: 9 },
+          { slug: 'dimension-door-xphb', flag: 'known', minLevel: 13 },
+          { slug: 'mislead-xphb', flag: 'known', minLevel: 17 }
+        ]
+      },
+      'gloom-stalker-xphb': { // Gloom Stalker (Ranger)
+        fixedSpellGrants: [
+          { slug: 'disguise-self-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'rope-trick-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fear-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'greater-invisibility-xphb', flag: 'prepared', minLevel: 13 },
+          { slug: 'seeming-xphb', flag: 'prepared', minLevel: 17 }
+        ]
+      },
+      'aberrant-sorcery-xphb': { // Aberrant Sorcery (Sorcerer)
+        fixedSpellGrants: [
+          { slug: 'arms-of-hadar-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'calm-emotions-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'detect-thoughts-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'dissonant-whispers-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'mind-sliver-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'hunger-of-hadar-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'sending-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'evards-black-tentacles-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'summon-aberration-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'rarys-telepathic-bond-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'telekinesis-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'clockwork-sorcery-xphb': { // Clockwork Sorcery (Sorcerer)
+        fixedSpellGrants: [
+          { slug: 'aid-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'alarm-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'lesser-restoration-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'protection-from-evil-and-good-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'dispel-magic-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'protection-from-energy-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'freedom-of-movement-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'summon-construct-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'greater-restoration-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'wall-of-force-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'draconic-sorcery-xphb': { // Draconic Sorcery (Sorcerer)
+        fixedSpellGrants: [
+          { slug: 'alter-self-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'chromatic-orb-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'command-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'dragons-breath-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'fear-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fly-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'arcane-eye-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'charm-monster-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'legend-lore-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'summon-dragon-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'archfey-patron-xphb': { // Archfey Patron (Warlock)
+        fixedSpellGrants: [
+          { slug: 'calm-emotions-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'faerie-fire-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'misty-step-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'phantasmal-force-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'sleep-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'blink-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'plant-growth-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'dominate-beast-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'greater-invisibility-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'dominate-person-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'seeming-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'celestial-patron-xphb': { // Celestial Patron (Warlock)
+        fixedSpellGrants: [
+          { slug: 'sacred-flame-xphb', flag: 'known', minLevel: 1 },
+          { slug: 'light-xphb', flag: 'known', minLevel: 1 },
+          { slug: 'aid-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'cure-wounds-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'guiding-bolt-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'lesser-restoration-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'daylight-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'revivify-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'guardian-of-faith-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'wall-of-fire-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'greater-restoration-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'summon-celestial-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'fiend-patron-xphb': { // Fiend Patron (Warlock)
+        fixedSpellGrants: [
+          { slug: 'burning-hands-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'command-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'scorching-ray-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'suggestion-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'fireball-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'stinking-cloud-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'fire-shield-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'wall-of-fire-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'geas-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'insect-plague-xphb', flag: 'prepared', minLevel: 9 }
+        ]
+      },
+      'great-old-one-patron-xphb': { // Great Old One Patron (Warlock)
+        fixedSpellGrants: [
+          { slug: 'detect-thoughts-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'dissonant-whispers-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'phantasmal-force-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'tashas-hideous-laughter-xphb', flag: 'prepared', minLevel: 3 },
+          { slug: 'clairvoyance-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'hunger-of-hadar-xphb', flag: 'prepared', minLevel: 5 },
+          { slug: 'confusion-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'summon-aberration-xphb', flag: 'prepared', minLevel: 7 },
+          { slug: 'modify-memory-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'telekinesis-xphb', flag: 'prepared', minLevel: 9 },
+          { slug: 'hex-xphb', flag: 'known', minLevel: 10 }
+        ]
+      },
+      // (Abjurer/Diviner/Illusionist's own fixedSpellGrants are merged into the WIZARD ARCANE
+      // TRADITIONS entries below, alongside their spellRequirements -- one block per subclass.)
+
+      // -- CIRCLE OF THE LAND (variant-choice: which terrain's spell list applies) --------
+      // "Choose a type of terrain... you can change your terrain whenever you finish a Long
+      // Rest in that terrain." The terrain pick itself is the SAME `choice:species.feature
+      // -option` shape (Elven/Gnomish Lineage, Fiendish Legacy) under a new, owner-agnostic
+      // `choice:subclass.feature-option` Definition (packages/eldra-dnd5e-2024/
+      // definitions.json) -- never a class/subclass name check. Each terrain's own fixed
+      // spell list gates on its own Source via the IDENTICAL `requiresActive` evaluator
+      // every lineage/legacy grant above already uses. The Long-Rest re-pick clause is the
+      // SAME optional `replacement` family every other subclass's own re-answer clause
+      // already sits in (`opt:replacement`) -- never implemented, never blocking.
+      'circle-of-the-land-xphb': {
+        choices: [
+          {
+            choiceSet: 'choice:subclass.feature-option',
+            count: 1,
+            from: ['source:land-circle.arid', 'source:land-circle.polar', 'source:land-circle.temperate', 'source:land-circle.tropical']
+          }
+        ],
+        fixedSpellGrants: [
+          { slug: 'blur-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'] },
+          { slug: 'burning-hands-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'] },
+          { slug: 'fire-bolt-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'] },
+          { slug: 'fireball-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'], minLevel: 5 },
+          { slug: 'blight-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'], minLevel: 7 },
+          { slug: 'wall-of-stone-xphb', flag: 'prepared', requiresActive: ['source:land-circle.arid'], minLevel: 9 },
+
+          { slug: 'fog-cloud-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'] },
+          { slug: 'hold-person-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'] },
+          { slug: 'ray-of-frost-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'] },
+          { slug: 'sleet-storm-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'], minLevel: 5 },
+          { slug: 'ice-storm-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'], minLevel: 7 },
+          { slug: 'cone-of-cold-xphb', flag: 'prepared', requiresActive: ['source:land-circle.polar'], minLevel: 9 },
+
+          { slug: 'misty-step-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'] },
+          { slug: 'shocking-grasp-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'] },
+          { slug: 'sleep-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'] },
+          { slug: 'lightning-bolt-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'], minLevel: 5 },
+          { slug: 'freedom-of-movement-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'], minLevel: 7 },
+          { slug: 'tree-stride-xphb', flag: 'prepared', requiresActive: ['source:land-circle.temperate'], minLevel: 9 },
+
+          { slug: 'acid-splash-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'] },
+          { slug: 'ray-of-sickness-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'] },
+          { slug: 'web-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'] },
+          { slug: 'stinking-cloud-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'], minLevel: 5 },
+          { slug: 'polymorph-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'], minLevel: 7 },
+          { slug: 'insect-plague-xphb', flag: 'prepared', requiresActive: ['source:land-circle.tropical'], minLevel: 9 }
+        ]
+      },
+
+      // -- WIZARD ARCANE TRADITIONS (spell SELECTION, school-restricted, growing) --------
+      // "Whenever you gain a level in this class, you can replace one of these spells..." --
+      // the replacement clause is `opt:replacement`, never implemented. The pick itself:
+      // "learn N Wizard spells of 2nd level or lower from the school of <X>... they don't
+      // count against the number of spells you know" (Abjurer/Diviner/Evoker: exactly this
+      // shape; Illusionist adds its own separate, already-authored Minor Illusion/Summon
+      // Beast-Fey fixed grants above). The level CAP ("2nd level or lower," widening every
+      // two class levels) is NEVER encoded as `filter.level` here -- `SpellCatalogueFilter
+      // .level` is exact-only (app/lib/rules/types.ts's own header), but `pool: 'spellbook'`
+      // is ALREADY dynamically level-gated against the character's own derived castable
+      // level (`isLevelGated`, app/lib/characters/spell-requirements.ts) -- and a WIZARD's
+      // own normal spell-slot progression happens to reach exactly 2nd/3rd/4th/.../9th level
+      // at character levels 3/5/7/.../17 (confirmed directly against the real XPHB Wizard
+      // slot table), i.e. IDENTICAL to each tradition's own corpus-stated level cap at each
+      // of those same levels. The existing primitive already expresses the real rule
+      // exactly, with zero new filter shape. `pool: 'spellbook'` also gives `flag: 'known'`
+      // (`flagFor`) -- matching the corpus's own "known" key (never "prepared") -- and does
+      // NOT interact with the real Wizard class spellbook requirement on the SAME character
+      // (`requiresMembershipPool` is opt-in per requirement; nothing here sets it, so these
+      // rows never gate or get gated by the class's own spellbook pool).
+      'abjurer-xphb': {
+        fixedSpellGrants: [
+          { slug: 'counterspell-xphb', flag: 'prepared', minLevel: 10 },
+          { slug: 'dispel-magic-xphb', flag: 'prepared', minLevel: 10 }
+        ],
+        spellRequirements: [
+          {
+            id: 'spell-requirement.abjurer-xphb.tradition-spells',
+            pool: 'spellbook',
+            filter: { classList: ['Wizard'], school: ['Abjuration'] },
+            totalByLevel: [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9],
+            label: 'Abjurer Spells'
+          }
+        ]
+      },
+      'diviner-xphb': {
+        fixedSpellGrants: [
+          { slug: 'see-invisibility-xphb', flag: 'known', minLevel: 10 }
+        ],
+        spellRequirements: [
+          {
+            id: 'spell-requirement.diviner-xphb.tradition-spells',
+            pool: 'spellbook',
+            filter: { classList: ['Wizard'], school: ['Divination'] },
+            totalByLevel: [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9],
+            label: 'Diviner Spells'
+          }
+        ]
+      },
+      'evoker-xphb': {
+        spellRequirements: [
+          {
+            id: 'spell-requirement.evoker-xphb.tradition-spells',
+            pool: 'spellbook',
+            filter: { classList: ['Wizard'], school: ['Evocation'] },
+            totalByLevel: [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9],
+            label: 'Evoker Spells'
+          }
+        ]
+      },
+      'illusionist-xphb': {
+        fixedSpellGrants: [
+          { slug: 'minor-illusion-xphb', flag: 'known', minLevel: 3 },
+          { slug: 'summon-beast-xphb', flag: 'prepared', minLevel: 6 },
+          { slug: 'summon-fey-xphb', flag: 'prepared', minLevel: 6 }
+        ],
+        spellRequirements: [
+          {
+            id: 'spell-requirement.illusionist-xphb.tradition-spells',
+            pool: 'spellbook',
+            filter: { classList: ['Wizard'], school: ['Illusion'] },
+            totalByLevel: [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9],
+            label: 'Illusionist Spells'
+          }
+        ]
+      },
+
+      // -- COLLEGE OF LORE (Magical Discoveries, spell SELECTION, multi-class list) ------
+      // "Learn two spells of your choice, level 0-3, from the Cleric, Druid, or Wizard
+      // spell list." `classList` is already an OR-of-several-classes array (its own header,
+      // app/lib/rules/types.ts: "at least one of these named classes' list"), so 3 classes
+      // is zero new shape. The level cap ("3rd level or lower") is, again, never a
+      // `filter.level` literal -- `pool: 'spellbook'`'s own dynamic level-gating against a
+      // BARD's own derived castable level happens to reach exactly 3rd level at character
+      // level 6, the SAME level this feature is acquired, so the existing gate alone already
+      // enforces "spells of your current castable level or lower," matching the real text.
+      // A flat, one-time total (2 from Level 6 on) -- the real corpus has no further growth.
+      'college-of-lore-xphb': {
+        spellRequirements: [
+          {
+            id: 'spell-requirement.college-of-lore-xphb.magical-discoveries',
+            pool: 'spellbook',
+            filter: { classList: ['Cleric', 'Druid', 'Wizard'] },
+            totalByLevel: [0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            label: 'Magical Discoveries'
+          }
+        ]
+      },
+
+      // -- THIRD-CASTER SUBCLASSES (Eldritch Knight / Arcane Trickster) -- COMPLETE -------
+      // CANTRIP pool: `pool: 'cantrip'` is never level-gated (`isLevelGated` only checks
+      // 'spell'/'spellbook') -- its own filter already names an exact level (0). `totalByLevel`
+      // re-derived directly from each subclass's own real `cantripProgression`
+      // (class-fighter.json/class-rogue.json, byte-identical for both).
+      //
+      // LEVELED spell pool (1st-4th level Wizard spells, "Spells Prepared") -- A3 WORKSTREAM,
+      // THIRD-CASTER LEVELED SPELL ACQUISITION. Previously undeliverable: `casterTypeOf`/
+      // `progressionSpellSlotLevels` derived the character's own `maxSpellLevel` -- which gates
+      // every 'spell'-pool requirement's legality -- from the CLASS facet alone, and Fighter's/
+      // Rogue's own class facet is a non-caster, so this pool would always have seen
+      // `maxSpellLevel === 0`. Fixed generically (server/utils/character-spell-acquisition.ts's
+      // new `effectiveCasterTypeOf`, server/utils/character-progression-spell-acquisition.ts's
+      // `progressionSpellSlotLevels` widened to accept an array of facets,
+      // character-progression-plan.ts's own single real call site passing BOTH the class and
+      // subclass facets) -- no subclass name anywhere in that fix, and every pre-existing
+      // single-facet caller is unaffected (see each function's own header).
+      //
+      // The corpus's own "expanded" additionalSpells block (`{all: "level=N|class=Wizard"}`,
+      // no `school` restriction, unlike the Wizard Arcane Traditions above) is NOT a second
+      // acquisition -- it is 5etools' own "which spell levels are eligible" ELIGIBILITY marker
+      // for this subclass's OWN "Spells Prepared" feature (subclassTableGroups, re-derived
+      // directly from class-fighter.json/class-rogue.json: `preparedSpellsProgression` --
+      // [0,0,3,4,4,4,5,6,6,7,8,8,9,10,10,11,11,11,12,13], byte-identical for both subclasses).
+      // Re-verified directly against the real `rowsSpellProgression` slot table (not assumed):
+      // 1st-level slots first appear at character level 3, 2nd at 7, 3rd at 13, 4th at 19 --
+      // EXACTLY the corpus's own "expanded" unlock levels (3/3/7/13/19 for spell levels 0-4) --
+      // confirming the THIRD-CASTER's own derived `maxSpellLevel` (now correctly read off the
+      // subclass's own slot table via the fix above) already reaches each eligible level at
+      // precisely the right character level, with zero extra filter shape: a single, UNGATED-
+      // on-level `classList: ['Wizard']` 'spell'-pool requirement (flag 'prepared', matching
+      // the real "Spells Prepared" table name, not "known") is exactly the real rule -- the
+      // SAME pattern a real full/half caster's own normal 'spell' pool already uses, just
+      // classList-restricted to Wizard instead of the owning class. REPLACEMENT ("you can
+      // replace one of these spells...", discovered separately as `Eldritch Knight Spellcasting
+      // /War Magic/Improved War Magic` and `Arcane Trickster Spellcasting`, each an
+      // optional-re-answer `variant-choice`/`replacement` decision) is NOT modeled, exactly like
+      // every other replacement clause in this corpus (`opt:replacement`) -- never implemented,
+      // never blocking. No 2014-rules assumption anywhere here: every level/count/filter value
+      // above is re-derived directly from the real native XPHB corpus, not carried over from a
+      // prior edition's spell-list-restriction text.
+      'eldritch-knight-xphb': {
+        grants: [
+          { set: 'value:spellcasting.caster_type.third', to: true }
+        ],
+        spellRequirements: [
+          {
+            id: 'spell-requirement.eldritch-knight-xphb.cantrip',
+            pool: 'cantrip',
+            filter: { classList: ['Wizard'], level: 0 },
+            totalByLevel: [0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            label: 'Eldritch Knight Cantrips'
+          },
+          {
+            id: 'spell-requirement.eldritch-knight-xphb.spell',
+            pool: 'spell',
+            filter: { classList: ['Wizard'] },
+            totalByLevel: [0, 0, 3, 4, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11, 11, 11, 12, 13],
+            label: 'War Magic Spells'
+          }
+        ]
+      },
+      'arcane-trickster-xphb': {
+        grants: [
+          { set: 'value:spellcasting.caster_type.third', to: true }
+        ],
+        fixedSpellGrants: [
+          { slug: 'mage-hand-xphb', flag: 'known', minLevel: 3 }
+        ],
+        spellRequirements: [
+          {
+            id: 'spell-requirement.arcane-trickster-xphb.cantrip',
+            pool: 'cantrip',
+            filter: { classList: ['Wizard'], level: 0 },
+            totalByLevel: [0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            label: 'Arcane Trickster Cantrips'
+          },
+          {
+            id: 'spell-requirement.arcane-trickster-xphb.spell',
+            pool: 'spell',
+            filter: { classList: ['Wizard'] },
+            totalByLevel: [0, 0, 3, 4, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11, 11, 11, 12, 13],
+            label: 'Mystic Trickster Spells'
+          }
+        ]
+      }
+    },
 
   // ---------------------------------------------------------------------
   // FEATS -- D&D 2024 Character Rules Phase 2A.1

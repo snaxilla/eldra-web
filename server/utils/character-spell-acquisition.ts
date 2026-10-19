@@ -76,6 +76,48 @@ export function casterTypeOf(facet: RulesFacet | null | undefined): CasterType |
   return (CASTER_TYPES as readonly string[]).includes(type) ? (type as CasterType) : null
 }
 
+// A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. The generic, subclass-aware
+// counterpart of `casterTypeOf` above: a character's EFFECTIVE caster type may be granted by the
+// class facet (every real full/half/pact caster) OR by the SUBCLASS facet (Eldritch Knight's/
+// Arcane Trickster's own third-caster progression -- their base class, Fighter/Rogue, grants
+// none). Checks every given facet through the SAME `casterTypeOf` grant-scan above, never a
+// second, parallel evaluator -- this is a generalization of that one function, not a
+// reimplementation. Reads the SAME `value:spellcasting.caster_type.<type>` Value
+// `character-cast.ts`'s own evaluated-actor-state scan already reads post-confirm; this version
+// reads it directly off the UNEVALUATED facets instead, which is the only thing that can work for
+// a TENTATIVE (not-yet-persisted) preview answer -- a full ActorState rebuild is neither available
+// nor correct for an in-progress Preview/Confirm call.
+//
+// FAILS CLOSED on a genuine conflict (more than one DISTINCT caster type found active across the
+// given facets): returns `null`, the SAME "no caster type" case `deriveSpellSlotLevels` already
+// treats as "zero slots, every level-gated requirement refused" -- never a silent first-match
+// preference. No class or subclass name anywhere in this function; a homebrew subclass granting
+// a conflicting caster type on an already-casting base class fails the SAME way. The real XPHB
+// corpus cannot reach this branch: every third-caster subclass's own base class (Fighter, Rogue)
+// grants no caster type at all, and a genuine two-REAL-CLASS multiclass is already refused much
+// earlier in the pipeline (`multiclass-not-supported`, character-progression-plan.ts) before a
+// caller could ever pass two caster-type-granting class facets here at once.
+//
+// ARCHITECTURAL LIMITATION, RECORDED (not a defect of this function): a GENUINE two-real-class
+// multiclass -- a Wizard/Cleric multiclass, say, where BOTH classes legitimately grant their own
+// caster type -- would hit this function's own fail-closed conflict branch the moment
+// `multiclass-not-supported` is ever lifted elsewhere. That is correct and intentional for THIS
+// phase (a real conflict must never resolve silently), but it also means real multiclass
+// spellcasting support is NOT merely "remove the multiclass-not-supported check": it needs each
+// class's own caster progression tracked and summed SEPARATELY (the real 5e multiclass
+// spellcasting rule -- each class levels its own slot table, then the slots are combined by a
+// published formula), never collapsed into one shared `effectiveCasterTypeOf` value the way a
+// single class + its own subclass correctly are here. That is future work, out of this phase's
+// own approved scope, not fabricated or approximated by this function.
+export function effectiveCasterTypeOf(facets: readonly (RulesFacet | null | undefined)[]): CasterType | null {
+  const found = new Set<CasterType>()
+  for (const facet of facets) {
+    const type = casterTypeOf(facet)
+    if (type) found.add(type)
+  }
+  return found.size === 1 ? [...found][0]! : null
+}
+
 export function creationSpellSlotLevels(
   casterType: CasterType | null,
   tableRows: readonly Record<string, unknown>[] | undefined

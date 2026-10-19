@@ -1206,7 +1206,13 @@ export async function planProgression(
       getWorldRuntime(worldId)
     ])
     const registry = runtime.configured && runtime.ok ? runtime.runtime.registry : null
-    const spellSlotLevels = progressionSpellSlotLevels(registry, current.state.classFacet, targetLevel)
+    // A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. Both the class facet AND
+    // `previewSubclassFacet` (computed just above -- this call's own tentative subclass pick,
+    // falling back to the persisted one, the SAME priority `gatherSpellRequirements`'s own
+    // owners array already uses) are passed, so a third-caster subclass's own caster-type grant
+    // (Eldritch Knight, Arcane Trickster) is seen here exactly as it already is by
+    // `gatherSpellRequirements` above -- never class-facet-only, as before this phase.
+    const spellSlotLevels = progressionSpellSlotLevels(registry, [current.state.classFacet, previewSubclassFacet], targetLevel)
 
     spellPlan = buildProgressionSpellPlan({
       requirements: spellRequirements,

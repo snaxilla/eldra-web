@@ -6566,5 +6566,46 @@
     "modifiers": [
       { "target": "value:resistance.fire.granted", "phase": "set", "value": true }
     ]
+  },
+  {
+    "id": "choice:subclass.feature-option",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Subclass Feature Option",
+    "prompt": "Choose one of the following options.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "effect": "activate-source"
+  },
+  {
+    "id": "source:land-circle.arid",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Circle of the Land: Arid Land",
+    "modifiers": []
+  },
+  {
+    "id": "source:land-circle.polar",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Circle of the Land: Polar Land",
+    "modifiers": []
+  },
+  {
+    "id": "source:land-circle.temperate",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Circle of the Land: Temperate Land",
+    "modifiers": []
+  },
+  {
+    "id": "source:land-circle.tropical",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Circle of the Land: Tropical Land",
+    "modifiers": []
   }
 ]

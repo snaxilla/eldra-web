@@ -166,10 +166,42 @@ describe('P3.5 -- spell decision reconciliation', () => {
     }
   })
 
-  it('STILL BLOCKED -- subclass-owned spell decisions are untouched by P3.5 (owned by P4 subclass feature-level gating, not reclassified)', () => {
-    const subclassSpell = DECISIONS.filter((d) => d.owner.kind === 'subclass' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family))
+  // A3 -- subclass-owned spell decisions are NO LONGER uniformly blocked: fixed grants
+  // (prepared/known/unconditional-flat-innate), the Wizard Arcane Traditions' and College of
+  // Lore's own spell selection, Circle of the Land's terrain variant-choice, and -- as of the
+  // THIRD-CASTER LEVELED SPELL ACQUISITION workstream -- Eldritch Knight's/Arcane Trickster's
+  // own third-caster slot grant AND leveled Wizard spell pool are all now implemented (see
+  // mandatory-decision-coverage.ts's own A3 header). What remains BLOCKED, and why, is
+  // re-verified directly below rather than asserted blind:
+  //   - resource-gated "innate" grants (Archfey Patron, Psi Warrior, Warrior of Shadow's own
+  //     Darkness) -- no generic primitive for a spell usable only via a specific finite
+  //     resource, never a normal slot.
+  //   - Warrior of Shadow's own 'known' Minor Illusion decision -- a SIBLING-CARDINALITY
+  //     casualty, not a separate gap: it shares its exact (owner, level, engine-flag) key with
+  //     the withheld Darkness decision above (both Level 3, both flag 'known'), and the
+  //     coverage check's own fail-closed sibling-total guard (mandatory-decision-coverage.ts's
+  //     own header) correctly refuses to claim either is individually covered once a sibling is
+  //     missing -- conservative, never a false positive, even though Minor Illusion's own grant
+  //     is genuinely, correctly authored.
+  //   - College of Glamour's own Level-6 "innate" Command -- a discovery-model duplicate of
+  //     the SAME spell the Level-6 "prepared" decision already names (the "innate" tag only
+  //     means it can ALSO be cast without a slot, never a second acquisition); authoring a
+  //     second FixedSpellGrant for the identical slug would violate StoredSpellEntry's own
+  //     "never two physical rows for the same spell identity" invariant, so only the
+  //     "prepared" decision is implemented and this one is left correctly unmatched.
+  it('A3 -- subclass-owned spell decisions are implemented where authored, blocked for a named reason otherwise', () => {
+    const subclassSpell = DECISIONS.filter((d) => d.owner.kind === 'subclass' && ['spell-choice', 'spell-grant', 'spell-count', 'variant-choice'].includes(d.family))
     expect(subclassSpell.length).toBeGreaterThan(0)
-    for (const d of subclassSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
+    const RESOURCE_GATED_INNATE_OWNERS = new Set(['archfey-patron-xphb', 'psi-warrior-xphb', 'warrior-of-shadow-xphb'])
+    for (const d of subclassSpell) {
+      const classification = classifyDecision(d)
+      if (classification.status === 'implemented') continue
+      expect(classification.status, d.id).toBe('blocked')
+      const isResourceGatedInnate = d.family === 'spell-grant' && d.source.endsWith('.innate') && RESOURCE_GATED_INNATE_OWNERS.has(d.owner.slug)
+      const isWarriorOfShadowSiblingCasualty = d.family === 'spell-grant' && d.owner.slug === 'warrior-of-shadow-xphb' && d.source.endsWith('.known')
+      const isGlamourInnateDuplicate = d.family === 'spell-grant' && d.owner.slug === 'college-of-glamour-xphb' && d.source.endsWith('.innate')
+      expect(isResourceGatedInnate || isWarriorOfShadowSiblingCasualty || isGlamourInnateDuplicate, d.id).toBe(true)
+    }
   })
 
   // AASIMAR CREATION COMPLETION PHASE -- species-granted spell decisions are NO LONGER uniformly

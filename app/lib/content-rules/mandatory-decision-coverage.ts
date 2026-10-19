@@ -28,6 +28,10 @@ import { findRulesFacet } from './index'
 import { slugOf, type DecisionRecord } from './mandatory-decisions'
 import { valueIdsOfDetail, SKILLS, skillValueId } from './proficiency-vocabulary'
 import type { EquipmentChoice, RulesFacet } from './types'
+// Read directly from the generated artifact, never from `creation-completeness.ts` (which itself
+// imports `classifyDecision` from THIS file -- importing back would be circular). Used only by
+// `subclassFixedSpellGrantCovered`'s own sibling-cardinality check below.
+import mandatoryDecisionsArtifact from './dnd5e-2024-mandatory-decisions.json'
 
 export type CoverageStatus = 'implemented' | 'blocked' | 'optional' | 'false-positive' | 'runtime-effect'
 
@@ -440,6 +444,130 @@ export function proficiencyCovered(d: DecisionRecord): boolean {
   return facets.some((f) => (f.choices ?? []).some((c) => c.count === d.cardinality && sameSet(c.from ?? [], ids)))
 }
 
+// ---------------------------------------------------------------------------
+// A3 -- SUBCLASS SPELL ACQUISITION COVERAGE.
+// ---------------------------------------------------------------------------
+// Every function here re-reads the REAL authored subclass facet (never a bare family/owner
+// match) -- the same discipline every spell-acquisition rule in this file already follows.
+// None names a specific subclass except `circleOfLandVariantCovered` (the real corpus has
+// exactly one subclass-owned `variant-choice` decision, mirroring this file's own precedent
+// for a single-instance-shaped rule, e.g. `impl:feat-damage-type-choice`).
+
+// A fixed (no "of your choice") subclass spell grant: the corpus's own additionalSpells kind
+// ('prepared'/'known'/unconditional-flat 'innate') maps onto `FixedSpellGrant.flag` ('known'
+// for 'known' and unconditional 'innate' -- see this phase's own authoring header in
+// dnd5e-2024.ts for why a flat 'innate' grant is modeled as 'known'; 'prepared' for
+// 'prepared'). Covered when the subclass facet's own `fixedSpellGrants` carries EXACTLY the
+// discovered count at the discovered level (never more, never fewer) -- a resource-gated
+// 'innate' grant (Archfey Patron, Psi Warrior, Warrior of Shadow) is deliberately never
+// authored (see that same header), so its own decision stays correctly unmatched here.
+const SUBCLASS_SPELL_GRANT_FLAG_BY_KIND: Readonly<Record<string, 'known' | 'prepared'>> = {
+  prepared: 'prepared', known: 'known', innate: 'known'
+}
+
+// SIBLING-CARDINALITY GUARD -- more than one real corpus kind can map to the SAME engine flag at
+// the SAME (owner, level): Warrior of Shadow's own 'known' Minor Illusion AND 'innate' Darkness
+// are BOTH Level 3, BOTH cardinality 1, BOTH -> flag 'known'. Comparing a single decision's own
+// cardinality against the facet's raw grant count (as a naive per-decision check would) lets ONE
+// real, correctly-authored grant (Minor Illusion) falsely satisfy BOTH decisions at once --
+// Darkness (deliberately never authored, a resource-gated grant with no generic primitive, see
+// dnd5e-2024.ts's own header) would wrongly read as covered too, a genuine false positive caught
+// only by writing the real acceptance/census tests, not assumed. `DecisionRecord` carries no
+// spell-identity field (discovery is shape-only, by design -- see mandatory-decisions.ts's own
+// header), so there is no way to tell WHICH decision a given grant belongs to; the only fail
+// -closed answer is to require the authored count to match the FULL SIBLING TOTAL (every
+// decision sharing this exact owner+level+flag key), never just one decision's own slice. This
+// is strictly conservative, never a false positive: it can turn a genuinely-authored decision
+// blocked (if a sibling is deliberately withheld, as here), but it can never claim an
+// under-authored decision is covered. Precomputed once from the real discovered corpus, never
+// re-derived per call.
+const SUBCLASS_FIXED_GRANT_SIBLING_TOTAL = new Map<string, number>()
+for (const decision of (mandatoryDecisionsArtifact as { decisions: DecisionRecord[] }).decisions) {
+  if (decision.owner.kind !== 'subclass' || decision.family !== 'spell-grant') continue
+  const kind = decision.source.split('.').pop()
+  const flag = kind ? SUBCLASS_SPELL_GRANT_FLAG_BY_KIND[kind] : undefined
+  if (!flag) continue
+  const key = `${decision.owner.slug}:${decision.level}:${flag}`
+  SUBCLASS_FIXED_GRANT_SIBLING_TOTAL.set(key, (SUBCLASS_FIXED_GRANT_SIBLING_TOTAL.get(key) ?? 0) + (decision.cardinality ?? 0))
+}
+
+function subclassFixedSpellGrantCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'spell-grant')) return false
+  const kind = d.source.split('.').pop()
+  const flag = kind ? SUBCLASS_SPELL_GRANT_FLAG_BY_KIND[kind] : undefined
+  if (!flag) return false
+  const grants = findRulesFacet('dnd5e.2024', 'subclass', d.owner.slug)?.fixedSpellGrants ?? []
+  const count = grants.filter((g) => g.flag === flag && (g.minLevel ?? 1) === d.level).length
+  // `siblingTotal` already equals `d.cardinality` exactly whenever this decision is the ONLY one
+  // sharing its (owner, level, flag) key -- the common case -- so this single comparison covers
+  // both that case and the real multi-sibling one (Warrior of Shadow) without a second check.
+  const siblingTotal = SUBCLASS_FIXED_GRANT_SIBLING_TOTAL.get(`${d.owner.slug}:${d.level}:${flag}`) ?? d.cardinality
+  return count === siblingTotal
+}
+
+// A subclass-owned spell SELECTION ("learn N spells of your choice..."): the Wizard Arcane
+// Traditions (Abjurer/Diviner/Evoker/Illusionist, school-restricted) and College of Lore's
+// Magical Discoveries (Cleric/Druid/Wizard list) both reuse `pool: 'spellbook'` -- the
+// existing `isLevelGated` dynamic level-cap (app/lib/characters/spell-requirements.ts)
+// already matches each one's own real "of your current castable level or lower" growth
+// exactly, with zero new filter shape (see dnd5e-2024.ts's own authoring header). Covered
+// when the facet's own `spellbook`-pool requirement actually carries a HIGHER cumulative
+// total at this decision's level than at the previous one -- the SAME growth check
+// `spellbookGrowthCovered` above already uses for the Wizard class's own spellbook, restated
+// here for a subclass owner (this is a DIFFERENT, independent requirement id on a DIFFERENT
+// facet; it never reads or is read by the class's own spellbook pool).
+function subclassSpellbookChoiceCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'spell-choice')) return false
+  const requirement = (findRulesFacet('dnd5e.2024', 'subclass', d.owner.slug)?.spellRequirements ?? []).find((r) => r.pool === 'spellbook')
+  if (!requirement) return false
+  return (requirement.totalByLevel[d.level - 1] ?? 0) > (requirement.totalByLevel[d.level - 2] ?? 0)
+}
+
+// A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. Eldritch Knight's/Arcane Trickster's
+// own LEVELED Wizard spell pool (the corpus's "expanded" additionalSpells kind -- re-derived as
+// an eligibility marker over their OWN "Spells Prepared" feature, never a second acquisition;
+// see dnd5e-2024.ts's own header). Covered once the subclass facet's own `spell`-pool requirement
+// carries a HIGHER cumulative total at this decision's level than at the previous one -- the SAME
+// growth check `subclassSpellbookChoiceCovered` above already uses, restated for pool 'spell'.
+// This only matches real decisions now that `effectiveCasterTypeOf`
+// (server/utils/character-spell-acquisition.ts) and the widened `progressionSpellSlotLevels`
+// (server/utils/character-progression-spell-acquisition.ts, character-progression-plan.ts) let
+// the subclass's OWN caster-type grant reach the level-gating derivation this pool depends on --
+// before that fix, authoring this requirement would have claimed correctness the engine could
+// not deliver (every candidate would see `maxSpellLevel === 0`), so it was deliberately withheld.
+function subclassThirdCasterSpellPoolCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'subclass', 'spell-choice') && d.source.endsWith('.expanded'))) return false
+  const requirement = (findRulesFacet('dnd5e.2024', 'subclass', d.owner.slug)?.spellRequirements ?? []).find((r) => r.pool === 'spell')
+  if (!requirement) return false
+  return (requirement.totalByLevel[d.level - 1] ?? 0) > (requirement.totalByLevel[d.level - 2] ?? 0)
+}
+
+// Circle of the Land: "Choose a type of terrain... " -- the ONE real subclass-owned
+// `variant-choice` decision in the whole corpus. Covered when the facet offers the 4-option
+// `choice:subclass.feature-option` (the owner-agnostic Definition this phase adds,
+// packages/eldra-dnd5e-2024/definitions.json, mirroring `choice:species.feature-option`
+// verbatim) -- never a bare family/owner-kind match (a future second subclass-owned variant
+// -choice would need its own, separately-verified rule, exactly like every other family
+// here).
+function circleOfLandVariantCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'subclass', 'variant-choice') && d.owner.slug === 'circle-of-the-land-xphb')) return false
+  const facet = findRulesFacet('dnd5e.2024', 'subclass', 'circle-of-the-land-xphb')
+  return (facet?.choices ?? []).some((c) => c.choiceSet === 'choice:subclass.feature-option' && c.count === 1 && (c.from?.length ?? 0) === 4)
+}
+
+// Third-caster subclass casting progression (Eldritch Knight / Arcane Trickster): the real
+// decision text is "a third-caster slot table is not defined" -- now false, the slot table
+// (`table:spellcasting.slots_third`, A2 WORKSTREAM 4) exists AND is wired to the owning
+// subclass via its own `value:spellcasting.caster_type.third` grant (dnd5e-2024.ts). Covered
+// by that grant alone -- deliberately NOT gated on the leveled Wizard-spell pool also being
+// representable (a separate, independently-reported STOP; see this phase's own report),
+// since this decision's own text is about the SLOT TABLE, not spell acquisition.
+function subclassThirdCasterGrantCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'spell-count')) return false
+  const facet = findRulesFacet('dnd5e.2024', 'subclass', d.owner.slug)
+  return (facet?.grants ?? []).some((g) => g.set === 'value:spellcasting.caster_type.third' && g.to === true)
+}
+
 export const COVERAGE_RULES: readonly CoverageRule[] = [
   // ------------------------------------------------------------------ implemented
   {
@@ -698,12 +826,57 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: classEquipmentCovered
   },
+  // A3 -- SUBCLASS SPELL AUTHORING. Reclassifies every subclass-owned fixed spell grant
+  // (prepared/known/unconditional-flat-innate), the Wizard Arcane Traditions' and College of
+  // Lore's own spell SELECTION, and Circle of the Land's terrain variant-choice -- see
+  // dnd5e-2024.ts's own A3 header for the full corpus re-derivation and what is
+  // deliberately NOT authored (resource-gated innate grants; Eldritch Knight's/Arcane
+  // Trickster's own LEVELED Wizard spell pool, a reported STOP). `blk:subclass-spells`
+  // immediately below is narrowed to exactly what these three rules do NOT cover, never
+  // widened -- the bidirectional contract requires every decision match exactly one rule.
+  {
+    id: 'impl:subclass-fixed-spell-grant',
+    status: 'implemented',
+    reason: 'Subclass-owned fixed (no "of your choice") spell grant -- domain/patron/circle/tradition spells, always-prepared or permanently-known, growing by character level -- via FixedSpellGrant.minLevel, the SAME windowed-resolution machinery species/feat fixed grants already use, with `subclass` as an ordinary owner (A2).',
+    ledgerIds: [],
+    matches: subclassFixedSpellGrantCovered
+  },
+  {
+    id: 'impl:subclass-spellbook-choice',
+    status: 'implemented',
+    reason: 'Subclass-owned spell SELECTION (Wizard Arcane Traditions\' school-restricted bonus spells; College of Lore\'s Magical Discoveries) via a subclass-owned `spellbook`-pool SpellRequirement, reusing the existing dynamic level-gate (`isLevelGated`) exactly as the owning class\'s own normal spell-slot progression already caps it -- zero new filter shape.',
+    ledgerIds: ['bard-xphb:college-of-lore-xphb:magical-discoveries'],
+    matches: subclassSpellbookChoiceCovered
+  },
+  {
+    id: 'impl:circle-of-the-land-variant',
+    status: 'implemented',
+    reason: 'Circle of the Land\'s terrain pick (which fixed spell list applies) via the new, owner-agnostic `choice:subclass.feature-option` ChoiceSet (mirrors `choice:species.feature-option` verbatim) plus four terrain-gated FixedSpellGrant sets.',
+    ledgerIds: [],
+    matches: circleOfLandVariantCovered
+  },
+  // A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. Eldritch Knight's/Arcane
+  // Trickster's own LEVELED Wizard spell pool, previously a reported STOP (see this phase's own
+  // earlier final report) -- now implemented, once `effectiveCasterTypeOf`/the widened
+  // `progressionSpellSlotLevels` let the subclass's own caster-type grant reach the
+  // level-gating derivation a `spell`-pool requirement depends on (see dnd5e-2024.ts's own A3
+  // header and subclassThirdCasterSpellPoolCovered's own header for the full mechanism).
+  {
+    id: 'impl:subclass-third-caster-spell-pool',
+    status: 'implemented',
+    reason: 'Eldritch Knight\'s/Arcane Trickster\'s own LEVELED Wizard spell pool ("Spells Prepared") via a subclass-owned `spell`-pool SpellRequirement, now correctly level-gated against the character\'s own third-caster-derived maxSpellLevel (effectiveCasterTypeOf, server/utils/character-spell-acquisition.ts).',
+    ledgerIds: [],
+    matches: subclassThirdCasterSpellPoolCovered
+  },
   {
     id: 'blk:subclass-spells',
     status: 'blocked',
-    reason: 'Subclass spell grants and choices, and subclass-only casting: subclass-internal gating and spell lists.',
-    ledgerIds: ['bard-xphb:college-of-lore-xphb:magical-discoveries'],
-    matches: (d) => is(d, 'subclass', 'spell-choice') || is(d, 'subclass', 'spell-grant') || is(d, 'subclass', 'variant-choice')
+    reason: 'Subclass spell grants/choices/variants the A3 rules above do not cover: resource-gated "innate" grants (Archfey Patron, Psi Warrior, Warrior of Shadow -- no generic primitive for a spell usable only via a specific finite resource, never a normal slot) and College of Glamour\'s own discovery-model-duplicate "innate" Command (already named by its "prepared" sibling).',
+    ledgerIds: [],
+    matches: (d) =>
+      (is(d, 'subclass', 'spell-grant') && !subclassFixedSpellGrantCovered(d)) ||
+      (is(d, 'subclass', 'spell-choice') && !subclassSpellbookChoiceCovered(d) && !subclassThirdCasterSpellPoolCovered(d)) ||
+      (is(d, 'subclass', 'variant-choice') && !circleOfLandVariantCovered(d))
   },
   {
     id: 'blk:subclass-feature-option',
@@ -839,12 +1012,21 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => d.owner.kind === 'feat' && (d.family === 'proficiency-choice' || d.family === 'proficiency-grant') && !proficiencyCovered(d)
   },
+  // A3 WORKSTREAM 5 -- `blk:subclass-casting-class` ("a third-caster slot table is not
+  // defined") is REMOVED, not merely narrowed: `table:spellcasting.slots_third` exists (A2
+  // WORKSTREAM 4) and is now wired to BOTH real owning subclasses (Eldritch Knight, Arcane
+  // Trickster -- the only two `spell-count`/subclass decisions in the whole corpus) via
+  // their own `value:spellcasting.caster_type.third` grant (dnd5e-2024.ts), so the old rule
+  // would match zero decisions permanently -- a permanently-empty blocked rule is dead code,
+  // not a real fail-closed guard (established precedent elsewhere in this file, e.g.
+  // `blk:metamagic`'s own removal). A future third-caster subclass this phase never
+  // authored-checked still fails closed via `classifyDecision`'s own zero-match default.
   {
-    id: 'blk:subclass-casting-class',
-    status: 'blocked',
-    reason: 'Subclass casting progression: a third-caster slot table is not defined.',
+    id: 'impl:subclass-third-caster-slots',
+    status: 'implemented',
+    reason: 'Third-caster slot table (Eldritch Knight, Arcane Trickster) exists and is wired to the owning subclass via its own `value:spellcasting.caster_type.third` grant. Their own separate leveled spell-pool gap (a different decision family, spell-choice) is untouched by this reclassification.',
     ledgerIds: [],
-    matches: (d) => is(d, 'subclass', 'spell-count')
+    matches: subclassThirdCasterGrantCovered
   },
 
   // ------------------------------------------------------------------ optional

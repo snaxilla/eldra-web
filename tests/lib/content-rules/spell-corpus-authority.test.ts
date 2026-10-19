@@ -135,15 +135,36 @@ describe('P2 spell corpus authority', () => {
   // Expertise pick (3), Elemental Adept's own new damage-type choice (1), Ritual Caster's 5
   // (miscounted-level) spell-choice decisions (5), Sorcerer's Metamagic at L2/10/17 (3), Barbarian's
   // Primal Knowledge at L3 (1) = 17. Moving the census from 651/444/172 to 654/461/158.
-  it('the Phase-0 decision census after A1 (Feat/Class Authoring + Legality Cleanup): 654 total, 461 implemented, 158 blocked, 35 optional', () => {
+  // A3 -- SUBCLASS SPELL AUTHORING. No new discovery this phase (no new DecisionFamily); 134 of
+  // the 145 real subclass-owned spell-family decisions reclassify blocked -> implemented: every
+  // fixed (prepared/known/unconditional-flat-innate) grant, the Wizard Arcane Traditions' and
+  // College of Lore's own spell SELECTION (33), Circle of the Land's terrain variant-choice (1),
+  // and the Eldritch-Knight/Arcane-Trickster third-caster slot grant (2). Moving the census from
+  // 654/461/158 to 654/595/24.
+  // A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. The previously-reported STOP
+  // (Eldritch Knight's/Arcane Trickster's own LEVELED Wizard spell pool, blocked on a
+  // `maxSpellLevel`-derivation gap) is fixed generically (`effectiveCasterTypeOf`, server/
+  // utils/character-spell-acquisition.ts) and all 8 of their real decisions reclassify blocked
+  // -> implemented too. Writing this workstream's own real acceptance tests also surfaced a
+  // genuine coverage-check bug (not a corpus or authoring bug): Warrior of Shadow's own 'known'
+  // Minor Illusion and 'innate' Darkness decisions share the exact same (owner, level,
+  // engine-flag) key, and the PRIOR per-decision-only count check let the one real Minor
+  // Illusion grant falsely satisfy BOTH -- a true false positive, caught by writing real
+  // acceptance tests, not assumed. Fixed with a fail-closed sibling-cardinality guard
+  // (mandatory-decision-coverage.ts's own header): conservative, never a false positive, at the
+  // cost of Minor Illusion's own otherwise-correct decision also reading blocked until Darkness
+  // (resource-gated, no generic primitive) is representable. Net for this workstream: +8
+  // (Eldritch Knight/Arcane Trickster) -2 (Warrior of Shadow, newly conservative) = +6. Moving
+  // the census from 654/595/24 to 654/601/18.
+  it('the Phase-0 decision census after the Third-Caster Leveled Spell Acquisition workstream: 654 total, 601 implemented, 18 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
-    expect(counts.implemented).toBe(461)
-    expect(counts.blocked).toBe(158)
+    expect(counts.implemented).toBe(601)
+    expect(counts.blocked).toBe(18)
     expect(counts.optional).toBe(35)
   })
 
@@ -170,25 +191,46 @@ describe('P2 spell corpus authority', () => {
     ])
   })
 
-  // The P4/follow-on ownership boundary (subclass/species-granted spells) is untouched by P3.5 or
-  // by the Feat-Owned Spell Acquisition phase -- none of those decisions is owned by a class or a
-  // feat, so none is reclassified by either phase's own scoped coverage rules. AASIMAR CREATION
-  // COMPLETION PHASE -- Aasimar's own Light Bearer is the one exception: a true fixed grant, the
-  // exact FixedSpellGrant shape this project's feat-owned fixed spells already use, now
-  // implemented. Every subclass-owned decision, and every OTHER species-owned one (Elf/Gnome/
-  // Goliath/Tiefling's own lineage spells, genuinely gated behind an unauthored lineage choice),
-  // remains not implemented.
-  it('subclass/species-owned spell-family decisions remain NOT implemented, except Aasimar\'s own fixed grant', () => {
-    const nonClassSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
-      (d) => (d.owner.kind === 'subclass' || d.owner.kind === 'species') && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
+  // SPECIES: untouched by P3.5, the Feat-Owned Spell Acquisition phase, or A3 -- none of those
+  // decisions is owned by a class, a feat, or a subclass, so none is reclassified by any of their
+  // own scoped coverage rules. AASIMAR CREATION COMPLETION PHASE -- Aasimar's own Light Bearer is
+  // the one exception: a true fixed grant, the exact FixedSpellGrant shape this project's
+  // feat-owned fixed spells already use, now implemented. Every OTHER species-owned one (Elf/
+  // Gnome/Goliath/Tiefling's own lineage spells, genuinely gated behind an unauthored lineage
+  // choice) remains not implemented.
+  it('species-owned spell-family decisions remain NOT implemented, except Aasimar\'s own fixed grant', () => {
+    const speciesSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
+      (d) => d.owner.kind === 'species' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
     )
-    expect(nonClassSpellDecisions.length).toBeGreaterThan(0)
-    for (const decision of nonClassSpellDecisions) {
+    expect(speciesSpellDecisions.length).toBeGreaterThan(0)
+    for (const decision of speciesSpellDecisions) {
       if (decision.owner.slug === 'aasimar-xphb') {
         expect(classifyDecision(decision).status, decision.id).toBe('implemented')
         continue
       }
       expect(classifyDecision(decision).status, decision.id).not.toBe('implemented')
+    }
+  })
+
+  // SUBCLASS: A3 reclassifies most real subclass-owned spell-family decisions to implemented
+  // (see this file's own census test above for the exact breakdown, including the Third-Caster
+  // Leveled Spell Acquisition workstream). The real residuals stay blocked for a named, verified
+  // reason -- re-checked here rather than asserted blind, mirroring tests/rules/mandatory
+  // -decision-coverage.test.ts's own equivalent reconciliation test exactly.
+  it('subclass-owned spell-family decisions are implemented where A3 authored them, blocked for a named reason otherwise', () => {
+    const subclassSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
+      (d) => d.owner.kind === 'subclass' && ['spell-choice', 'spell-grant', 'spell-count', 'variant-choice'].includes(d.family)
+    )
+    expect(subclassSpellDecisions.length).toBeGreaterThan(0)
+    const RESOURCE_GATED_INNATE_OWNERS = new Set(['archfey-patron-xphb', 'psi-warrior-xphb', 'warrior-of-shadow-xphb'])
+    for (const decision of subclassSpellDecisions) {
+      const classification = classifyDecision(decision)
+      if (classification.status === 'implemented') continue
+      expect(classification.status, decision.id).toBe('blocked')
+      const isResourceGatedInnate = decision.family === 'spell-grant' && decision.source.endsWith('.innate') && RESOURCE_GATED_INNATE_OWNERS.has(decision.owner.slug)
+      const isWarriorOfShadowSiblingCasualty = decision.family === 'spell-grant' && decision.owner.slug === 'warrior-of-shadow-xphb' && decision.source.endsWith('.known')
+      const isGlamourInnateDuplicate = decision.family === 'spell-grant' && decision.owner.slug === 'college-of-glamour-xphb' && decision.source.endsWith('.innate')
+      expect(isResourceGatedInnate || isWarriorOfShadowSiblingCasualty || isGlamourInnateDuplicate, decision.id).toBe(true)
     }
   })
 

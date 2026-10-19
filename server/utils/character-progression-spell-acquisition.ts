@@ -62,7 +62,7 @@ import {
   type SpellSlotLevel,
   type StoredSpellEntry
 } from '../../app/lib/characters/spellcasting'
-import { casterTypeOf, slotTableRows } from './character-spell-acquisition'
+import { effectiveCasterTypeOf, slotTableRows } from './character-spell-acquisition'
 
 // Progression's own stable slot namespace for a spell answer key. SpellRequirement is authored
 // exclusively on CLASS facets (app/lib/content-rules/dnd5e-2024.ts), so 'class' is the identical
@@ -97,12 +97,21 @@ export function spellTentativeSelectionsFromAnswers(
 // `registry: null` (no Rules Runtime, or one that failed to configure) degrades to "no slots" --
 // `deriveSpellSlotLevels` already treats an absent/null casterType this way, failing every
 // level-gated requirement closed exactly as creation's own derivation does.
+//
+// A3 WORKSTREAM -- THIRD-CASTER LEVELED SPELL ACQUISITION. `facet` is now also allowed to be an
+// ARRAY of facets, resolved through `effectiveCasterTypeOf` (the SAME single-facet `casterTypeOf`
+// grant-scan, generalized -- see that function's own header) instead of the single-facet
+// `casterTypeOf`. A bare single facet still works byte-identically to before (wrapped in a
+// 1-element array internally) -- every pre-A3 call site (every real caller but
+// character-progression-plan.ts's own A3 update) is unaffected. The caller now passes BOTH the
+// class facet and the subclass facet (previously class-only, which left a third-caster subclass's
+// own leveled spell pool permanently unreachable -- see this phase's own final report).
 export function progressionSpellSlotLevels(
   registry: { getById: (id: string) => unknown } | null,
-  facet: RulesFacet | null,
+  facet: RulesFacet | null | readonly (RulesFacet | null)[],
   targetLevel: number
 ): SpellSlotLevel[] {
-  const casterType = casterTypeOf(facet)
+  const casterType = effectiveCasterTypeOf(Array.isArray(facet) ? facet : [facet])
   const tableRows = registry ? slotTableRows(registry, casterType) : undefined
   return deriveSpellSlotLevels({ casterType, tableRows, characterLevel: targetLevel, expendedSlots: {} })
 }

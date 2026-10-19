@@ -328,7 +328,6 @@ import CharacterEncounterPanel from '~/components/characters/CharacterEncounterP
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
 import CharacterSheetHeader from '~/components/characters/CharacterSheetHeader.vue'
-import CharacterResourceOrbs from '~/components/characters/CharacterResourceOrbs.vue'
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
@@ -336,7 +335,6 @@ import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
-import { spellSlotsToCharacterResources } from '~/components/characters/characterResourcePresentation'
 import type { CharacterAbilityRow } from '~/components/characters/CharacterAbilityGrid.vue'
 import type { CharacterSaveRow } from '~/components/characters/CharacterSaveList.vue'
 import {
@@ -352,6 +350,12 @@ import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterProgression } from '~/composables/useCharacterProgression'
+import { useCharacterSheetPresentation } from '~/composables/useCharacterSheetPresentation'
+import {
+  CHARACTER_SHEET_INTERACTION_KEY,
+  emptyCharacterSheetInteractionState,
+  resetCharacterSheetInteractionState
+} from '~/components/characters/characterSheetInteractionState'
 import {
   useCharacterSheetLayout,
   type CharacterSheetContext,
@@ -756,12 +760,8 @@ const vitalsError = computed(() =>
 // ---------------------------------------------------------------------------
 // Shell -- Corrective Phase 2R. `tabs`/`activeTab`/`setActiveTab` are still
 // useCharacterSheetLayout.ts's (URL-synced tab state is still useful, per
-// this task's own KEEP list); `isDesktop` is not destructured here anymore
-// -- CharacterSheetShell.vue no longer branches on it (there is no more
-// rail/tab-fold distinction left for it to decide), and every tab's
-// content below now renders identically at every breakpoint, the same
-// content that used to be gated `v-if="!isDesktop"` and is now simply the
-// only copy.
+// this task's own KEEP list). Every tab's content renders identically in
+// both presentations; see the PRESENTATION section below.
 // ---------------------------------------------------------------------------
 
 const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
@@ -789,6 +789,35 @@ const {
   openContext,
   closeContext
 } = useCharacterSheetLayout(sectionAvailability)
+
+// ---------------------------------------------------------------------------
+// PRESENTATION -- Phase 4C. Desktop or Companion, from the width the World
+// workspace gives this page (see useCharacterSheetPresentation.ts). Both
+// render every piece of content below; only the arrangement differs. The
+// measurement is the scroll root's border box, and the inspector's
+// contraction is padding inside it, so opening the inspector never
+// switches presentation.
+// ---------------------------------------------------------------------------
+
+const workspaceEl = ref<HTMLElement | null>(null)
+const { presentation, density, resolved: presentationResolved } = useCharacterSheetPresentation(workspaceEl)
+
+// Full desktop: the inspector is the workspace right rail and the whole
+// sheet contracts beside it (the roster page's `pr-[380px]` precedent).
+// Compact desktop and companion: the same drawer in a bottom sheet, so
+// nothing is laid over the gameplay columns.
+const inspectorAsRail = computed(() => presentation.value === 'desktop' && density.value === 'full')
+const inspectorContractsSheet = computed(() => Boolean(context.value) && inspectorAsRail.value)
+
+// Interaction continuity (Phase 4C) -- the player's in-progress work in
+// the panels (form input, searches, the chosen target, pending cast
+// configuration, unsaved notes) lives here, above both presentations, so a
+// desktop/companion switch remounts the layout without losing it. See
+// characterSheetInteractionState.ts. A different character opened in this
+// same page instance starts clean.
+const interactionState = reactive(emptyCharacterSheetInteractionState())
+provide(CHARACTER_SHEET_INTERACTION_KEY, interactionState)
+watch(characterId, () => resetCharacterSheetInteractionState(interactionState))
 
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
@@ -828,17 +857,6 @@ const presentedReferenceEntries = computed(() =>
   selectPresentedValues(derived.value?.byCategory ?? {}, 'reference').filter((entry) => !summaryIds.value.has(entry.id))
 )
 const proficiencyEntries = computed(() => derived.value?.byCategory?.['core.proficiency'] ?? [])
-
-// Spell Slots live with spells (the header carries class resources only).
-const spellSlotGroups = computed(() => spellSlotsToCharacterResources(slotLevels.value))
-
-function handleSpellSlotExpend({ poolId }: { groupId: string; poolId: string; amount: number }) {
-  mutations.spellcasting.expendSlot(Number(poolId))
-}
-
-function handleSpellSlotRestore({ poolId }: { groupId: string; poolId: string; amount: number }) {
-  mutations.spellcasting.restoreSlot(Number(poolId))
-}
 
 // Rest is offered when the package declares the Health values the
 // Recovery System acts on; a package without them gets no Rest control.
@@ -1121,14 +1139,21 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
        WorldPagePresentationPanel, per `pageKey`) BEHIND this page's
        `<slot />`. An opaque root here would hide that backdrop. The
        sheet's own surfaces are translucent glass over it. -->
-  <div class="h-full overflow-y-auto bg-transparent">
-    <!-- Phase 4B: this element is the `sheet` CONTAINER. Every layout
-         decision inside the sheet (header rows, reference rail, skills
-         column, inspector placement, phone sections) responds to the
-         width available HERE -- after the workspace rail -- via
-         `@container/sheet` queries, never the viewport. See
-         CharacterSheetShell.vue for the breakpoints. Wide enough at
-         1920px for the docked inspector lane. -->
+  <!-- Phase 4C: the measured character workspace (see PRESENTATION in the
+       script). On full desktop, while the inspector is open as the
+       workspace right rail (WorldEntityContextDrawer, fixed, 380px), the
+       WHOLE sheet contracts by that width -- the roster page's
+       `pr-[380px]` precedent -- and reflows through its own container
+       queries. Nothing is reserved while it is closed. -->
+  <div
+    ref="workspaceEl"
+    class="h-full overflow-y-auto bg-transparent"
+    :class="inspectorContractsSheet ? 'pr-[380px]' : ''"
+  >
+    <!-- The `sheet` CONTAINER. Layout INSIDE a presentation (desktop
+         columns, header rows) responds to the width available here via
+         `@container/sheet` queries; WHICH presentation renders is decided
+         from the workspace width above (Phase 4C). -->
     <div class="@container/sheet mx-auto max-w-[1880px] px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
       <div
         v-if="pending"
@@ -1151,6 +1176,22 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         />
       </div>
 
+      <!-- Until the workspace has been measured (one frame after mount)
+           the presentation is unknown, so neither layout is shown -- a
+           phone never flashes the desktop sheet. Rendered identically on
+           the server and in the first client render, so hydration
+           matches. Static: no loading animation. -->
+      <div
+        v-else-if="blueprint && !presentationResolved"
+        class="grid gap-3"
+        aria-busy="true"
+        aria-label="Preparing character sheet"
+        data-sheet-placeholder
+      >
+        <div class="eldra-glass-surface h-28 border" />
+        <div class="eldra-sheet-panel h-64" />
+      </div>
+
       <CharacterSheetShell
         v-else-if="blueprint"
         :sections="sections"
@@ -1158,6 +1199,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         :main-section="mainSection"
         :inspector-open="Boolean(context)"
         :inspector-label="context ? `${context.title} details` : 'Details'"
+        :presentation="presentation"
+        :desktop-inspector="inspectorAsRail ? 'rail' : 'sheet'"
         @select-section="setActiveTab"
         @close-inspector="closeContext"
       >
@@ -1186,6 +1229,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         <template #header>
           <CharacterSheetHeader
             class="max-md:pl-16"
+            :presentation="presentation"
             :world-id="worldId"
             :character-title="identity.characterTitle"
             :image-url="characterImageUrlDraft"
@@ -1202,6 +1246,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :summary-values="summaryValues"
             :resources="characterResources"
             :resources-pending-ids="mutations.resources.pendingIds"
+            :slot-levels="slotLevels"
+            :spell-saving="mutations.spellcasting.saving"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"
@@ -1216,6 +1262,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             @recovery="mutations.recovery.apply"
             @expend-resource="mutations.resources.expend"
             @restore-resource="mutations.resources.restore"
+            @expend-slot="mutations.spellcasting.expendSlot"
+            @restore-slot="mutations.spellcasting.restoreSlot"
             @update-portrait="mutations.portrait.update"
             @clear-portrait="mutations.portrait.clear"
             @select-condition="openConditionContext"
@@ -1311,27 +1359,6 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             v-else-if="mainSection === 'spells'"
             class="grid gap-6"
           >
-            <!-- Spell Slots sit with the spells they pay for. Same orbs,
-                 same expend/restore mutations as before. -->
-            <section
-              v-if="spellSlotGroups.length"
-              aria-labelledby="sheet-slots-heading"
-            >
-              <h3
-                id="sheet-slots-heading"
-                class="eldra-sheet-heading"
-              >
-                Spell Slots
-              </h3>
-              <CharacterResourceOrbs
-                layout="inline"
-                :groups="spellSlotGroups"
-                :saving="mutations.spellcasting.saving"
-                @expend="handleSpellSlotExpend"
-                @restore="handleSpellSlotRestore"
-              />
-            </section>
-
             <section aria-label="Spellcasting">
               <CharacterSpellcastingPanel
                 :spells="spellItems"
@@ -1575,21 +1602,11 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </div>
         </template>
 
-        <!-- Large desktop: the reserved inspector lane, while empty. -->
-        <template #inspector-idle>
-          <div class="border border-dashed border-eldra-accent/20 p-5 text-sm leading-6 text-eldra-text-faint">
-            <UIcon
-              name="i-lucide-panel-right"
-              class="mb-2 h-5 w-5 text-eldra-accent/60"
-              aria-hidden="true"
-            />
-            <p>Select an action, spell, item, skill, or condition to see its details here.</p>
-          </div>
-        </template>
-
-        <!-- Eldra's ONE context system, placed inline: the shell gives it
-             a column (or a phone bottom sheet), so opening it never moves
-             the main workspace. `content="detail"` skips the World Entity
+        <!-- Eldra's ONE context system. Full desktop: the workspace's
+             standard right rail (overlay placement, the same 380px rail
+             every other World page opens) with the page contracting beside
+             it. Compact desktop and companion: the same drawer, inline, in
+             the bottom sheet (CharacterSheetBottomSheet.vue). `content="detail"` skips the World Entity
              affordances. The lead slot repeats the originating row's own
              rolls, through the same handlers. -->
         <template #inspector>
@@ -1598,8 +1615,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :entity="contextEntity"
             :world-id="worldId"
             content="detail"
-            rail-variant="sheet"
-            placement="inline"
+            :rail-variant="inspectorAsRail ? 'workspace' : 'sheet'"
+            :placement="inspectorAsRail ? 'overlay' : 'inline'"
             @close="closeContext"
           >
             <template

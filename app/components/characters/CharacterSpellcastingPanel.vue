@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_SHEET_INTERACTION_KEY, emptySpellAddState } from './characterSheetInteractionState'
 // Spellcasting for Character Sheet V2 -- the Spellcasting System's editable
 // surface: a read-only Rules Engine summary (Spellcasting Ability, Spell
 // Save DC, Spell Attack Bonus) sitting above one editable collection
@@ -90,9 +91,13 @@ const emit = defineEmits<{
 
 // --- Add form -------------------------------------------------------------
 
-const search = ref('')
-const selectedKey = ref('')
-const customName = ref('')
+// Phase 4C: the Add Spell form's in-progress input lives in the page's
+// interaction state (characterSheetInteractionState.ts), so it survives a
+// desktop/companion presentation switch. A private copy when not provided.
+const addState = inject(CHARACTER_SHEET_INTERACTION_KEY, null)?.spellAdd ?? reactive(emptySpellAddState())
+const search = toRef(addState, 'search')
+const selectedKey = toRef(addState, 'selectedKey')
+const customName = toRef(addState, 'customName')
 
 function optionKey(option: { packageId: string; slug: string }) {
   return `${option.packageId}::${option.slug}`
@@ -111,6 +116,8 @@ const filteredOptions = computed(() => {
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
 
+const addOpen = toRef(addState, 'open')
+
 function submitAdd() {
   if (!canAdd.value || props.saving) return
 
@@ -122,6 +129,7 @@ function submitAdd() {
 
   selectedKey.value = ''
   customName.value = ''
+  addOpen.value = false
 }
 
 const knownCount = computed(() => props.spells.filter((entry) => entry.known).length)
@@ -220,70 +228,73 @@ const groupedSpells = computed<SpellGroup[]>(() => {
       </div>
     </div>
 
-    <!-- Add ---------------------------------------------------------------- -->
-    <div class="eldra-well rounded-none p-4">
-      <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
-        Add Spell
-      </div>
-      <div class="mt-1 text-sm text-eldra-text-soft">
-        Add a published spell, or a homebrew spell of your own.
-      </div>
+    <!-- Add -- Phase 4C: character management, not play. The same
+         fields and the same `submitAdd`, behind the "Add spell" action
+         beside the list instead of permanently above it. -->
+    <UModal
+      v-model:open="addOpen"
+      title="Add spell"
+      description="Add a published spell, or a homebrew spell of your own."
+    >
+      <template #body>
+        <div class="grid gap-3">
+          <div class="grid gap-3">
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Search published spells
+              </span>
+              <input
+                v-model="search"
+                type="search"
+                class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                :placeholder="options.length ? 'Search by name…' : 'No spell content is bound to this World'"
+                :disabled="!options.length"
+              >
+              <select
+                v-model="selectedKey"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                :disabled="!options.length"
+              >
+                <option
+                  value=""
+                  class="bg-eldra-ink text-eldra-accent-text"
+                >
+                  No published spell selected
+                </option>
+                <option
+                  v-for="option in filteredOptions"
+                  :key="optionKey(option)"
+                  :value="optionKey(option)"
+                  class="bg-eldra-ink text-eldra-accent-text"
+                >
+                  {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
+                </option>
+              </select>
+            </label>
 
-      <div class="mt-4 grid gap-3">
-        <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Search published spells
-          </span>
-          <input
-            v-model="search"
-            type="search"
-            class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            :placeholder="options.length ? 'Search by name…' : 'No spell content is bound to this World'"
-            :disabled="!options.length"
-          >
-          <select
-            v-model="selectedKey"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            :disabled="!options.length"
-          >
-            <option
-              value=""
-              class="bg-eldra-ink text-eldra-accent-text"
-            >
-              No published spell selected
-            </option>
-            <option
-              v-for="option in filteredOptions"
-              :key="optionKey(option)"
-              :value="optionKey(option)"
-              class="bg-eldra-ink text-eldra-accent-text"
-            >
-              {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
-            </option>
-          </select>
-        </label>
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Homebrew spell name
+              </span>
+              <input
+                v-model="customName"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                placeholder="Used when no published spell is selected"
+              >
+            </label>
+          </div>
 
-        <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Homebrew spell name
-          </span>
-          <input
-            v-model="customName"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            placeholder="Used when no published spell is selected"
+          <button
+            type="button"
+            class="eldra-button mt-3 min-h-11 w-full rounded-none px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!canAdd || saving"
+            @click="submitAdd"
           >
-        </label>
-      </div>
-
-      <button
-        type="button"
-        class="eldra-button mt-3 min-h-11 w-full rounded-none px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-        :disabled="!canAdd || saving"
-        @click="submitAdd"
-      >
-        {{ saving ? 'Saving…' : 'Add Spell' }}
-      </button>
-    </div>
+            {{ saving ? 'Saving…' : 'Add Spell' }}
+          </button>
+        </div>
+      </template>
+    </UModal>
 
     <!-- Known / Prepared ----------------------------------------------------- -->
     <div>
@@ -291,8 +302,23 @@ const groupedSpells = computed<SpellGroup[]>(() => {
         <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
           Spells
         </div>
-        <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-          {{ knownCount }} Known · {{ preparedCount }} Prepared
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+            {{ knownCount }} Known · {{ preparedCount }} Prepared
+          </div>
+          <button
+            type="button"
+            class="eldra-button inline-flex min-h-9 items-center gap-1.5 rounded-none px-3 text-xs font-semibold pointer-coarse:min-h-11"
+            aria-haspopup="dialog"
+            @click="addOpen = true"
+          >
+            <UIcon
+              name="i-lucide-plus"
+              class="h-3.5 w-3.5"
+              aria-hidden="true"
+            />
+            Add spell
+          </button>
         </div>
       </div>
 

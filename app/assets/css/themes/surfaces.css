@@ -328,3 +328,14 @@
   cursor: progress;
   box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-bright-rgb) / 0.7);
 }
+
+/* A V2 character sheet region surface (Phase 4C): the reference column,
+   skills and main workspace on desktop, each section on the companion. */
+.eldra-sheet-panel {
+  min-width: 0;
+  border: 1px solid var(--eldra-border);
+  background: rgb(var(--eldra-panel-rgb) / var(--eldra-panel-alpha));
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
+  padding: 1rem;
+}

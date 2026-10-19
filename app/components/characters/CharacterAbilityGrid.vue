@@ -138,7 +138,7 @@ const rows = computed<CharacterAbilityRow[]>(() =>
             aria-hidden="true"
           />
           <span
-            class="w-full truncate text-[0.55rem] font-semibold uppercase tracking-[0.04em] text-eldra-text-faint"
+            class="w-full truncate px-3 text-[0.55rem] font-semibold uppercase tracking-[0.04em] text-eldra-text-faint"
             :title="row.label"
           >
             {{ row.label }}

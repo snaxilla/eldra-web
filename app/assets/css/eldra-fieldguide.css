@@ -131,7 +131,7 @@
     linear-gradient(
       180deg,
       rgb(var(--eldra-panel-rgb) / var(--eldra-surface-card-alpha)),
-      rgb(var(--eldra-ink-rgb) / calc(var(--eldra-surface-card-alpha) - 0.06))
+      rgb(var(--eldra-ink-rgb) / var(--eldra-surface-card-alpha))
     ) !important;
   /* Phase 3C: L2 card glass -- derived from the GM panel opacity/blur. */
   -webkit-backdrop-filter: blur(var(--eldra-surface-card-blur));
@@ -175,7 +175,7 @@
     linear-gradient(
       180deg,
       rgb(var(--eldra-panel-rgb) / var(--eldra-surface-reading-alpha)),
-      rgb(var(--eldra-ink-rgb) / calc(var(--eldra-surface-reading-alpha) - 0.06))
+      rgb(var(--eldra-ink-rgb) / var(--eldra-surface-reading-alpha))
     ) !important;
   /* Phase 3C: L3 reading glass -- derived from the GM panel opacity/blur. */
   -webkit-backdrop-filter: blur(var(--eldra-panel-blur));

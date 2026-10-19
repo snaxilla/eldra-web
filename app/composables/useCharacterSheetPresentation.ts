@@ -18,7 +18,8 @@
 //
 // Desktop has two densities: `full` (the inspector opens as the workspace
 // right rail and the sheet contracts beside it) and `compact` (too narrow
-// to give up 380px, so the same rail overlays the sheet instead).
+// to give up 380px, so the inspector opens as a bottom sheet instead and
+// nothing covers the gameplay columns).
 
 import type { Ref } from 'vue'
 
@@ -39,34 +40,32 @@ export function resolveCharacterSheetPresentation(workspaceWidth: number): Chara
   return { presentation: 'companion', density: 'compact' }
 }
 
-// The last presentation this browser resolved, so a server render on the
-// next visit can start in the right one instead of flashing the desktop
-// layout on a phone. A hint only -- the measurement always wins.
-const PRESENTATION_COOKIE = 'eldra-sheet-presentation'
-
+// NO GUESSING (Phase 4C). The server cannot know the workspace width, and
+// guessing one means a phone briefly shows the desktop sheet. Instead
+// `resolved` starts false -- identically on the server and in the first
+// client render, so hydration matches -- and the page shows a neutral
+// placeholder until the first measurement, taken as soon as the workspace
+// element mounts. From then on the presentation follows the measurement.
 export function useCharacterSheetPresentation(workspace: Ref<HTMLElement | null>) {
-  const hint = useCookie<string | null>(PRESENTATION_COOKIE, { sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
-  const initial = hint.value === 'companion'
-    ? resolveCharacterSheetPresentation(0)
-    : resolveCharacterSheetPresentation(DESKTOP_FULL_MIN_WIDTH)
-
-  const presentation = ref<CharacterSheetPresentation>(initial.presentation)
-  const density = ref<CharacterSheetDensity>(initial.density)
+  const presentation = ref<CharacterSheetPresentation>('desktop')
+  const density = ref<CharacterSheetDensity>('full')
+  const resolved = ref(false)
 
   function apply(width: number) {
     const next = resolveCharacterSheetPresentation(width)
     presentation.value = next.presentation
     density.value = next.density
-    hint.value = next.presentation
+    resolved.value = true
   }
 
   let observer: ResizeObserver | null = null
 
-  // The workspace element only exists once the sheet has loaded, so this
+  // The workspace element only exists once the page has rendered, so this
   // follows the ref rather than assuming it is there on mount.
   watch(workspace, (element, _, onCleanup) => {
-    if (!element || typeof ResizeObserver === 'undefined') return
+    if (!element) return
     apply(element.getBoundingClientRect().width)
+    if (typeof ResizeObserver === 'undefined') return
     observer = new ResizeObserver(([entry]) => {
       const box = entry?.borderBoxSize?.[0]
       apply(box ? box.inlineSize : element.getBoundingClientRect().width)
@@ -80,5 +79,5 @@ export function useCharacterSheetPresentation(workspace: Ref<HTMLElement | null>
 
   onBeforeUnmount(() => observer?.disconnect())
 
-  return { presentation, density }
+  return { presentation, density, resolved }
 }

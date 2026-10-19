@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_SHEET_INTERACTION_KEY, emptyActionsState } from './characterSheetInteractionState'
 // Actions for Character Sheet V2 -- the Character Actions System's surface,
 // extended by Combat Resolution to EXECUTE the one action a player picks
 // against one target. "What can my character do?", and now, simply,
@@ -291,7 +292,20 @@ function signed(value: number): string {
   return value >= 0 ? `+${value}` : String(value)
 }
 
-const targetCharacterId = ref('')
+// Phase 4C: the chosen target, filter, and pending cast configuration live
+// in the page's interaction state (characterSheetInteractionState.ts), so
+// they survive a desktop/companion presentation switch. A private copy
+// when not provided.
+const interaction = inject(CHARACTER_SHEET_INTERACTION_KEY, null)?.actions ?? reactive(emptyActionsState())
+const targetCharacterId = toRef(interaction, 'targetCharacterId')
+
+// A kept target that is no longer a valid option (left the encounter, the
+// encounter ended) is cleared rather than silently targeted.
+watch(() => props.targetOptions, (options) => {
+  if (targetCharacterId.value && !options.some((option) => option.id === targetCharacterId.value)) {
+    targetCharacterId.value = ''
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Filtering -- see this file's header on why the timing pills are derived
@@ -322,7 +336,10 @@ const availableFilters = computed(() => {
   return (['attacks', 'spells'] as const).filter((category) => present.has(category))
 })
 
-const activeFilter = ref<ActionFilterCategory | typeof ALL_FILTER>(ALL_FILTER)
+const activeFilter = computed<ActionFilterCategory | typeof ALL_FILTER>({
+  get: () => (interaction.filter as ActionFilterCategory | null) ?? ALL_FILTER,
+  set: (value) => { interaction.filter = value === ALL_FILTER ? null : value }
+})
 
 // A filter that no longer matches anything this character has (equipment
 // changed, a spell was unprepared) silently falls back to All rather than
@@ -446,12 +463,10 @@ function castConfigurationOf(action: CharacterAction): CastConfigurationViewMode
 // have it reuse that exact selection -- see `onSpellDamageRowClick` below,
 // and this task's own manual acceptance sequence (Cast, then Damage,
 // without reopening configuration).
-const openConfigActionId = ref<string | null>(null)
-const selectedCastLevel = reactive<Record<string, number>>({})
-const selectedChoices = reactive<Record<string, Record<string, string>>>({})
+const openConfigActionId = toRef(interaction, 'openConfigActionId')
 
 function selectedCastLevelFor(action: CharacterAction): number | null {
-  return selectedCastLevel[action.id] ?? castConfigurationOf(action).defaultCastLevel
+  return interaction.castLevels[action.id] ?? castConfigurationOf(action).defaultCastLevel
 }
 
 // Only a spell-defined CHOICE ever blocks confirmation -- a castLevel
@@ -459,7 +474,7 @@ function selectedCastLevelFor(action: CharacterAction): number | null {
 // default), matching this task's own "does not fabricate a default type"
 // rule applying to choices specifically, never to level selection.
 function hasCompleteSelection(action: CharacterAction, config: CastConfigurationViewModel): boolean {
-  return config.choices.every((choice) => selectedChoices[action.id]?.[choice.id] !== undefined)
+  return config.choices.every((choice) => interaction.castChoices[action.id]?.[choice.id] !== undefined)
 }
 
 function openConfiguration(action: CharacterAction, config: CastConfigurationViewModel) {
@@ -468,17 +483,17 @@ function openConfiguration(action: CharacterAction, config: CastConfigurationVie
     return
   }
   openConfigActionId.value = action.id
-  if (config.defaultCastLevel !== null && selectedCastLevel[action.id] === undefined) {
-    selectedCastLevel[action.id] = config.defaultCastLevel
+  if (config.defaultCastLevel !== null && interaction.castLevels[action.id] === undefined) {
+    interaction.castLevels[action.id] = config.defaultCastLevel
   }
 }
 
 function selectCastLevel(action: CharacterAction, level: number) {
-  selectedCastLevel[action.id] = level
+  interaction.castLevels[action.id] = level
 }
 
 function selectChoiceOption(action: CharacterAction, choiceId: string, optionId: string) {
-  selectedChoices[action.id] = { ...(selectedChoices[action.id] ?? {}), [choiceId]: optionId }
+  interaction.castChoices[action.id] = { ...(interaction.castChoices[action.id] ?? {}), [choiceId]: optionId }
 }
 
 function castPayload(action: CharacterAction, config: CastConfigurationViewModel) {
@@ -486,7 +501,7 @@ function castPayload(action: CharacterAction, config: CastConfigurationViewModel
   return {
     actionId: action.id,
     ...(level !== null ? { castLevel: level } : {}),
-    ...(config.choices.length ? { choices: { ...selectedChoices[action.id] } } : {})
+    ...(config.choices.length ? { choices: { ...interaction.castChoices[action.id] } } : {})
   }
 }
 
@@ -895,10 +910,10 @@ function resolvedDamageText(action: CharacterAction): string {
                     :key="option.id"
                     type="button"
                     class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-                    :class="selectedChoices[action.id]?.[choice.id] === option.id
+                    :class="interaction.castChoices[action.id]?.[choice.id] === option.id
                       ? 'border-eldra-accent/55 text-eldra-text-strong'
                       : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
-                    :aria-pressed="selectedChoices[action.id]?.[choice.id] === option.id"
+                    :aria-pressed="interaction.castChoices[action.id]?.[choice.id] === option.id"
                     @click="selectChoiceOption(action, choice.id, option.id)"
                   >
                     {{ option.label }}

@@ -352,6 +352,11 @@ import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterProgression } from '~/composables/useCharacterProgression'
 import { useCharacterSheetPresentation } from '~/composables/useCharacterSheetPresentation'
 import {
+  CHARACTER_SHEET_INTERACTION_KEY,
+  emptyCharacterSheetInteractionState,
+  resetCharacterSheetInteractionState
+} from '~/components/characters/characterSheetInteractionState'
+import {
   useCharacterSheetLayout,
   type CharacterSheetContext,
   type CharacterSheetContextRoll
@@ -795,14 +800,24 @@ const {
 // ---------------------------------------------------------------------------
 
 const workspaceEl = ref<HTMLElement | null>(null)
-const { presentation, density } = useCharacterSheetPresentation(workspaceEl)
+const { presentation, density, resolved: presentationResolved } = useCharacterSheetPresentation(workspaceEl)
 
 // Full desktop: the inspector is the workspace right rail and the whole
 // sheet contracts beside it (the roster page's `pr-[380px]` precedent).
-// Compact desktop: the same rail overlays the sheet. Companion: bottom sheet.
-const inspectorContractsSheet = computed(() =>
-  Boolean(context.value) && presentation.value === 'desktop' && density.value === 'full'
-)
+// Compact desktop and companion: the same drawer in a bottom sheet, so
+// nothing is laid over the gameplay columns.
+const inspectorAsRail = computed(() => presentation.value === 'desktop' && density.value === 'full')
+const inspectorContractsSheet = computed(() => Boolean(context.value) && inspectorAsRail.value)
+
+// Interaction continuity (Phase 4C) -- the player's in-progress work in
+// the panels (form input, searches, the chosen target, pending cast
+// configuration, unsaved notes) lives here, above both presentations, so a
+// desktop/companion switch remounts the layout without losing it. See
+// characterSheetInteractionState.ts. A different character opened in this
+// same page instance starts clean.
+const interactionState = reactive(emptyCharacterSheetInteractionState())
+provide(CHARACTER_SHEET_INTERACTION_KEY, interactionState)
+watch(characterId, () => resetCharacterSheetInteractionState(interactionState))
 
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
@@ -1161,6 +1176,22 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         />
       </div>
 
+      <!-- Until the workspace has been measured (one frame after mount)
+           the presentation is unknown, so neither layout is shown -- a
+           phone never flashes the desktop sheet. Rendered identically on
+           the server and in the first client render, so hydration
+           matches. Static: no loading animation. -->
+      <div
+        v-else-if="blueprint && !presentationResolved"
+        class="grid gap-3"
+        aria-busy="true"
+        aria-label="Preparing character sheet"
+        data-sheet-placeholder
+      >
+        <div class="eldra-glass-surface h-28 border" />
+        <div class="eldra-sheet-panel h-64" />
+      </div>
+
       <CharacterSheetShell
         v-else-if="blueprint"
         :sections="sections"
@@ -1169,6 +1200,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         :inspector-open="Boolean(context)"
         :inspector-label="context ? `${context.title} details` : 'Details'"
         :presentation="presentation"
+        :desktop-inspector="inspectorAsRail ? 'rail' : 'sheet'"
         @select-section="setActiveTab"
         @close-inspector="closeContext"
       >
@@ -1570,11 +1602,11 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </div>
         </template>
 
-        <!-- Eldra's ONE context system. Desktop: the workspace's standard
-             right rail (overlay placement, the same 380px rail every other
-             World page opens); on full desktop the page contracts beside
-             it. Companion: the bottom sheet (inline placement inside the
-             companion layout). `content="detail"` skips the World Entity
+        <!-- Eldra's ONE context system. Full desktop: the workspace's
+             standard right rail (overlay placement, the same 380px rail
+             every other World page opens) with the page contracting beside
+             it. Compact desktop and companion: the same drawer, inline, in
+             the bottom sheet (CharacterSheetBottomSheet.vue). `content="detail"` skips the World Entity
              affordances. The lead slot repeats the originating row's own
              rolls, through the same handlers. -->
         <template #inspector>
@@ -1583,8 +1615,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :entity="contextEntity"
             :world-id="worldId"
             content="detail"
-            :rail-variant="presentation === 'desktop' ? 'workspace' : 'sheet'"
-            :placement="presentation === 'desktop' ? 'overlay' : 'inline'"
+            :rail-variant="inspectorAsRail ? 'workspace' : 'sheet'"
+            :placement="inspectorAsRail ? 'overlay' : 'inline'"
             @close="closeContext"
           >
             <template

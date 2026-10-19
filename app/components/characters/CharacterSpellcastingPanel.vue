@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_SHEET_INTERACTION_KEY, emptySpellAddState } from './characterSheetInteractionState'
 // Spellcasting for Character Sheet V2 -- the Spellcasting System's editable
 // surface: a read-only Rules Engine summary (Spellcasting Ability, Spell
 // Save DC, Spell Attack Bonus) sitting above one editable collection
@@ -90,9 +91,13 @@ const emit = defineEmits<{
 
 // --- Add form -------------------------------------------------------------
 
-const search = ref('')
-const selectedKey = ref('')
-const customName = ref('')
+// Phase 4C: the Add Spell form's in-progress input lives in the page's
+// interaction state (characterSheetInteractionState.ts), so it survives a
+// desktop/companion presentation switch. A private copy when not provided.
+const addState = inject(CHARACTER_SHEET_INTERACTION_KEY, null)?.spellAdd ?? reactive(emptySpellAddState())
+const search = toRef(addState, 'search')
+const selectedKey = toRef(addState, 'selectedKey')
+const customName = toRef(addState, 'customName')
 
 function optionKey(option: { packageId: string; slug: string }) {
   return `${option.packageId}::${option.slug}`
@@ -111,7 +116,7 @@ const filteredOptions = computed(() => {
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
 
-const addOpen = ref(false)
+const addOpen = toRef(addState, 'open')
 
 function submitAdd() {
   if (!canAdd.value || props.saving) return

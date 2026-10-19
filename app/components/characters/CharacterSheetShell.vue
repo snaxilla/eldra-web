@@ -31,7 +31,10 @@ const props = withDefaults(defineProps<{
   mainSection: CharacterSheetSectionKey
   inspectorOpen?: boolean
   inspectorLabel?: string
+  // Desktop only: right rail (full density) or bottom sheet (compact).
+  desktopInspector?: 'rail' | 'sheet'
 }>(), {
+  desktopInspector: 'rail',
   inspectorOpen: false,
   inspectorLabel: 'Details'
 })
@@ -80,7 +83,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     v-if="presentation === 'desktop'"
     :sections="sections"
     :main-section="mainSection"
+    :inspector-mode="desktopInspector"
+    :inspector-open="inspectorOpen"
+    :inspector-label="inspectorLabel"
     @select-section="emit('select-section', $event)"
+    @close-inspector="emit('close-inspector')"
   >
     <template #header>
       <slot name="header" />

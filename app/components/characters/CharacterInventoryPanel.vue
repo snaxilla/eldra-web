@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_SHEET_INTERACTION_KEY, emptyInventoryAddState } from './characterSheetInteractionState'
 // Inventory for Character Sheet V2 -- the first V1 feature rebuilt on the
 // new Character Architecture.
 //
@@ -118,11 +119,15 @@ function requiresAttunement(item: AssembledInventoryItem): boolean {
 
 // --- Add form -------------------------------------------------------------
 
-const search = ref('')
-const selectedKey = ref('')
-const customName = ref('')
-const quantity = ref('1')
-const notes = ref('')
+// Phase 4C: the Add Item form's in-progress input lives in the page's
+// interaction state (characterSheetInteractionState.ts), so it survives a
+// desktop/companion presentation switch. A private copy when not provided.
+const addState = inject(CHARACTER_SHEET_INTERACTION_KEY, null)?.inventoryAdd ?? reactive(emptyInventoryAddState())
+const search = toRef(addState, 'search')
+const selectedKey = toRef(addState, 'selectedKey')
+const customName = toRef(addState, 'customName')
+const quantity = toRef(addState, 'quantity')
+const notes = toRef(addState, 'notes')
 
 function optionKey(option: { packageId: string; slug: string }) {
   return `${option.packageId}::${option.slug}`
@@ -144,7 +149,7 @@ const filteredOptions = computed(() => {
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
 
-const addOpen = ref(false)
+const addOpen = toRef(addState, 'open')
 
 function submitAdd() {
   if (!canAdd.value || props.saving) return

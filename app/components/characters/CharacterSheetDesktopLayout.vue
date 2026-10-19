@@ -15,19 +15,31 @@
 // companion presentation's job (CharacterSheetCompanionLayout.vue), chosen
 // by the page from the workspace width, not by this layout shrinking.
 //
-// The inspector is Eldra's contextual right rail (WorldEntityContextDrawer
-// in its standard overlay form); this layout only hosts it. Whether the
-// sheet contracts beside it (`full` density) or the rail overlays the sheet
-// (`compact`) is decided by the page.
+// The inspector is Eldra's ONE context drawer (WorldEntityContextDrawer).
+// Full density: its standard right-rail form, the sheet contracting beside
+// it (the page pads the workspace). Compact density: the same drawer in
+// the bottom sheet, so the columns are never covered. The page decides.
+import CharacterSheetBottomSheet from '~/components/characters/CharacterSheetBottomSheet.vue'
 import type { CharacterSheetSection, CharacterSheetSectionKey } from '~/composables/useCharacterSheetLayout'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   sections: readonly CharacterSheetSection[]
   mainSection: CharacterSheetSectionKey
-}>()
+  // Phase 4C: 'rail' -- the workspace right rail (full desktop, the sheet
+  // contracts beside it). 'sheet' -- the bottom sheet (compact desktop),
+  // so nothing is laid over the gameplay columns.
+  inspectorMode?: 'rail' | 'sheet'
+  inspectorOpen?: boolean
+  inspectorLabel?: string
+}>(), {
+  inspectorMode: 'rail',
+  inspectorOpen: false,
+  inspectorLabel: 'Details'
+})
 
 const emit = defineEmits<{
   'select-section': [CharacterSheetSectionKey]
+  'close-inspector': []
 }>()
 
 const slots = useSlots()
@@ -89,13 +101,24 @@ const mainSections = computed(() => props.sections.filter((section) => section.p
       </main>
     </div>
 
-    <!-- The drawer positions itself as the workspace right rail. -->
+    <!-- Full desktop: the drawer positions itself as the workspace right
+         rail. Compact desktop: the same drawer, inline, in the bottom
+         sheet. -->
     <div
+      v-if="inspectorMode === 'rail'"
       class="contents"
       data-sheet-inspector-host
     >
       <slot name="inspector" />
     </div>
+    <CharacterSheetBottomSheet
+      v-else
+      :open="inspectorOpen"
+      :label="inspectorLabel"
+      @close="emit('close-inspector')"
+    >
+      <slot name="inspector" />
+    </CharacterSheetBottomSheet>
   </div>
 </template>
 

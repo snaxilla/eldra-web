@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_SHEET_INTERACTION_KEY } from './characterSheetInteractionState'
 // Notes for Character Sheet V2 -- the second V1 feature rebuilt on the new
 // Character Architecture, following CharacterInventoryPanel.vue's pattern.
 //
@@ -66,7 +67,13 @@ const emit = defineEmits<{
 // after a save resolves. Reseeded only when the INCOMING record actually
 // changes -- not on every render -- so a field mid-edit is never clobbered
 // by the parent re-fetching around it.
-const draft = reactive<StoredCharacterNotes>({ ...props.notes })
+//
+// Phase 4C: the draft lives in the page's interaction state when provided
+// (characterSheetInteractionState.ts), so unsaved text survives a
+// desktop/companion presentation switch.
+const notesState = inject(CHARACTER_SHEET_INTERACTION_KEY, null)?.notes ?? null
+if (notesState && !notesState.draft) notesState.draft = { ...props.notes }
+const draft: StoredCharacterNotes = notesState?.draft ?? reactive<StoredCharacterNotes>({ ...props.notes })
 
 watch(
   () => props.notes,

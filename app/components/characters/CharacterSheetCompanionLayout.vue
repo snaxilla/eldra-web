@@ -12,11 +12,12 @@
 //     everything else under a labelled More
 //   - ONE section at a time. Stats is abilities, saves, reference values
 //     (senses, passives), proficiencies and skills together.
-//   - details in a bottom sheet (scrim, swipe the grip down to close),
-//     laid over the page so the page's scroll position is never touched
+//   - details in a bottom sheet (CharacterSheetBottomSheet.vue: scrim,
+//     swipe the grip down to close, page scroll position untouched)
 //
 // Nothing here assumes a desktop browser: no hover-only affordances, 44px
 // touch targets, safe-area padding, no horizontal scrolling.
+import CharacterSheetBottomSheet from '~/components/characters/CharacterSheetBottomSheet.vue'
 import type { CharacterSheetSection, CharacterSheetSectionKey } from '~/composables/useCharacterSheetLayout'
 
 const props = withDefaults(defineProps<{
@@ -85,24 +86,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => headerObserver?.disconnect())
 
-// --- Bottom sheet swipe ----------------------------------------------------
-const dragOffset = ref(0)
-let dragStartY: number | null = null
-
-function onGripStart(event: TouchEvent) {
-  dragStartY = event.touches[0]?.clientY ?? null
-}
-
-function onGripMove(event: TouchEvent) {
-  if (dragStartY === null) return
-  dragOffset.value = Math.max(0, (event.touches[0]?.clientY ?? dragStartY) - dragStartY)
-}
-
-function onGripEnd() {
-  if (dragOffset.value > 80) emit('close-inspector')
-  dragOffset.value = 0
-  dragStartY = null
-}
 </script>
 
 <template>
@@ -202,32 +185,13 @@ function onGripEnd() {
     </main>
 
     <!-- Details: a bottom sheet over the page. -->
-    <div
-      v-if="inspectorOpen"
-      class="eldra-sheet-companion__scrim"
-      aria-hidden="true"
-      @click="emit('close-inspector')"
-    />
-    <aside
-      class="eldra-sheet-companion__sheet"
-      :class="inspectorOpen ? 'is-open' : ''"
-      :aria-label="inspectorLabel"
-      :style="dragOffset ? { transform: `translateY(${dragOffset}px)` } : undefined"
-      data-sheet-region="inspector"
-      data-sheet-inspector-host
+    <CharacterSheetBottomSheet
+      :open="inspectorOpen"
+      :label="inspectorLabel"
+      @close="emit('close-inspector')"
     >
-      <div
-        class="eldra-sheet-companion__grip"
-        aria-hidden="true"
-        @touchstart.passive="onGripStart"
-        @touchmove.passive="onGripMove"
-        @touchend="onGripEnd"
-        @touchcancel="onGripEnd"
-      >
-        <span />
-      </div>
       <slot name="inspector" />
-    </aside>
+    </CharacterSheetBottomSheet>
   </div>
 </template>
 
@@ -318,52 +282,6 @@ function onGripEnd() {
     font-size: 0.7rem;
     letter-spacing: 0.08em;
   }
-}
-
-.eldra-sheet-companion__scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: rgb(0 0 0 / 0.5);
-}
-
-.eldra-sheet-companion__sheet {
-  display: none;
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 61;
-  height: min(85dvh, 44rem);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.eldra-sheet-companion__sheet.is-open {
-  display: flex;
-  flex-direction: column;
-}
-
-.eldra-sheet-companion__sheet > :deep(:last-child) {
-  flex: 1;
-  min-height: 0;
-}
-
-.eldra-sheet-companion__grip {
-  display: flex;
-  justify-content: center;
-  padding: 0.5rem 0 0.25rem;
-  margin-bottom: -0.25rem;
-  position: relative;
-  z-index: 1;
-  touch-action: none;
-  background: rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.94));
-  border-top: 1px solid var(--eldra-border);
-}
-
-.eldra-sheet-companion__grip span {
-  display: block;
-  width: 2.5rem;
-  height: 0.25rem;
-  border-radius: 999px;
-  background: rgb(var(--eldra-accent-rgb) / 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {

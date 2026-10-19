@@ -39,11 +39,18 @@
        card      L2 browse cards (roster, collections)
        reading   L3 articles, admin panels, character sheet panels
        inspector L4 context inspectors (same glass as navigation)
-       overlay   L5 modals, menus, forms -- near-opaque */
+       overlay   L5 modals, menus, forms -- near-opaque
+     Readability floors (measured at the GM minimum, 0.55 with no blur,
+     over bright and pure-white artwork): reading surfaces never drop
+     below 0.82 (body text >= 7:1 even over raw white), inspectors never
+     below the platform default 0.74 (they sit over the unscrimmed map),
+     cards keep a small margin at 0.62. Navigation has no floor, so it
+     stays the most transparent level. At the default 0.74 no floor
+     applies. */
   --eldra-surface-nav-alpha: var(--eldra-panel-alpha);
-  --eldra-surface-card-alpha: var(--eldra-panel-alpha);
-  --eldra-surface-reading-alpha: min(1, calc(var(--eldra-panel-alpha) + 0.1));
-  --eldra-surface-inspector-alpha: var(--eldra-panel-alpha);
+  --eldra-surface-card-alpha: max(var(--eldra-panel-alpha), 0.62);
+  --eldra-surface-reading-alpha: min(1, max(calc(var(--eldra-panel-alpha) + 0.1), 0.82));
+  --eldra-surface-inspector-alpha: max(var(--eldra-panel-alpha), 0.74);
   --eldra-surface-overlay-alpha: max(var(--eldra-panel-alpha), 0.94);
   --eldra-surface-card-blur: calc(var(--eldra-panel-blur) * 0.75);
 

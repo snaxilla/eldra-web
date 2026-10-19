@@ -96,3 +96,43 @@ describe('Eldra universe backdrop (Game Admin, World Selection)', () => {
     expect(universe).not.toContain('.remove()')
   })
 })
+
+describe('readability floors', () => {
+  // Resolve a level at a given GM opacity from its declaration.
+  function level(name: string, panelAlpha: number) {
+    const expr = tokens.match(new RegExp(`--eldra-surface-${name}-alpha:([^;]+);`))![1]!
+      .replace(/var\(--eldra-panel-alpha\)/g, String(panelAlpha))
+      .replace(/calc\(/g, '(')
+    return Function(`"use strict"; const min = Math.min, max = Math.max; return (${expr})`)() as number
+  }
+
+  it('keeps the hierarchy ordered at the GM minimum, with reading surfaces densest', () => {
+    const at = (alpha: number) => ({
+      nav: level('nav', alpha),
+      card: level('card', alpha),
+      inspector: level('inspector', alpha),
+      reading: level('reading', alpha)
+    })
+    const min = at(0.55)
+    expect(min.nav).toBe(0.55)
+    expect(min.nav).toBeLessThan(min.card)
+    expect(min.card).toBeLessThan(min.inspector)
+    expect(min.inspector).toBeLessThan(min.reading)
+    expect(min.reading).toBeGreaterThanOrEqual(0.82)
+  })
+
+  it('changes nothing at the platform default opacity', () => {
+    expect(level('nav', 0.74)).toBe(0.74)
+    expect(level('card', 0.74)).toBe(0.74)
+    expect(level('inspector', 0.74)).toBe(0.74)
+    expect(level('reading', 0.74)).toBeCloseTo(0.84)
+  })
+
+  it('accessibility (alpha 1) makes every level solid', () => {
+    for (const name of ['nav', 'card', 'inspector', 'reading', 'overlay']) expect(level(name, 1)).toBe(1)
+  })
+
+  it('the context inspector reads the inspector level in every placement', () => {
+    expect(surfaces).toMatch(/\.eldra-ornate-panel\.eldra-glass-surface:is\(\[data-world-context-rail\], \[data-sheet-detail-rail\], \[data-context-inline\]\) \{\s+background:\s+var\(--eldra-glass-sheen\),\s+rgb\(var\(--eldra-panel-rgb\) \/ var\(--eldra-surface-inspector-alpha\)\)/)
+  })
+})

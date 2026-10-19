@@ -27,12 +27,22 @@
     inset 0 1px 0 rgb(var(--eldra-accent-bright-rgb) / 0.06) !important;
 }
 
+/* Phase 3C: the context inspector (WorldEntityContextDrawer, every
+   placement) is the L4 level -- the same glass as navigation, with the
+   inspector's readability floor. */
+.eldra-ornate-panel.eldra-glass-surface:is([data-world-context-rail], [data-sheet-detail-rail], [data-context-inline]) {
+  background:
+    var(--eldra-glass-sheen),
+    rgb(var(--eldra-panel-rgb) / var(--eldra-surface-inspector-alpha)) !important;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .eldra-glass-surface,
   .eldra-ornate-panel.eldra-glass-surface,
   .eldra-ornate-panel,
   .eldra-ornate-card,
-  .eldra-sheet-panel {
+  .eldra-sheet-panel,
+  .eldra-ornate-panel.eldra-glass-surface:is([data-world-context-rail], [data-sheet-detail-rail], [data-context-inline]) {
     background: rgb(var(--eldra-panel-rgb) / 0.96) !important;
   }
 }

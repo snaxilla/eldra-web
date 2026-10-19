@@ -166,13 +166,22 @@ values moves every level together, and the accessibility overrides (alpha 1, blu
 level solid. The tokens are in `themes/tokens.css`. A theme may re-declare the offsets, never the GM
 values.
 
-| Level | Token | Default derivation | Used by |
+| Level | Token | Derivation (floor) | Used by |
 |---|---|---|---|
-| L1 navigation | `--eldra-surface-nav-alpha` | panel alpha | `.eldra-glass-surface`: the workspace sidebar over the map or over a page backdrop |
-| L2 cards | `--eldra-surface-card-alpha`, `--eldra-surface-card-blur` | panel alpha, ¾ blur | `.eldra-ornate-card` (roster, collections) |
-| L3 reading | `--eldra-surface-reading-alpha` | panel alpha + 0.10 | `.eldra-ornate-panel` (articles, admin, page headers), `.eldra-sheet-panel` (V2 sheet) |
-| L4 inspectors | `--eldra-surface-inspector-alpha` | panel alpha | `WorldEntityContextDrawer`; any fixed `.eldra-ornate-panel` |
+| L1 navigation | `--eldra-surface-nav-alpha` | panel alpha (no floor) | `.eldra-glass-surface`: the workspace sidebar over the map, a page backdrop or the universe |
+| L2 cards | `--eldra-surface-card-alpha`, `--eldra-surface-card-blur` | panel alpha, ¾ blur (≥ 0.62) | `.eldra-ornate-card` (roster, collections) |
+| L3 reading | `--eldra-surface-reading-alpha` | panel alpha + 0.10 (≥ 0.82) | `.eldra-ornate-panel` (articles, admin, page headers), `.eldra-sheet-panel` (V2 sheet) |
+| L4 inspectors | `--eldra-surface-inspector-alpha` | panel alpha (≥ 0.74) | `WorldEntityContextDrawer` in every placement; any fixed `.eldra-ornate-panel` |
 | L5 overlays | `--eldra-surface-overlay-alpha` | max(panel alpha, 0.94) | `.eldra-glass-menu`; inputs and wells stay near-opaque |
+
+**Readability floors.** The floors were measured at the GM minimum (opacity 0.55, blur 0) over
+bright and pure-white artwork. They keep long-form text readable when a GM picks very transparent
+panels:
+- Reading surfaces keep body text ≥ 7:1 even over raw white.
+- Inspectors sit over the unscrimmed map, so they never drop below the platform default.
+- Navigation has no floor and stays the most transparent level.
+- At the default opacity (0.74) no floor applies.
+- Accessibility (alpha 1) still makes every level solid.
 
 **Page backdrops.** A GM page background (Page Setup) is drawn once by `world-workspace.vue`,
 **behind the whole workspace**: both grid columns, with the sidebar lifted above it. Every surface is
@@ -183,6 +192,15 @@ uses the theme's own ground colors).
 - Over a backdrop the sidebar becomes `.eldra-glass-surface`. Over the plain ground it keeps its
   solid binding.
 - The World Map draws its own scene and gets no page backdrop.
+- **Eldra's universe.** A page can declare `definePageMeta({ eldraBackdrop: 'universe' })`; Game Admin
+  does. The layout then draws `WorldChooserThpace` behind the whole workspace instead. This is the
+  same animated universe as the World Selection screen, and a World's page background never replaces
+  it. The Importer keeps the universe in its own column with `yield-to-page-backdrop`, which hides it
+  under a GM page background.
+- **Universe lifecycle.** `WorldChooserThpace` only renders while it is shown. Hidden, it stops.
+  Under reduced motion (Eldra's preference or the OS setting) it draws one frame and stops. On
+  unmount it ends thpace's render loop, removes its resize listener and releases the WebGL context;
+  thpace has no teardown of its own.
 - Upload, the media library, persistence and positioning are unchanged; only the drawing moved.
 
 ### Full-bleed World Map shell (Phase 3A)

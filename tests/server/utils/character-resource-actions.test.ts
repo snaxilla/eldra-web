@@ -16,13 +16,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   getDerivedCharacterMock, assembleCharacterMock, getWorldRuntimeMock,
-  loadCharacterResourcesMock, saveCharacterResourcesMock
+  loadCharacterResourcesMock, expendCharacterResourcesAtomicMock
 } = vi.hoisted(() => ({
   getDerivedCharacterMock: vi.fn(),
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
   loadCharacterResourcesMock: vi.fn(),
-  saveCharacterResourcesMock: vi.fn()
+  // CHARACTER MECHANICS PHASE A5, Checkpoint 1 -- the actual batch mutation
+  // now goes through character-resource-atomic.ts (its own real behavior
+  // is proven against a real PostgreSQL instance in
+  // tests/integration/character-resource-atomic.integration.test.ts);
+  // `loadCharacterResourcesMock` remains only for the pre-check this module
+  // still performs for a precise, per-resource error message.
+  expendCharacterResourcesAtomicMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-derived', () => ({
@@ -35,8 +41,10 @@ vi.mock('../../../server/utils/world-runtime-service', () => ({
   getWorldRuntime: getWorldRuntimeMock
 }))
 vi.mock('../../../server/utils/character-resources', () => ({
-  loadCharacterResources: loadCharacterResourcesMock,
-  saveCharacterResources: saveCharacterResourcesMock
+  loadCharacterResources: loadCharacterResourcesMock
+}))
+vi.mock('../../../server/utils/character-resource-atomic', () => ({
+  expendCharacterResourcesAtomic: expendCharacterResourcesAtomicMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -104,7 +112,7 @@ beforeEach(() => {
   assembleCharacterMock.mockReset()
   getWorldRuntimeMock.mockReset()
   loadCharacterResourcesMock.mockReset()
-  saveCharacterResourcesMock.mockReset()
+  expendCharacterResourcesAtomicMock.mockReset()
 
   const runtime = loadRuntimeWithSyntheticAction()
   getWorldRuntimeMock.mockResolvedValue({
@@ -121,7 +129,7 @@ beforeEach(() => {
     derived: { resources: [{ id: 'resource:rage', label: 'Rage', max: 2, expended: 0, remaining: 2, recovery: [], presentation: { style: 'pool' } }] }
   })
   loadCharacterResourcesMock.mockResolvedValue({ expended: {} })
-  saveCharacterResourcesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  expendCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: { 'resource:rage': 1 } })
 })
 
 describe('consumeActionResourceCosts -- authority', () => {
@@ -130,7 +138,9 @@ describe('consumeActionResourceCosts -- authority', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.consumed).toEqual([{ resourceId: 'resource:rage', amount: 1, remaining: 1 }])
-    expect(saveCharacterResourcesMock).toHaveBeenCalledWith('42', { expended: { 'resource:rage': 1 } })
+    expect(expendCharacterResourcesAtomicMock).toHaveBeenCalledWith({
+      worldId: '5', characterId: '42', costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }]
+    })
   })
 
   it('an unknown action is rejected, and nothing is persisted', async () => {
@@ -138,7 +148,7 @@ describe('consumeActionResourceCosts -- authority', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('unknown-action')
-    expect(saveCharacterResourcesMock).not.toHaveBeenCalled()
+    expect(expendCharacterResourcesAtomicMock).not.toHaveBeenCalled()
   })
 
   it('a resource this character has NOT acquired is rejected even if the Definition exists', async () => {
@@ -148,10 +158,10 @@ describe('consumeActionResourceCosts -- authority', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('resource-not-acquired')
-    expect(saveCharacterResourcesMock).not.toHaveBeenCalled()
+    expect(expendCharacterResourcesAtomicMock).not.toHaveBeenCalled()
   })
 
-  it('insufficient remaining rejects the action and consumes NOTHING -- failure never partially applies', async () => {
+  it('insufficient remaining (per the pre-check) rejects the action and consumes NOTHING -- failure never partially applies', async () => {
     loadCharacterResourcesMock.mockResolvedValue({ expended: { 'resource:rage': 2 } })
     getDerivedCharacterMock.mockResolvedValue({
       available: true,
@@ -162,7 +172,25 @@ describe('consumeActionResourceCosts -- authority', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('insufficient-resource')
-    expect(saveCharacterResourcesMock).not.toHaveBeenCalled()
+    expect(expendCharacterResourcesAtomicMock).not.toHaveBeenCalled()
+  })
+
+  it('the atomic module is the SOLE authority: if it rejects (e.g. a last-moment race the pre-check could not see), nothing is treated as consumed', async () => {
+    expendCharacterResourcesAtomicMock.mockResolvedValue({ ok: false, reason: 'insufficient-resource', message: 'raced' })
+
+    const result = await consumeActionResourceCosts('5', '42', SYNTHETIC_ACTION_ID)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('insufficient-resource')
+  })
+
+  it('a persistence failure from the atomic module is reported as resource-persistence-failure, not silently swallowed', async () => {
+    expendCharacterResourcesAtomicMock.mockResolvedValue({ ok: false, reason: 'persistence-unconfigured', message: 'not configured' })
+
+    const result = await consumeActionResourceCosts('5', '42', SYNTHETIC_ACTION_ID)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('resource-persistence-failure')
   })
 
   it('a character-not-found derived result is reported honestly', async () => {

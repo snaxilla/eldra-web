@@ -13,13 +13,15 @@
 // and no bootstrap run.
 
 import {
-  emptyCharacterResources,
-  expendResource,
   normalizeStoredResources,
-  restoreResource,
   type StoredCharacterResources
 } from '../../app/lib/characters/resources'
 import { dxFetch } from './entity-factory'
+import {
+  expendCharacterResourcesAtomic,
+  reduceCharacterResourcesAtomic,
+  type AtomicResourceFailureReason
+} from './character-resource-atomic'
 
 export const CHARACTER_RESOURCES_BLOCK_KEY = 'resources'
 
@@ -84,35 +86,38 @@ export async function saveCharacterResources(
 }
 
 // ---------------------------------------------------------------------------
-// MANUAL EXPEND / RESTORE -- server-authoritative.
+// MANUAL EXPEND / RESTORE -- server-authoritative, atomic (CHARACTER
+// MECHANICS PHASE A5, Checkpoint 1).
 // ---------------------------------------------------------------------------
-// Mirrors character-cast.ts's own `expendSpellSlotAuthoritatively` exactly:
-// `max` is supplied by the CALLER (the route below), already read fresh off
-// `getDerivedCharacter` -- never trusted from the client, never recomputed
-// here (this file has no Rules Engine access and must not gain any, per
-// server/utils/character-actor-bridge.ts's own "PURE ON PURPOSE" boundary
-// one layer over). A player/DM button click becomes exactly one of these
-// two calls; both read-modify-write the SAME persisted record a Rest
-// recovery or a future authoritative action-consumption call also writes,
-// so there is one serialized sequence of truth per character, not three
-// independently-trusted mutation paths.
+// Mirrors character-cast.ts's own `expendSpellSlotAuthoritatively` exactly
+// in spirit: `max` is supplied by the CALLER (the route below), already
+// read fresh off `getDerivedCharacter` -- never trusted from the client,
+// never recomputed here. UNLIKE the pre-Checkpoint-1 shape, this no longer
+// read-modify-writes the whole `resources` block in JS: it delegates to
+// `character-resource-atomic.ts`'s own database-level conditional mutation,
+// the SAME primitive `character-recovery.ts`'s Rest recovery and
+// `character-resource-actions.ts`'s multi-cost batch below now also use --
+// one serialized, genuinely atomic sequence of truth per character, not
+// three independently-racing read-modify-write paths.
+export type ResourceMutationResult =
+  | { ok: true; expended: Record<string, number> }
+  | { ok: false; reason: AtomicResourceFailureReason; message: string }
+
 export async function expendResourceAuthoritatively(
+  worldId: string | number,
   characterId: string | number,
   resourceId: string,
   max: number,
   amount = 1
-): Promise<StoredCharacterResources> {
-  const stored = (await loadCharacterResources(characterId)) ?? emptyCharacterResources()
-  const nextExpended = expendResource(stored.expended, resourceId, max, amount)
-  return saveCharacterResources(characterId, { expended: nextExpended })
+): Promise<ResourceMutationResult> {
+  return expendCharacterResourcesAtomic({ worldId, characterId, costs: [{ resourceId, amount, max }] })
 }
 
 export async function restoreResourceAuthoritatively(
+  worldId: string | number,
   characterId: string | number,
   resourceId: string,
   amount = 1
-): Promise<StoredCharacterResources> {
-  const stored = (await loadCharacterResources(characterId)) ?? emptyCharacterResources()
-  const nextExpended = restoreResource(stored.expended, resourceId, amount)
-  return saveCharacterResources(characterId, { expended: nextExpended })
+): Promise<ResourceMutationResult> {
+  return reduceCharacterResourcesAtomic({ worldId, characterId, reductions: [{ resourceId, amount }] })
 }

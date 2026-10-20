@@ -94,8 +94,19 @@ export default defineEventHandler(async (event) => {
   }
 
   const saved = action === 'expend'
-    ? await expendResourceAuthoritatively(characterId, resourceId, resource.max, amount)
-    : await restoreResourceAuthoritatively(characterId, resourceId, amount)
+    ? await expendResourceAuthoritatively(worldId, characterId, resourceId, resource.max, amount)
+    : await restoreResourceAuthoritatively(worldId, characterId, resourceId, amount)
+
+  if (!saved.ok) {
+    const statusCode = saved.reason === 'not-found'
+      ? 404
+      : saved.reason === 'insufficient-resource'
+        ? 409
+        : saved.reason === 'invalid-input'
+          ? 400
+          : 502
+    throw createError({ statusCode, statusMessage: saved.message })
+  }
 
   // Re-derive once more so the response reflects the ACTUAL post-write
   // remaining/expended, never the client's own optimistic guess -- cheap

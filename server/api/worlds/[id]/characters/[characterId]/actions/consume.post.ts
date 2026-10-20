@@ -18,7 +18,12 @@ const STATUS_BY_REASON: Record<ConsumeActionCostFailureReason, number> = {
   'unknown-action': 404,
   'unresolved-cost-resource': 409,
   'resource-not-acquired': 403,
-  'insufficient-resource': 409
+  'insufficient-resource': 409,
+  // CHARACTER MECHANICS PHASE A5, Checkpoint 1 -- the atomic batch write
+  // itself can now fail independently of every structural/eligibility
+  // check above (a misconfigured/unreachable persistence layer, or a
+  // genuine last-moment race the pre-check could not see).
+  'resource-persistence-failure': 502
 }
 
 export default defineEventHandler(async (event) => {

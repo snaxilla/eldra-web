@@ -25,6 +25,13 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts']
+    include: ['tests/**/*.test.ts'],
+    // CHARACTER MECHANICS PHASE A5 -- tests/integration/** need a real,
+    // disposable PostgreSQL instance (see vitest.integration.config.ts) and
+    // must never run as part of the ordinary, fully-mocked unit suite --
+    // they would fail for every contributor/CI run that has no such
+    // database available. Run them explicitly via `pnpm run
+    // test:integration` instead.
+    exclude: ['node_modules/**', 'tests/integration/**']
   }
 })

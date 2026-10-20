@@ -96,10 +96,11 @@
 // would diverge from how every other roll-producing code path already
 // reports this exact failure.
 
+import { createError } from 'h3'
 import { assembleCharacter } from './character-assembly'
 import { loadCharacterHealth, saveCharacterHealth } from './character-health'
 import { loadCharacterSpellcasting, saveCharacterSpellcasting } from './character-spellcasting'
-import { loadCharacterResources, saveCharacterResources } from './character-resources'
+import { reduceCharacterResourcesAtomic } from './character-resource-atomic'
 import { getDerivedCharacter, type DerivedResource } from './character-derived'
 import { createHitDieRollEvent } from './roll-events'
 import {
@@ -116,10 +117,6 @@ import {
   emptyCharacterSpellcasting,
   resetAllSlots
 } from '../../app/lib/characters/spellcasting'
-import {
-  applyResourceRecovery,
-  emptyCharacterResources
-} from '../../app/lib/characters/resources'
 
 export type RecoveryAction =
   | { type: 'damage'; amount: number }
@@ -400,10 +397,24 @@ export async function applyRecoveryAction(
         .map((rule) => ({ resourceId: resource.id, amount: rule.amount })))
 
     if (recoveries.length) {
-      const currentResources = (await loadCharacterResources(characterId)) ?? emptyCharacterResources()
-      await saveCharacterResources(characterId, {
-        expended: applyResourceRecovery(currentResources.expended, recoveries)
+      // CHARACTER MECHANICS PHASE A5 -- atomic, database-level recovery
+      // (character-resource-atomic.ts), replacing the old read-modify-write.
+      // This is the SAME primitive Cast's resource-funded path and the
+      // manual expend/restore route now use: recovering a resource and
+      // expending it concurrently (a Rest firing at the same moment as a
+      // resource-funded Cast) serializes correctly regardless of which
+      // commits first, because both compute their result from the row's
+      // live value rather than a JS-side snapshot -- see that module's own
+      // header for the full proof.
+      const result = await reduceCharacterResourcesAtomic({
+        worldId, characterId, reductions: recoveries
       })
+      if (!result.ok) {
+        throw createError({
+          statusCode: result.reason === 'invalid-input' ? 400 : 502,
+          statusMessage: `Resource recovery could not be recorded: ${result.message}`
+        })
+      }
     }
   }
 

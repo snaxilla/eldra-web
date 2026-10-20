@@ -42,34 +42,39 @@
 //      partial deduction.
 //
 // ---------------------------------------------------------------------------
-// ORDERING AND RACE LIMITATIONS -- HONESTLY REPORTED, NOT SOLVED HERE
+// ORDERING AND RACE -- CLOSED (CHARACTER MECHANICS PHASE A5, Checkpoint 1)
 // ---------------------------------------------------------------------------
-// Costs are checked against a SINGLE fresh read (step 2-4 above happen
-// against one `getDerivedCharacter`/`loadCharacterResources` pair), then
-// written in one `saveCharacterResources` call -- there is no
-// optimistic-concurrency token and no database-level transaction across the
-// read and the write, the SAME documented, accepted limitation
-// character-cast.ts's own "KNOWN, UN-SOLVED RACE: TWO CLIENTS, ONE LAST
-// SLOT" section already names for spell slot expenditure. Two genuinely
-// simultaneous consumptions of a resource's LAST unit can both pass the
-// availability check before either writes, silently losing one decrement --
-// documented here for the identical reason it is documented there, not
-// fixed in this foundational pass.
+// Costs are checked against a fresh read first (step 2-4 above, against one
+// `getDerivedCharacter`/`loadCharacterResources` pair) PURELY for a precise,
+// per-resource error message -- that read is no longer authoritative. The
+// actual mutation is one atomic, database-level, all-or-nothing statement
+// (`expendCharacterResourcesAtomic`, server/utils/character-resource-atomic.ts)
+// that re-checks every cost's sufficiency against the row's LIVE value at
+// write time, closing the race this header previously documented as
+// accepted: two genuinely simultaneous consumptions of a resource's last
+// unit can no longer both succeed -- the database serializes them, and the
+// second cleanly observes insufficiency rather than silently losing a
+// decrement. `character-cast.ts`'s own spell-SLOT race remains open (slots
+// are explicitly out of this Checkpoint's scope); this module's own
+// resource race is the one this phase closes.
 //
 // ---------------------------------------------------------------------------
 // NO DOUBLE-APPLICATION / FAILURE NEVER CONSUMES
 // ---------------------------------------------------------------------------
 // A rejected consumption (any cost unaffordable, an unresolved resource, an
-// Action this character has no access to) performs ZERO persistence writes
-// -- `saveCharacterResources` is only ever reached after every cost in the
-// batch is confirmed affordable.
+// Action this character has no access to, or the atomic write itself
+// rejecting the batch) performs ZERO persistence writes -- the atomic call
+// is only ever reached after every cost's pre-check passes, and the SQL
+// statement itself is all-or-nothing: either every cost in the batch is
+// applied in one write, or none of them are.
 
 import { getDerivedCharacter } from './character-derived'
 import { assembleCharacter } from './character-assembly'
 import { getWorldRuntime } from './world-runtime-service'
 import { buildActorState } from './character-actor-bridge'
-import { loadCharacterResources, saveCharacterResources } from './character-resources'
-import { emptyCharacterResources, expendResource } from '../../app/lib/characters/resources'
+import { loadCharacterResources } from './character-resources'
+import { expendCharacterResourcesAtomic } from './character-resource-atomic'
+import { emptyCharacterResources } from '../../app/lib/characters/resources'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import type { Expression, RuleValue } from '../../app/lib/rules/types'
@@ -83,6 +88,13 @@ export type ConsumeActionCostFailureReason =
   | 'unresolved-cost-resource'
   | 'resource-not-acquired'
   | 'insufficient-resource'
+  // CHARACTER MECHANICS PHASE A5 -- the atomic batch write
+  // (character-resource-atomic.ts) is the SOLE authority for whether the
+  // consumption actually succeeds; this covers a misconfigured/unreachable
+  // persistence layer, or a genuine last-moment race the pre-check below
+  // (a best-effort, non-authoritative read for a precise error message)
+  // could not see.
+  | 'resource-persistence-failure'
 
 export type ConsumeActionCostResult =
   | { ok: true; consumed: { resourceId: string; amount: number; remaining: number }[] }
@@ -212,12 +224,27 @@ export async function consumeActionResourceCosts(
     return { ok: true, consumed: [] }
   }
 
-  let nextExpended = storedResources.expended
-  for (const entry of resolved) {
-    nextExpended = expendResource(nextExpended, entry.resourceId, entry.max, entry.amount)
+  // CHARACTER MECHANICS PHASE A5 -- the actual mutation is now one atomic,
+  // database-level, all-or-nothing statement (character-resource-atomic.ts)
+  // instead of a JS-computed read-modify-write -- the pre-check above
+  // (against `storedResources`, read once at the top of this function)
+  // stays only as a best-effort, non-authoritative source for a precise
+  // per-resource error message; the atomic call below is the SOLE authority
+  // for whether this consumption actually happens.
+  const atomicResult = await expendCharacterResourcesAtomic({
+    worldId,
+    characterId,
+    costs: resolved.map((entry) => ({ resourceId: entry.resourceId, amount: entry.amount, max: entry.max }))
+  })
+
+  if (!atomicResult.ok) {
+    if (atomicResult.reason === 'insufficient-resource') {
+      return { ok: false, reason: 'insufficient-resource', message: atomicResult.message }
+    }
+    return { ok: false, reason: 'resource-persistence-failure', message: atomicResult.message }
   }
 
-  await saveCharacterResources(characterId, { expended: nextExpended })
+  const nextExpended = atomicResult.expended
 
   return {
     ok: true,

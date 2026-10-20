@@ -11,6 +11,15 @@
 // `pnpm run test:integration`, never as part of the ordinary `pnpm run
 // test` (see vitest.config.ts's own exclude).
 //
+// PRODUCTION HOTFIX -- `block_instances.data` MUST be declared `json`, NOT
+// `jsonb`, in this disposable schema. Confirmed directly against the real
+// Directus field metadata (`"type": "json"`). An earlier disposable schema
+// used `jsonb` -- which does not exist in production -- and this is
+// exactly how a real production failure
+// ("function jsonb_set(json, text[], jsonb, boolean) does not exist")
+// went undetected through every prior run of this suite. Using the wrong
+// column type here defeats the entire purpose of this file.
+//
 // CHARACTER MECHANICS PHASE A5, Checkpoint 1 FINAL HARDENING --
 // `ELDRA_RESOURCE_DB_URL` is deliberately the LEAST-PRIVILEGE role
 // (`eldra_resource_writer`, see this checkpoint's own report for the exact
@@ -94,6 +103,27 @@ async function countResourcesRows(entityId: number): Promise<number> {
   )
   return res.rows[0].count
 }
+
+// PRODUCTION HOTFIX REGRESSION -- the exact real-world failure: a brand-new character (no
+// `resources` row yet) expending a resource for the very first time, against the REAL `json`
+// (not `jsonb`) column type. Before the fix, this failed outright with "function jsonb_set(json,
+// text[], jsonb, boolean) does not exist" -- confirmed verbatim against this exact disposable
+// schema, with the pre-fix code, before the fix was written. Named and kept separate from the
+// (structurally identical) "first-use initialization" describe block below specifically so this
+// regression's own real-world identity -- "a level 1 Barbarian's first Rage" -- stays
+// discoverable on its own, not folded anonymously into a generic test name.
+describe('PRODUCTION HOTFIX REGRESSION -- a brand-new character\'s first-ever resource expenditure against the real json column type', () => {
+  it('a Level 1 Barbarian expending Rage for the first time succeeds (reproduces the real Borc report)', async () => {
+    const result = await expendCharacterResourcesAtomic({
+      worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }]
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.expended).toEqual({ 'resource:rage': 1 })
+
+    const row = await readResourcesRow(characterId)
+    expect(row?.data.expended).toEqual({ 'resource:rage': 1 })
+  })
+})
 
 describe('expendCharacterResourcesAtomic -- first-use initialization', () => {
   it('creates the resources row on the very first expenditure', async () => {

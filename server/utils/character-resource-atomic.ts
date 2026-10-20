@@ -248,9 +248,22 @@ export async function expendCharacterResourcesAtomic(input: {
       // Builds ONE statement: a nested `jsonb_set(jsonb_set(..., path_1, next_1), path_2, next_2)`
       // insert-source and update-target, and an ANDed sufficiency condition per cost --
       // the SAME fixed template, parameterized by however many costs this call names.
+      //
+      // PRODUCTION HOTFIX -- `block_instances.data` is declared `json` in the real schema
+      // (confirmed directly against Directus's own field metadata: `"type": "json"`, not
+      // `jsonb` -- the disposable test schema this module was originally verified against
+      // used `jsonb`, which does not actually exist in production and masked this entirely).
+      // `jsonb_set`/`jsonb_build_object`/the `#-` operator below are all JSONB-ONLY -- none
+      // of them has a `json` overload. The column's own value is cast to `jsonb` ONCE, at the
+      // first reference (`block_instances.data::jsonb`); every subsequent `jsonb_set` call in
+      // the same chain stays in jsonb space, so only the OUTERMOST result -- what actually
+      // gets assigned to the `data` column -- needs casting back to `json`, at the single
+      // template site below (never inside the loop). `->`/`->>` (used elsewhere in this file
+      // to READ the column, e.g. the sufficiency conditions) need no cast at all -- Postgres
+      // defines both operators natively for `json`.
       const params: unknown[] = [input.characterId, input.worldId]
       let insertExpended = `jsonb_build_object()`
-      let updateExpr = 'block_instances.data'
+      let updateExpr = 'block_instances.data::jsonb'
       const sufficiencyConditions: string[] = []
       const insertSufficiencyConditions: string[] = []
 
@@ -273,10 +286,10 @@ export async function expendCharacterResourcesAtomic(input: {
       const sql = `
         WITH ownership AS (SELECT 1 FROM entities e WHERE e.id = $1 AND e.world_id = $2)
         INSERT INTO block_instances (entity_id, block_key, label, sort, repeatable, data)
-        SELECT $1, 'resources', 'Resources', 80, false, jsonb_build_object('expended', ${insertExpended})
+        SELECT $1, 'resources', 'Resources', 80, false, (jsonb_build_object('expended', ${insertExpended}))::json
         WHERE EXISTS (SELECT 1 FROM ownership) AND ${insertSufficiencyClause}
         ON CONFLICT (entity_id) WHERE block_key = 'resources'
-        DO UPDATE SET data = ${updateExpr}
+        DO UPDATE SET data = (${updateExpr})::json
         WHERE EXISTS (SELECT 1 FROM ownership) AND ${sufficiencyClause}
         RETURNING data->'expended' AS expended
       `
@@ -324,8 +337,12 @@ export async function reduceCharacterResourcesAtomic(input: {
   const result = await withPersistenceFailureHandling(async () => {
     const client = await getPool().connect()
     try {
+      // PRODUCTION HOTFIX -- see expendCharacterResourcesAtomic's own header comment for the
+      // full root-cause explanation (`block_instances.data` is `json`, not `jsonb`; `#-` and
+      // `jsonb_set` are JSONB-only). Identical fix: cast once at the first reference, cast the
+      // outermost result back to `json` at the single assignment site below.
       const params: unknown[] = [input.characterId, input.worldId]
-      let updateExpr = 'block_instances.data'
+      let updateExpr = 'block_instances.data::jsonb'
 
       for (const reduction of input.reductions) {
         const resourceIdx = params.length + 1
@@ -351,7 +368,7 @@ export async function reduceCharacterResourcesAtomic(input: {
       // recovering a resource that was never expended in the first place.
       const sql = `
         UPDATE block_instances
-        SET data = ${updateExpr}
+        SET data = (${updateExpr})::json
         WHERE entity_id = $1
           AND block_key = 'resources'
           AND EXISTS (SELECT 1 FROM entities e WHERE e.id = $1 AND e.world_id = $2)

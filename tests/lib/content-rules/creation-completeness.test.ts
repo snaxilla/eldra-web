@@ -31,13 +31,19 @@ describe('the refusal wording is plain and names the owner (production impact co
   // left to refuse. Every species/class/background is now individually creation-complete too, so
   // this demonstration moves to a genuinely still-blocked decision found dynamically (never
   // hardcoded by owner name) rather than naming a species that may itself be reclassified again.
+  // A4 -- REMAINING MANDATORY DECISION CLOSURE leaves the real corpus's own first (id-sorted)
+  // blocked decision class-owned (Magical Secrets, Bard, Level 10) rather than species-owned
+  // (this test's own prior premise) -- `progressionUnresolvedDecisions` covers a class-owned
+  // decision at any level, so the demonstration moves to that authority rather than
+  // `creationUnresolvedDecisions`, re-verified live rather than assumed.
   it('a real refusal names its decision in plain words, with no internal identifier', () => {
-    const blocked = DECISIONS.find((d) => classifyDecision(d).status === 'blocked' && d.timing === 'creation')
-    expect(blocked, 'at least one real creation-time decision must still be blocked for this test to mean anything').toBeDefined()
-    const described = describeUnresolved(creationUnresolvedDecisions({
-      species: blocked!.owner.kind === 'species' ? blocked!.owner.slug : NONE,
-      class: blocked!.owner.kind === 'class' ? blocked!.owner.slug : NONE,
-      background: blocked!.owner.kind === 'background' ? blocked!.owner.slug : (blocked!.grantedBy ?? NONE),
+    const blocked = DECISIONS.find((d) => classifyDecision(d).status === 'blocked')
+    expect(blocked, 'at least one real decision must still be blocked for this test to mean anything').toBeDefined()
+    const described = describeUnresolved(progressionUnresolvedDecisions({
+      classSlug: blocked!.owner.kind === 'class' ? blocked!.owner.slug : NONE,
+      subclassSlug: blocked!.owner.kind === 'subclass' ? blocked!.owner.slug : null,
+      fromLevel: 0,
+      toLevel: 20,
       feats: blocked!.owner.kind === 'feat' ? [blocked!.owner.slug] : []
     }))
     expect(described).toMatch(/cannot be completed yet/)
@@ -104,8 +110,11 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   it('a Fighter moving from 1 to 2 crosses no unrecordable decision', () => {
     expect(prog('fighter-xphb', 1, 2)).toEqual([])
   })
-  it('a Fighter crossing Level 3 as a Battle Master owns Combat Superiority', () => {
-    expect(prog('fighter-xphb', 2, 3, 'battle-master-xphb').some((u) => u.source === 'Combat Superiority')).toBe(true)
+  // A4 -- Combat Superiority is now representable (choice:subclass.accumulating-option), so a
+  // Battle Master crossing Level 3 owns nothing unrecordable at this structural layer any more
+  // (the real maneuver answer is still required, just by the MECHANICAL authority, not Phase 0).
+  it('a Fighter crossing Level 3 as a Battle Master owns nothing unrecordable (Combat Superiority is now implemented)', () => {
+    expect(prog('fighter-xphb', 2, 3, 'battle-master-xphb').some((u) => u.source === 'Combat Superiority')).toBe(false)
   })
   it('a Champion crossing Level 3 owns nothing unrecordable', () => {
     expect(prog('fighter-xphb', 2, 3, 'champion-xphb')).toEqual([])
@@ -124,19 +133,24 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   // longer brings an UNRESOLVABLE decision at this structural layer -- the real spell answer is
   // still required, just by the MECHANICAL authority (planSpellAcquisition), not by Phase 0. D&D
   // 2024 Character Rules A1 -- Ritual Caster (this test's own former example) is now implemented
-  // too (`impl:feat-spell-ritual-caster`); Keen Mind remains genuinely blocked (its real
-  // "proficiency-OR-Expertise" dual-output clause needs a genuinely new primitive this phase does
-  // not invent -- see mandatory-decisions.ts's own `skill-from` detail fix), so it proves the SAME
-  // "a feat acquired in the transition brings its own nested decisions" mechanism this test
-  // originally existed to prove.
+  // too (`impl:feat-spell-ritual-caster`); Keen Mind remains genuinely blocked -- re-verified
+  // directly against the real corpus prose this phase (A4), its own "gain proficiency UNLESS you
+  // already have it, in which case gain Expertise instead" clause needs a genuinely new primitive
+  // (a grant whose OUTPUT depends on prior state) this phase does not invent, the SAME gap as
+  // Gloom Stalker's own Iron Mind -- so it proves the SAME "a feat acquired in the transition
+  // brings its own nested decisions" mechanism this test originally existed to prove.
   it('a feat acquired in the transition brings its own nested decisions (Keen Mind)', () => {
     expect(prog('fighter-xphb', 3, 4, null, ['keen-mind-xphb']).some((u) => u.owner.slug === 'keen-mind-xphb')).toBe(true)
   })
   it('a feat whose own nested spell decisions are now implemented owns nothing unrecordable (Fey-Touched)', () => {
     expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(false)
   })
+  // A4 -- Battle Master (this test's own prior example) is now fully representable at this
+  // structural layer (Combat Superiority), so it moves to Warrior of Shadow (Monk): its own
+  // Level-3 resource-gated Darkness grant remains a genuine STOP (no generic primitive for a
+  // spell usable only via a specific finite resource pool), re-verified live.
   it('a subclass chosen in this transition is the one whose decisions apply', () => {
-    expect(prog('fighter-xphb', 2, 3, null)).toEqual([])
-    expect(prog('fighter-xphb', 2, 3, 'battle-master-xphb')).not.toEqual([])
+    expect(prog('monk-xphb', 2, 3, null)).toEqual([])
+    expect(prog('monk-xphb', 2, 3, 'warrior-of-shadow-xphb')).not.toEqual([])
   })
 })

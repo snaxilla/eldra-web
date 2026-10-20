@@ -63,6 +63,8 @@ const ACCEPTANCE_REAL = [
   'tests/server/api/worlds/[id]/characters/create-v2-weapon-mastery.test.ts',
   'tests/server/utils/character-progression-fail-closed.test.ts',
   'tests/server/utils/character-progression-third-caster-spell-acceptance.test.ts',
+  'tests/server/utils/character-progression-subclass-feature-acceptance.test.ts',
+  'tests/server/utils/character-progression-subclass-direct-choice-acceptance.test.ts',
   'tests/server/utils/character-assembly-historical-fail-closed.test.ts',
   'tests/lib/content-rules/creation-availability.test.ts',
   'tests/lib/content-rules/creation-completeness.test.ts',

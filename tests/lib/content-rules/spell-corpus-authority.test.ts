@@ -156,15 +156,39 @@ describe('P2 spell corpus authority', () => {
   // (resource-gated, no generic primitive) is representable. Net for this workstream: +8
   // (Eldritch Knight/Arcane Trickster) -2 (Warrior of Shadow, newly conservative) = +6. Moving
   // the census from 654/595/24 to 654/601/18.
-  it('the Phase-0 decision census after the Third-Caster Leveled Spell Acquisition workstream: 654 total, 601 implemented, 18 blocked, 35 optional', () => {
+  // A4 -- REMAINING MANDATORY DECISION CLOSURE. +8 reclassify blocked -> implemented, reusing
+  // existing generic primitives (never a new engine mechanism): Battle Master's own Combat
+  // Superiority maneuvers (choice:subclass.accumulating-option, the SAME shape Eldritch
+  // Invocations/Sorcerer Metamagic already use, 1), Champion's own Additional Fighting Style
+  // (the SAME choice:feat.fighting-style.fs-only content pick the class already grants at
+  // Level 1, 1), Hunter's own Hunter's Prey and Defensive Tactics, Path of the Wild Heart's own
+  // Aspect of the Wilds (all three via choice:subclass.feature-option, the SAME shape Circle of
+  // the Land's own terrain pick already uses, 3), Draconic Sorcery's own Elemental Affinity (the
+  // SAME opaque damage-type-active shape Elemental Adept's own feat-owned choice already uses,
+  // 1), and two genuine discovery-model corrections reclassified onto their own sibling impl:
+  // rules rather than a separate false-positive rule (a false-positive/runtime-effect rule in
+  // this file's own bidirectional contract must match ZERO real decisions, which neither of
+  // these does): Path of the Wild Heart's own Rage of the Wilds (re-chosen on every Rage
+  // activation, not a persistent build decision at all -- its own real text's recurring-per-use
+  // clause sits in a SECOND sentence the discovery filter never inspects -- correctly
+  // represented by storing nothing) and College of Glamour's own Level-6 "innate" Command (a
+  // flat, unconditional duplicate of the SAME spell its own "prepared" sibling already grants at
+  // the SAME level, not a second player-facing requirement). Keen Mind and Observant are
+  // re-verified directly against the real corpus PROSE (not just the structured
+  // skillProficiencies field) and confirmed to remain genuinely blocked: both carry a
+  // conditional "gain proficiency UNLESS already held, then Expertise instead" clause -- the
+  // same missing primitive as Gloom Stalker's own Iron Mind -- so neither is authored as a
+  // plain skill-proficiency choice, which would silently drop the real Expertise-on-repeat half
+  // of the rule. Moving the census from 654/601/18/35 to 654/609/10/35.
+  it('the Phase-0 decision census after the Remaining Mandatory Decision Closure workstream: 654 total, 609 implemented, 10 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
-    expect(counts.implemented).toBe(601)
-    expect(counts.blocked).toBe(18)
+    expect(counts.implemented).toBe(609)
+    expect(counts.blocked).toBe(10)
     expect(counts.optional).toBe(35)
   })
 
@@ -225,12 +249,15 @@ describe('P2 spell corpus authority', () => {
     const RESOURCE_GATED_INNATE_OWNERS = new Set(['archfey-patron-xphb', 'psi-warrior-xphb', 'warrior-of-shadow-xphb'])
     for (const decision of subclassSpellDecisions) {
       const classification = classifyDecision(decision)
+      // A4 -- College of Glamour's own Level-6 "innate" Command is a genuine discovery-model
+      // duplicate (the SAME spell its own "prepared" sibling already grants, re-verified
+      // directly against the real corpus) -- reclassified onto impl:subclass-fixed-spell-grant,
+      // never blocked.
       if (classification.status === 'implemented') continue
       expect(classification.status, decision.id).toBe('blocked')
       const isResourceGatedInnate = decision.family === 'spell-grant' && decision.source.endsWith('.innate') && RESOURCE_GATED_INNATE_OWNERS.has(decision.owner.slug)
       const isWarriorOfShadowSiblingCasualty = decision.family === 'spell-grant' && decision.owner.slug === 'warrior-of-shadow-xphb' && decision.source.endsWith('.known')
-      const isGlamourInnateDuplicate = decision.family === 'spell-grant' && decision.owner.slug === 'college-of-glamour-xphb' && decision.source.endsWith('.innate')
-      expect(isResourceGatedInnate || isWarriorOfShadowSiblingCasualty || isGlamourInnateDuplicate, decision.id).toBe(true)
+      expect(isResourceGatedInnate || isWarriorOfShadowSiblingCasualty, decision.id).toBe(true)
     }
   })
 

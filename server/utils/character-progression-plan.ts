@@ -706,8 +706,15 @@ type TentativeItemAcquisition = { choiceKey: string; choiceSetId: string; ref: C
 function extractTentativeContentAnswers(
   tentativeAnswers: Record<string, string[]>,
   lookup: ContentChoiceLookup
-): { subclassRef: ContentRef | null; feats: TentativeFeatAcquisition[]; items: TentativeItemAcquisition[] } {
+): { subclassRef: ContentRef | null; subclassChoiceKey: string | null; feats: TentativeFeatAcquisition[]; items: TentativeItemAcquisition[] } {
   let subclassRef: ContentRef | null = null
+  // CHARACTER INTEGRITY FIX -- the subclass answer's OWN choiceKey, additive and never read by
+  // either of this function's other two call sites (planProgression's own spell-plan preview,
+  // confirmProgression's own `confirmTentativeSubclassRef` extraction) -- both destructure only
+  // `.subclassRef`, unaffected by this new field. `buildLevelStep` (below) is the one caller that
+  // needs it, to level-gate the tentative subclass the SAME way `tentativeFeatAcquisitions`
+  // already level-gates a tentative feat (see that field's own header, immediately below).
+  let subclassChoiceKey: string | null = null
   const feats: TentativeFeatAcquisition[] = []
   const items: TentativeItemAcquisition[] = []
   for (const [key, selected] of Object.entries(tentativeAnswers)) {
@@ -730,9 +737,10 @@ function extractTentativeContentAnswers(
       feats.push({ choiceKey: key, choiceSetId: choiceSetIdOfKey(key)!, ref })
     } else if (selector.category === 'subclasses' && !subclassRef) {
       subclassRef = ref
+      subclassChoiceKey = key
     }
   }
-  return { subclassRef, feats, items }
+  return { subclassRef, subclassChoiceKey, feats, items }
 }
 
 // ---------------------------------------------------------------------------
@@ -854,11 +862,6 @@ async function buildLevelStep(
 ): Promise<{ ok: true; step: ProgressionLevelStep; rejections: FeatRejections } | ProgressionFailure> {
   const tentative = extractTentativeContentAnswers(tentativeAnswers, ctx.lookup)
   const tentativeSubclassRef = tentative.subclassRef
-  // D&D 2024 Character Rules Phase 2A.1 -- the SAME "apply the full
-  // tentative set to every step" rule `tentativeSubclassRef` already
-  // follows (see this file's own DEPENDENT CHOICES header), generalized to
-  // a list: a tentative Level-4 feat pick stays applied when Level 6/8
-  // steps are each independently evaluated in the same plan walk.
   // D&D 2024 Character Rules Phase 2A.1 -- LEVEL-GATED, unlike
   // `tentativeSubclassRef` immediately above. A feat's own facet is
   // consumed unconditionally once it is in `blueprint.feats` (feats have
@@ -879,9 +882,43 @@ async function buildLevelStep(
     const acquiredAt = parseProgressionChoiceLevel(acquisition.choiceKey)
     return acquiredAt === null || acquiredAt <= maxLevel
   })
+  // CHARACTER INTEGRITY FIX -- `tentativeSubclassRef` used to be applied to BOTH the
+  // `previousLevel` and `level` evaluations unconditionally (the comment this replaces said so
+  // explicitly, contrasting it with the feat list's own level-gating immediately below). That
+  // made a NEWLY-selected subclass's own DIRECT `choices` (RulesFacet.choices -- Circle of the
+  // Land's terrain pick, A3; Battle Master's own initial maneuvers/Hunter's Prey, A4) invisible
+  // to `diffRequiredChoices`: since BOTH snapshots of the step that gains the subclass saw the
+  // identical tentative subclass, its own facet choices were "already declared" at the PREVIOUS
+  // snapshot too, so they could never be seen as newly declared -- never required, never
+  // persisted. Gated here the SAME way `acquisitionsAtOrBefore` already gates a tentative feat,
+  // using the subclass answer's OWN choiceKey (`tentative.subclassChoiceKey`,
+  // `parseProgressionChoiceLevel`): `undefined` before the subclass's own selection level (falls
+  // back to whatever is actually persisted -- correctly none, for a first-time selection), the
+  // real tentative ref at or after it. A level-up step entirely AFTER the subclass was already
+  // selected sees it at BOTH ends again, unchanged -- so an already-answered initial choice is
+  // never re-required, and growth-level Progression rows (already level-gated by their own `at`
+  // field, untouched by this change) are unaffected either way.
+  // SECOND DEFECT, discovered proving the first one: `tentativeSubclassRef` defaults to `null`
+  // (extractTentativeContentAnswers's own initial value) whenever THIS call's `tentativeAnswers`
+  // names no subclass selection at all -- the ordinary case for every level-up of an ALREADY
+  // -subclassed character. `assembleCharacter` (server/utils/character-assembly.ts) treats `null`
+  // as "explicitly no subclass, override even a persisted one" (only `undefined` means "no
+  // override, use persisted") -- so passing a bare `null` through here, as the pre-fix code
+  // always did, silently stripped the character's own PERSISTED subclass from BOTH snapshots of
+  // every ordinary growth-level step. Never caught before because every existing test mocks
+  // `assembleCharacter` directly (ignoring its own arguments) rather than exercising this real
+  // function -- `legalizeFeatChoices`'s OWN internal calls just below already guard against this
+  // exact case (`tentativeSubclassRef ?? ctx.persistedSubclassRef`); these two calls never did.
+  // Normalizing a "nothing tentative" `null` to `undefined` here restores the SAME real-persisted
+  // fallback `legalizeFeatChoices` already relies on.
+  const subclassAcquiredAt = tentative.subclassChoiceKey ? parseProgressionChoiceLevel(tentative.subclassChoiceKey) : null
+  const tentativeSubclassRefAtOrBefore = (maxLevel: number): ContentRef | undefined => {
+    if (!tentativeSubclassRef) return undefined
+    return subclassAcquiredAt === null || subclassAcquiredAt <= maxLevel ? tentativeSubclassRef : undefined
+  }
   const [previousResult, currentResult] = await Promise.all([
-    getDerivedCharacterAtLevel(worldId, characterId, previousLevel, tentativeAnswers, tentativeSubclassRef, acquisitionsAtOrBefore(previousLevel)),
-    getDerivedCharacterAtLevel(worldId, characterId, level, tentativeAnswers, tentativeSubclassRef, acquisitionsAtOrBefore(level))
+    getDerivedCharacterAtLevel(worldId, characterId, previousLevel, tentativeAnswers, tentativeSubclassRefAtOrBefore(previousLevel), acquisitionsAtOrBefore(previousLevel)),
+    getDerivedCharacterAtLevel(worldId, characterId, level, tentativeAnswers, tentativeSubclassRefAtOrBefore(level), acquisitionsAtOrBefore(level))
   ])
 
   if (!previousResult.available || !currentResult.available) {

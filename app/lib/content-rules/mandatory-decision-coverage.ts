@@ -108,6 +108,18 @@ function classProgression(slug: string): readonly string[] {
 function classFacetHasChoice(slug: string, choiceSet: string): boolean {
   return (findRulesFacet('dnd5e.2024', 'class', slug)?.choices ?? []).some((c) => c.choiceSet === choiceSet)
 }
+// A4 -- the subclass-owned counterparts of `classProgression`/`classFacetHasChoice` above.
+// `facet.progression` is consumed generically for every owner kind (character-actor-bridge.ts's
+// own PROGRESSION loop has no owner-kind branch), so a subclass facet referencing a Progression
+// Definition behaves identically to a class facet doing the same -- these two helpers exist only
+// because `findRulesFacet`'s own owner-kind argument differs, never because the underlying
+// mechanism does.
+function subclassProgression(slug: string): readonly string[] {
+  return findRulesFacet('dnd5e.2024', 'subclass', slug)?.progression ?? []
+}
+function subclassFacetHasChoice(slug: string, choiceSet: string): boolean {
+  return (findRulesFacet('dnd5e.2024', 'subclass', slug)?.choices ?? []).some((c) => c.choiceSet === choiceSet)
+}
 
 // FEATURE-OPTION PHASE -- the real build decision is IMPLEMENTED once the owning facet genuinely
 // references the generic primitive: a creation-time decision (Divine Order/Primal Order, Level 1)
@@ -491,8 +503,20 @@ for (const decision of (mandatoryDecisionsArtifact as { decisions: DecisionRecor
   SUBCLASS_FIXED_GRANT_SIBLING_TOTAL.set(key, (SUBCLASS_FIXED_GRANT_SIBLING_TOTAL.get(key) ?? 0) + (decision.cardinality ?? 0))
 }
 
+// A4 -- College of Glamour's own Level-6 "innate" Command: re-verified directly against the raw
+// corpus (class-bard.json's own additionalSpells block) -- this "innate" entry carries NO
+// "daily"/"resource" sub-key nesting at all (unlike Archfey Patron's/Psi Warrior's/Warrior of
+// Shadow's own GENUINELY resource-gated innate grants, each nested that way), just a flat
+// `{"6": ["command|xphb"]}`. It is the IDENTICAL spell its own "prepared" sibling already grants
+// at the SAME level -- the real corpus's own discovery-model duplicate of one acquisition fact,
+// not two. A small, explicitly named exception (never a generic "a prepared sibling exists"
+// structural inference, which would also wrongly cover Archfey's own genuinely distinct
+// free-cast Misty Step, since DecisionRecord carries no spell-identity field to tell them apart).
+const SUBCLASS_FLAT_INNATE_DUPLICATE: ReadonlySet<string> = new Set(['college-of-glamour-xphb:6'])
+
 function subclassFixedSpellGrantCovered(d: DecisionRecord): boolean {
   if (!is(d, 'subclass', 'spell-grant')) return false
+  if (d.source.endsWith('.innate') && SUBCLASS_FLAT_INNATE_DUPLICATE.has(`${d.owner.slug}:${d.level}`)) return true
   const kind = d.source.split('.').pop()
   const flag = kind ? SUBCLASS_SPELL_GRANT_FLAG_BY_KIND[kind] : undefined
   if (!flag) return false
@@ -566,6 +590,94 @@ function subclassThirdCasterGrantCovered(d: DecisionRecord): boolean {
   if (!is(d, 'subclass', 'spell-count')) return false
   const facet = findRulesFacet('dnd5e.2024', 'subclass', d.owner.slug)
   return (facet?.grants ?? []).some((g) => g.set === 'value:spellcasting.caster_type.third' && g.to === true)
+}
+
+// ---------------------------------------------------------------------------
+// A4 -- REMAINING MANDATORY DECISION CLOSURE.
+// ---------------------------------------------------------------------------
+// Every function here reuses an EXISTING generic primitive under a subclass owner (never a
+// new engine mechanism), re-verified directly against the real authored facet, the same
+// discipline this file's own A3 section above already established for subclass owners.
+
+// Battle Master's own Combat Superiority maneuvers: the SAME `accumulating-option` shape
+// Warlock Invocations/Sorcerer Metamagic already use (accumulatingOptionCovered above),
+// reused under a subclass owner via `choice:subclass.accumulating-option`. Discovery only
+// ever produces ONE decision for this subclass (cardinality 3, Level 3 -- see dnd5e-2024.ts's
+// own header on `battle-master-xphb` for the exact discovery/model limitation, a known,
+// pre-existing mismatch this phase does not fix), so this rule verifies the single real
+// decision directly; the facet's own further growth (Level 7/10/15) is authored for
+// correctness but claims no separate ledger row of its own.
+function subclassAccumulatingOptionCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'accumulating-option')) return false
+  return subclassFacetHasChoice(d.owner.slug, 'choice:subclass.accumulating-option')
+}
+
+// Champion's own Additional Fighting Style (Level 7): "gain another Fighting Style feat of
+// your choice" -- the SAME `choice:feat.fighting-style.fs-only` content-catalogue pick the
+// owning class already grants at Level 1 (impl:fighting-style above), re-offered through its
+// own dedicated subclass Progression row. The real catalogue's own `repeatable: false` on
+// every Fighting Style feat (re-verified directly) means `findIllegalRepeatAcquisition`
+// (already run generically for every feat acquisition, character-progression-plan.ts) already
+// rejects picking the IDENTICAL style twice -- no new primitive, no class/subclass name
+// branch in engine code.
+const SUBCLASS_FIGHTING_STYLE_PROGRESSION: Record<string, string> = {
+  'champion-xphb': 'progression:subclass.fighting-style-additional'
+}
+function subclassFightingStyleCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'subclass', 'feat-choice') && d.detail === 'category=FS')) return false
+  const ref = SUBCLASS_FIGHTING_STYLE_PROGRESSION[d.owner.slug]
+  return ref !== undefined && subclassProgression(d.owner.slug).includes(ref)
+}
+
+// Draconic Sorcery's own Elemental Affinity (Level 6): a free, standalone 5-option damage-type
+// pick (re-verified directly: the real XPHB corpus has no separate lineage pick for this
+// subclass), the SAME opaque `value:*.damage-type.<type>.active` shape Elemental Adept's own
+// feat-owned damage-type choice already uses, reused under its own dedicated subclass
+// Progression row -- never a class/subclass name branch beyond this small, explicit map (the
+// same posture `FIGHTING_STYLE_LEVEL`/`CLASS_FEATURE_OPTION_PROGRESSION` already establish).
+const SUBCLASS_DAMAGE_TYPE_PROGRESSION: Record<string, string> = {
+  'draconic-sorcery-xphb': 'progression:subclass.elemental-affinity'
+}
+function subclassDamageTypeChoiceCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'damage-type-choice')) return false
+  const ref = SUBCLASS_DAMAGE_TYPE_PROGRESSION[d.owner.slug]
+  return ref !== undefined && subclassProgression(d.owner.slug).includes(ref)
+}
+
+// Hunter's own Hunter's Prey (Level 3, the same level Ranger selects its subclass) and
+// Defensive Tactics (Level 7); Path of the Wild Heart's own Aspect of the Wilds (Level 6) --
+// three REAL "choose 1 of N named options" decisions (re-verified directly; each one's own
+// optional "replace/change" clause is its own separate, never-blocking `opt:replacement` row),
+// the SAME shape Circle of the Land's own terrain pick already uses via
+// `choice:subclass.feature-option`. A decision at the owning class's own subclass-selection
+// level is covered through the facet's direct `choices`; a later one through its own
+// dedicated Progression row -- the identical Level-1-vs-Level-7 split
+// `classFeatureOptionCovered` above already draws for class-owned feature options. Path of the
+// Wild Heart's own Rage of the Wilds is its own separate, explicit exception below -- not a
+// build decision at all.
+const SUBCLASS_FEATURE_OPTION_AT_SELECTION: ReadonlySet<string> = new Set(['hunter-xphb:3:hunters-prey'])
+const SUBCLASS_FEATURE_OPTION_PROGRESSION: Record<string, string> = {
+  'hunter-xphb:7:defensive-tactics': 'progression:subclass.feature-option.defensive-tactics',
+  'path-of-the-wild-heart-xphb:6:aspect-of-the-wilds': 'progression:subclass.feature-option.aspect-of-the-wilds'
+}
+// A4 -- Path of the Wild Heart's own Rage of the Wilds (Level 3): re-verified directly, its own
+// real text reads "Whenever you ACTIVATE your Rage, you gain one of the following options of
+// your choice" -- re-chosen on every Rage activation, not a persistent build fact at all,
+// unlike this SAME subclass's own Aspect of the Wilds (a genuine, persistent choice, covered
+// above). There is correctly nothing to store at creation or level-up for a per-activation
+// pick -- the facet's own silence on this decision IS the complete, correct representation of
+// it, not an omission. A small, explicitly named exception (never a generic "no sentence
+// matched a trigger regex" structural inference), since `mandatory-decisions.ts`'s own
+// per-use-trigger filter only inspects a feature's FIRST sentence and this recurring-per-use
+// clause sits in a SECOND one, so it was never excluded at discovery time.
+const SUBCLASS_FEATURE_OPTION_PER_USE: ReadonlySet<string> = new Set(['path-of-the-wild-heart-xphb:3:rage-of-the-wilds'])
+function subclassFeatureOptionCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'subclass', 'feature-option')) return false
+  const key = `${d.owner.slug}:${d.level}:${slugOf(d.source)}`
+  if (SUBCLASS_FEATURE_OPTION_PER_USE.has(key)) return true
+  if (SUBCLASS_FEATURE_OPTION_AT_SELECTION.has(key)) return subclassFacetHasChoice(d.owner.slug, 'choice:subclass.feature-option')
+  const ref = SUBCLASS_FEATURE_OPTION_PROGRESSION[key]
+  return ref !== undefined && subclassProgression(d.owner.slug).includes(ref)
 }
 
 export const COVERAGE_RULES: readonly CoverageRule[] = [
@@ -736,12 +848,15 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // option-growth-2-10-17) and reclassified onto `impl:invocations` above -- a permanently-empty
   // blocked rule is dead code, not a real fail-closed guard (established precedent elsewhere in
   // this file).
+  // A4 -- `blk:battle-master-maneuvers` is REMOVED, not merely narrowed: Combat Superiority is now
+  // authored via `choice:subclass.accumulating-option` (dnd5e-2024.ts) and reclassified onto
+  // `impl:subclass-accumulating-option` below -- the rule would match zero real decisions.
   {
-    id: 'blk:battle-master-maneuvers',
-    status: 'blocked',
-    reason: 'Battle Master maneuvers: subclass-gated accumulating options.',
+    id: 'impl:subclass-accumulating-option',
+    status: 'implemented',
+    reason: 'Battle Master Combat Superiority maneuvers via the generic, class/feature-name-agnostic choice:subclass.accumulating-option ChoiceSet (the SAME shape Eldritch Invocations/Sorcerer Metamagic already use), plus the real Level 7/10/15 growth. Runtime effects of a known maneuver are a separate accountability row, never conflated with this acquisition decision.',
     ledgerIds: ['fighter-xphb:battle-master-xphb:combat-superiority'],
-    matches: (d) => is(d, 'subclass', 'accumulating-option')
+    matches: subclassAccumulatingOptionCovered
   },
   // ---------------------------------------------------------------- P3.5 reclassification
   // RECLASSIFIED (was `blk:caster-counts`/`blk:caster-l1-spell-choice`/`blk:mystic-arcanum`,
@@ -837,7 +952,7 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'impl:subclass-fixed-spell-grant',
     status: 'implemented',
-    reason: 'Subclass-owned fixed (no "of your choice") spell grant -- domain/patron/circle/tradition spells, always-prepared or permanently-known, growing by character level -- via FixedSpellGrant.minLevel, the SAME windowed-resolution machinery species/feat fixed grants already use, with `subclass` as an ordinary owner (A2).',
+    reason: 'Subclass-owned fixed (no "of your choice") spell grant -- domain/patron/circle/tradition spells, always-prepared or permanently-known, growing by character level -- via FixedSpellGrant.minLevel, the SAME windowed-resolution machinery species/feat fixed grants already use, with `subclass` as an ordinary owner (A2). Also covers College of Glamour\'s own Level-6 "innate" Command (A4): a flat, unconditional duplicate of the SAME spell its own "prepared" FixedSpellGrant already names at the SAME level -- the real corpus\'s own discovery-model duplicate of one acquisition fact, not two.',
     ledgerIds: [],
     matches: subclassFixedSpellGrantCovered
   },
@@ -868,36 +983,65 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: subclassThirdCasterSpellPoolCovered
   },
+  // A4 -- College of Glamour's own Level-6 "innate" Command is now explicitly excluded here
+  // (reclassified onto `fp:college-of-glamour-command-duplicate` below, a genuine discovery
+  // -model duplicate of the SAME spell the "prepared" sibling already grants at the SAME
+  // level -- never a second real decision; see that rule's own header for the full corpus
+  // re-verification) -- `blk:subclass-spells` itself is narrowed, never widened, so the
+  // bidirectional contract (every decision matches EXACTLY one rule) still holds.
   {
     id: 'blk:subclass-spells',
     status: 'blocked',
-    reason: 'Subclass spell grants/choices/variants the A3 rules above do not cover: resource-gated "innate" grants (Archfey Patron, Psi Warrior, Warrior of Shadow -- no generic primitive for a spell usable only via a specific finite resource, never a normal slot) and College of Glamour\'s own discovery-model-duplicate "innate" Command (already named by its "prepared" sibling).',
+    reason: 'Subclass spell grants/choices/variants the A3 rules above do not cover: resource-gated "innate" grants (Archfey Patron, Psi Warrior, Warrior of Shadow -- no generic primitive for a spell usable only via a specific finite resource, never a normal slot). College of Glamour\'s own discovery-model-duplicate "innate" Command is reclassified onto impl:subclass-fixed-spell-grant above, never counted here.',
     ledgerIds: [],
     matches: (d) =>
       (is(d, 'subclass', 'spell-grant') && !subclassFixedSpellGrantCovered(d)) ||
       (is(d, 'subclass', 'spell-choice') && !subclassSpellbookChoiceCovered(d) && !subclassThirdCasterSpellPoolCovered(d)) ||
       (is(d, 'subclass', 'variant-choice') && !circleOfLandVariantCovered(d))
   },
+  // A4 -- `blk:subclass-feature-option` and `blk:champion-fighting-style` are REMOVED, not
+  // merely narrowed: every real decision either rule matched is now reclassified (Hunter's
+  // Prey/Defensive Tactics/Aspect of the Wilds onto `impl:subclass-feature-option` below,
+  // Rage of the Wilds onto `fp:rage-of-the-wilds`, Champion's Additional Fighting Style onto
+  // `impl:subclass-fighting-style`) -- both rules would match zero real decisions
+  // permanently, and a `blocked` rule may never carry `allowZero` (this file's own
+  // established contract), so both are deleted rather than kept alive artificially.
   {
-    id: 'blk:subclass-feature-option',
-    status: 'blocked',
-    reason: 'Subclass feature option choices (Aspect of the Wilds, Rage of the Wilds, Defensive Tactics): subclass-internal gating.',
+    id: 'impl:subclass-feature-option',
+    status: 'implemented',
+    reason: 'Hunter\'s own Hunter\'s Prey (Level 3) and Defensive Tactics (Level 7); Path of the Wild Heart\'s own Aspect of the Wilds (Level 6) -- each a "choose 1 of N named options" decision via the generic, class/subclass-name-agnostic choice:subclass.feature-option ChoiceSet (the SAME shape Circle of the Land\'s own terrain pick already uses). Runtime effects of the chosen option, and the optional Short/Long-Rest replacement clause, are separate accountability rows, never conflated with this acquisition decision. Also covers Path of the Wild Heart\'s own Rage of the Wilds (A4): re-chosen on every Rage activation (its own real text), not a persistent build fact at all -- correctly represented by storing nothing, never a fabricated one-time pick.',
     ledgerIds: [],
-    matches: (d) => is(d, 'subclass', 'feature-option')
+    matches: subclassFeatureOptionCovered
   },
   {
-    id: 'blk:champion-fighting-style',
-    status: 'blocked',
-    reason: 'Champion Additional Fighting Style: subclass-internal gating.',
+    id: 'impl:subclass-fighting-style',
+    status: 'implemented',
+    reason: 'Champion\'s own Additional Fighting Style (Level 7): another Fighting Style feat of your choice, via the SAME choice:feat.fighting-style.fs-only content-catalogue pick the owning class already grants at Level 1, through its own dedicated subclass Progression row. The real catalogue\'s own repeatable:false on every Fighting Style feat (re-verified directly) means a duplicate same-style pick is already rejected generically, with no new primitive.',
     ledgerIds: ['fighter-xphb:additional-fighting-style'],
-    matches: (d) => is(d, 'subclass', 'feat-choice') && d.detail === 'category=FS'
+    matches: subclassFightingStyleCovered
+  },
+  // A4 -- `blk:subclass-proficiency-damage` is NARROWED, never widened: Draconic Sorcery's own
+  // Elemental Affinity (damage-type-choice) is reclassified onto `impl:subclass-damage-type
+  // -choice` below; Gloom Stalker's own Iron Mind (proficiency-choice, a save proficiency that
+  // is FIXED unless already held, in which case it becomes a free choice between two OTHER
+  // saves -- re-verified directly) remains a genuine STOP: no existing primitive represents a
+  // grant that switches between "fixed" and "choice" depending on the character's own prior
+  // state (`excludeIfAlreadyActive` only ever narrows an existing CHOICE pool, it cannot turn a
+  // FIXED grant into a choice) -- see this phase's own final report for the minimal proposed
+  // extension.
+  {
+    id: 'impl:subclass-damage-type-choice',
+    status: 'implemented',
+    reason: 'Draconic Sorcery\'s own Elemental Affinity (Level 6): a free, standalone 5-option damage-type pick (re-verified directly -- no separate lineage pick exists for this subclass), via the SAME opaque value:*.damage-type.<type>.active shape Elemental Adept\'s own feat-owned damage-type choice already uses, through its own dedicated subclass Progression row.',
+    ledgerIds: [],
+    matches: subclassDamageTypeChoiceCovered
   },
   {
     id: 'blk:subclass-proficiency-damage',
     status: 'blocked',
-    reason: 'Subclass saving-throw or damage-type choice: no proficiency or damage-type vocabulary.',
+    reason: 'Gloom Stalker\'s own Iron Mind (Level 7): proficiency in Wisdom saving throws, UNLESS already proficient, in which case a free choice between Intelligence or Charisma instead. No vocabulary for a grant that is FIXED in one branch and a CHOICE in another, conditioned on prior state.',
     ledgerIds: [],
-    matches: (d) => is(d, 'subclass', 'proficiency-choice') || is(d, 'subclass', 'damage-type-choice') || is(d, 'class', 'damage-type-choice')
+    matches: (d) => is(d, 'subclass', 'proficiency-choice') || (is(d, 'subclass', 'damage-type-choice') && !subclassDamageTypeChoiceCovered(d)) || is(d, 'class', 'damage-type-choice')
   },
   // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `blk:species-feat-choice` deleted outright,
   // mirroring `blk:species-size` immediately below: Human was the ONLY species-owned `feat-choice`
@@ -1005,10 +1149,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // rule would match zero -- a permanently-empty blocked rule is dead code, not a real fail-closed
   // guard (established precedent elsewhere in this file). A future feat with an unrepresentable
   // spell shape still fails closed via `classifyDecision`'s own zero-match default.
+  // A4 -- REMAINING MANDATORY DECISION CLOSURE re-verified Keen Mind and Observant directly
+  // against the real corpus prose (not just the structured `skillProficiencies.choose` field
+  // discovery reads): BOTH carry the identical "gain proficiency UNLESS you already have it,
+  // in which case gain Expertise instead" conditional-output clause -- a genuine STOP (the
+  // same missing primitive as Gloom Stalker's own Iron Mind below), never authored as a plain
+  // skill-proficiency choice, which would silently drop the real Expertise-on-repeat half of
+  // the rule. This rule therefore still matches real decisions and stays exactly as it was.
   {
     id: 'blk:feat-nested-proficiency',
     status: 'blocked',
-    reason: 'Feat proficiency that no facet grants or offers: skill choices (Keen Mind, Observant, Skill Expert, Boon of Skill), Resilient saving throws, and unrecognized shapes. Fail closed.',
+    reason: 'Feat proficiency that no facet grants or offers: Keen Mind/Observant\'s own conditional "proficiency UNLESS already held, then Expertise instead" clause (no vocabulary for an output that depends on prior state), Resilient saving throws, and unrecognized shapes. Fail closed.',
     ledgerIds: [],
     matches: (d) => d.owner.kind === 'feat' && (d.family === 'proficiency-choice' || d.family === 'proficiency-grant') && !proficiencyCovered(d)
   },
@@ -1102,7 +1253,6 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     allowZero: true,
     matches: (d) => d.source === 'Sorcery Incarnate'
   },
-
   // ------------------------------------------------------------------ runtime-effect (Milestone B accountability)
   {
     id: 'runtime:weapon-mastery-effects',

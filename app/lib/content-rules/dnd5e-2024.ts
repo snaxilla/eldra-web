@@ -1731,8 +1731,57 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     //     combat/utility text already sits in (Weapon Mastery property, Fighting Style
     //     effect, ...).
     subclass: {
+      // A4 -- BATTLE MASTER MANEUVERS. Combat Superiority ("you learn three
+      // maneuvers of your choice..."): all 20 real XPHB maneuvers carry no
+      // prerequisite (optionalfeatures.json, featureType MV:B, source XPHB --
+      // re-verified directly), so every one is representable via the SAME
+      // domain-agnostic `choice:class.accumulating-option` shape Warlock
+      // Invocations/Sorcerer Metamagic already use, reused here under a
+      // second, owner-agnostic Definition (`choice:subclass.accumulating
+      // -option`) so a subclass can be the owner -- never a class/feature
+      // name check in engine code. The real growth ("two additional
+      // maneuvers... at 7th, 10th, and 15th level") sits in the SAME feature
+      // text as the base pick; `mandatory-decisions.ts`'s own regex only
+      // captures the FIRST "learn N ... of your choice" match per feature
+      // (a known, pre-existing discovery/model limitation, same shape as
+      // Ritual Caster's own miscounted levels -- not fixed here, per that
+      // same established precedent), so only ONE decision
+      // (cardinality 3, Level 3) is ever discovered for this subclass. The
+      // full real growth (3/5/7/9 total) is still authored below for
+      // correctness; the coverage rule verifies the real authored facet
+      // shape directly, never the discovery count alone. Superiority Dice
+      // (the resource GATING maneuver use, not the acquisition) stays
+      // exactly as already authored -- never conflated with this decision.
       'battle-master-xphb': {
-        resources: ['resource:superiority_dice']
+        resources: ['resource:superiority_dice'],
+        choices: [
+          {
+            choiceSet: 'choice:subclass.accumulating-option',
+            count: 3,
+            from: [
+              'value:maneuver.ambush.known', 'value:maneuver.bait_and_switch.known', 'value:maneuver.commanders_strike.known',
+              'value:maneuver.commanding_presence.known', 'value:maneuver.disarming_attack.known', 'value:maneuver.distracting_strike.known',
+              'value:maneuver.evasive_footwork.known', 'value:maneuver.feinting_attack.known', 'value:maneuver.goading_attack.known',
+              'value:maneuver.lunging_attack.known', 'value:maneuver.maneuvering_attack.known', 'value:maneuver.menacing_attack.known',
+              'value:maneuver.parry.known', 'value:maneuver.precision_attack.known', 'value:maneuver.pushing_attack.known',
+              'value:maneuver.rally.known', 'value:maneuver.riposte.known', 'value:maneuver.sweeping_attack.known',
+              'value:maneuver.tactical_assessment.known', 'value:maneuver.trip_attack.known'
+            ]
+          }
+        ],
+        progression: ['progression:subclass.accumulating-option-growth-7-10-15']
+      },
+      // A4 -- CHAMPION (Fighter). Additional Fighting Style (Level 7): "You gain another
+      // Fighting Style feat of your choice" -- the EXACT SAME content-catalogue-backed
+      // `choice:feat.fighting-style.fs-only` pick the Fighter class itself already grants at
+      // Level 1, re-offered as its own dedicated Level-7 Progression row. No new primitive:
+      // the real XPHB Fighting Style feats (Archery, Defense, ...) are each `repeatable:
+      // false` in the catalogue, so `findIllegalRepeatAcquisition` (already run generically
+      // against every feat acquisition, server/utils/character-progression-plan.ts) already
+      // rejects re-picking the IDENTICAL style twice; picking two DIFFERENT styles (Level 1
+      // and Level 7) is two distinct feat refs, never flagged.
+      'champion-xphb': { // Champion (Fighter)
+        progression: ['progression:subclass.fighting-style-additional']
       },
 
       // -- FIXED SPELL GRANTS (prepared/known, no player choice at all) -----------------
@@ -1742,12 +1791,33 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // (server/utils/character-progression-plan.ts) already passes `subclass` through
       // the identical owners array as class/species/background -- zero new code below this
       // header, every subclass is a pure data entry.
+      // A4 -- PATH OF THE WILD HEART. Aspect of the Wilds (Level 6): "You gain
+      // one of the following options of your choice [Owl/Panther/Salmon].
+      // Whenever you finish a Long Rest, you can change your choice" -- a
+      // genuine, PERSISTENT build decision (the optional "change on Long
+      // Rest" clause is `opt:replacement`, discovered and never blocking),
+      // the SAME "choose 1 of N named options" shape Circle of the Land's
+      // own terrain pick already uses, via the identical, owner-agnostic
+      // `choice:subclass.feature-option` Definition. Rage of the Wilds
+      // (Level 3) is DELIBERATELY NOT authored here: its own real text reads
+      // "Whenever you ACTIVATE your Rage, you gain one of the following
+      // options" (re-verified directly) -- re-chosen on every Rage
+      // activation, not a persistent character-build fact at all, unlike
+      // Aspect of the Wilds's own explicit "you gain X [once]; whenever you
+      // finish a Long Rest, you CAN CHANGE" phrasing. `mandatory-decisions
+      // .ts`'s own per-use-trigger filter only inspects a feature's FIRST
+      // sentence, so this recurring-per-use clause (its own second sentence)
+      // was never excluded at discovery time -- a genuine discovery
+      // classification defect, corrected in mandatory-decision-coverage.ts
+      // (see its own `fp:rage-of-the-wilds` rule), never fabricated as a
+      // one-time pick it is not.
       'path-of-the-wild-heart-xphb': { // Path of the Wild Heart (Barbarian)
         fixedSpellGrants: [
           { slug: 'beast-sense-xphb', flag: 'known', minLevel: 3 },
           { slug: 'speak-with-animals-xphb', flag: 'known', minLevel: 3 },
           { slug: 'commune-with-nature-xphb', flag: 'known', minLevel: 10 }
-        ]
+        ],
+        progression: ['progression:subclass.feature-option.aspect-of-the-wilds']
       },
       'college-of-glamour-xphb': { // College of Glamour (Bard)
         fixedSpellGrants: [
@@ -1926,6 +1996,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           { slug: 'greater-invisibility-xphb', flag: 'prepared', minLevel: 13 },
           { slug: 'seeming-xphb', flag: 'prepared', minLevel: 17 }
         ]
+        // Gloom Stalker's own Level 7 "Iron Mind" (fixed Wisdom save proficiency, UNLESS
+        // already proficient, in which case a free Intelligence-or-Charisma choice instead)
+        // is a reported STOP, not an omission -- see this phase's own final report. No
+        // existing primitive represents a grant that is FIXED in one branch and a CHOICE in
+        // another, conditioned on the character's own prior state (`excludeIfAlreadyActive`
+        // only ever narrows an existing choice pool, never switches a fixed grant into one).
+      },
+      // A4 -- HUNTER (Ranger). Hunter's Prey (Level 3, the SAME level this class selects its
+      // subclass): "You gain one of the following feature options of your choice [Colossus
+      // Slayer/Horde Breaker]. Whenever you finish a Short or Long Rest, you can replace the
+      // chosen option" -- the SAME "choose 1 of N named options" shape Circle of the Land's
+      // own terrain pick already uses (the optional replacement clause is its own separate,
+      // never-blocking `opt:replacement` decision). Defensive Tactics (Level 7, later than
+      // subclass selection) is the identical shape, authored as its own dedicated Progression
+      // row -- mirrors Blessed Strikes'/Elemental Fury's own Level-1-vs-Level-7 split for
+      // class-owned feature options.
+      'hunter-xphb': { // Hunter (Ranger)
+        choices: [
+          {
+            choiceSet: 'choice:subclass.feature-option',
+            count: 1,
+            from: ['source:hunters-prey.colossus-slayer', 'source:hunters-prey.horde-breaker']
+          }
+        ],
+        progression: ['progression:subclass.feature-option.defensive-tactics']
       },
       'aberrant-sorcery-xphb': { // Aberrant Sorcery (Sorcerer)
         fixedSpellGrants: [
@@ -1956,6 +2051,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           { slug: 'wall-of-force-xphb', flag: 'prepared', minLevel: 9 }
         ]
       },
+      // A4 -- DRACONIC SORCERY ELEMENTAL AFFINITY (Level 6). "Your draconic
+      // magic has an affinity with a damage type... Choose one of those
+      // types: Acid, Cold, Fire, Lightning, or Poison" -- re-verified
+      // directly against the real XPHB corpus: there is no separate
+      // "Draconic Ancestry" lineage pick for this subclass (unlike the 2014
+      // rules), so this is a genuinely FREE, standalone 5-option choice,
+      // the EXACT shape Elemental Adept's own feat-owned damage-type choice
+      // already uses (opaque `value:*.damage-type.<type>.active` booleans,
+      // Milestone B for the Resistance/Charisma-damage runtime effect) --
+      // reused here under its own Definition (never a class/subclass name
+      // check in engine code) since it is picked once, with no repeat
+      // -acquisition differentiator needed.
       'draconic-sorcery-xphb': { // Draconic Sorcery (Sorcerer)
         fixedSpellGrants: [
           { slug: 'alter-self-xphb', flag: 'prepared', minLevel: 3 },
@@ -1968,7 +2075,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           { slug: 'charm-monster-xphb', flag: 'prepared', minLevel: 7 },
           { slug: 'legend-lore-xphb', flag: 'prepared', minLevel: 9 },
           { slug: 'summon-dragon-xphb', flag: 'prepared', minLevel: 9 }
-        ]
+        ],
+        progression: ['progression:subclass.elemental-affinity']
       },
       'archfey-patron-xphb': { // Archfey Patron (Warlock)
         fixedSpellGrants: [
@@ -2774,6 +2882,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
+    // A4 -- KEEN MIND. Re-verified directly against the real corpus's own prose (the
+    // structured raw skill-choice field alone UNDER-represents the real rule): "If
+    // you LACK proficiency in the chosen skill, you gain proficiency in it, and if you
+    // ALREADY HAVE proficiency in it, you gain EXPERTISE in it." This is a genuine STOP, NOT a
+    // plain N-of-M skill-proficiency choice: the grant's own OUTPUT (proficiency vs.
+    // Expertise) depends on the character's own prior state for that SAME skill -- the exact
+    // same missing primitive as Gloom Stalker's own Iron Mind (a grant that is FIXED in one
+    // branch and something ELSE in another, conditioned on prior state). `excludeIfAlready
+    // Active` cannot represent this either (it only ever narrows a CHOICE pool, it cannot
+    // switch a grant's own OUTPUT kind). See this phase's own final report for the minimal
+    // proposed extension -- deliberately NOT authored as a plain skill-proficiency choice,
+    // which would silently drop the real Expertise-on-repeat half of the rule.
     'keen-mind-xphb': { // Keen Mind
       sources: ['source:asi.increase.int']
     },
@@ -2861,6 +2981,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
+    // A4 -- OBSERVANT. Re-verified directly: the IDENTICAL proficiency-OR-Expertise
+    // conditional shape Keen Mind's own header above describes ("If you lack proficiency...
+    // you gain proficiency... if you already have proficiency... you gain Expertise") --
+    // the SAME genuine STOP, never authored as a plain skill-proficiency choice.
     'observant-xphb': { // Observant
       choices: [
         {

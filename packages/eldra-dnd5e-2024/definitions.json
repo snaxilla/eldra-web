@@ -6607,5 +6607,459 @@
     "category": "core.proficiency",
     "label": "Circle of the Land: Tropical Land",
     "modifiers": []
+  },
+
+  {
+    "id": "choice:subclass.accumulating-option",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Subclass Option",
+    "prompt": "Choose an option.",
+    "count": 0,
+    "from": { "kind": "fromContentFacet" },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "value:maneuver.ambush.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Ambush",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.bait_and_switch.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Bait and Switch",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.commanders_strike.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Commander's Strike",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.commanding_presence.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Commanding Presence",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.disarming_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Disarming Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.distracting_strike.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Distracting Strike",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.evasive_footwork.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Evasive Footwork",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.feinting_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Feinting Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.goading_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Goading Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.lunging_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Lunging Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.maneuvering_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Maneuvering Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.menacing_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Menacing Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.parry.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Parry",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.precision_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Precision Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.pushing_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pushing Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.rally.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Rally",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.riposte.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Riposte",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.sweeping_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Sweeping Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.tactical_assessment.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Tactical Assessment",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "value:maneuver.trip_attack.known",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Trip Attack",
+    "tags": ["maneuver"]
+  },
+  {
+    "id": "progression:subclass.accumulating-option-growth-7-10-15",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Combat Superiority Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      { "at": 7, "choices": [{ "choiceSet": "choice:subclass.accumulating-option", "count": 2, "from": [
+        "value:maneuver.ambush.known", "value:maneuver.bait_and_switch.known", "value:maneuver.commanders_strike.known",
+        "value:maneuver.commanding_presence.known", "value:maneuver.disarming_attack.known", "value:maneuver.distracting_strike.known",
+        "value:maneuver.evasive_footwork.known", "value:maneuver.feinting_attack.known", "value:maneuver.goading_attack.known",
+        "value:maneuver.lunging_attack.known", "value:maneuver.maneuvering_attack.known", "value:maneuver.menacing_attack.known",
+        "value:maneuver.parry.known", "value:maneuver.precision_attack.known", "value:maneuver.pushing_attack.known",
+        "value:maneuver.rally.known", "value:maneuver.riposte.known", "value:maneuver.sweeping_attack.known",
+        "value:maneuver.tactical_assessment.known", "value:maneuver.trip_attack.known"
+      ] }] },
+      { "at": 10, "choices": [{ "choiceSet": "choice:subclass.accumulating-option", "count": 2, "from": [
+        "value:maneuver.ambush.known", "value:maneuver.bait_and_switch.known", "value:maneuver.commanders_strike.known",
+        "value:maneuver.commanding_presence.known", "value:maneuver.disarming_attack.known", "value:maneuver.distracting_strike.known",
+        "value:maneuver.evasive_footwork.known", "value:maneuver.feinting_attack.known", "value:maneuver.goading_attack.known",
+        "value:maneuver.lunging_attack.known", "value:maneuver.maneuvering_attack.known", "value:maneuver.menacing_attack.known",
+        "value:maneuver.parry.known", "value:maneuver.precision_attack.known", "value:maneuver.pushing_attack.known",
+        "value:maneuver.rally.known", "value:maneuver.riposte.known", "value:maneuver.sweeping_attack.known",
+        "value:maneuver.tactical_assessment.known", "value:maneuver.trip_attack.known"
+      ] }] },
+      { "at": 15, "choices": [{ "choiceSet": "choice:subclass.accumulating-option", "count": 2, "from": [
+        "value:maneuver.ambush.known", "value:maneuver.bait_and_switch.known", "value:maneuver.commanders_strike.known",
+        "value:maneuver.commanding_presence.known", "value:maneuver.disarming_attack.known", "value:maneuver.distracting_strike.known",
+        "value:maneuver.evasive_footwork.known", "value:maneuver.feinting_attack.known", "value:maneuver.goading_attack.known",
+        "value:maneuver.lunging_attack.known", "value:maneuver.maneuvering_attack.known", "value:maneuver.menacing_attack.known",
+        "value:maneuver.parry.known", "value:maneuver.precision_attack.known", "value:maneuver.pushing_attack.known",
+        "value:maneuver.rally.known", "value:maneuver.riposte.known", "value:maneuver.sweeping_attack.known",
+        "value:maneuver.tactical_assessment.known", "value:maneuver.trip_attack.known"
+      ] }] }
+    ]
+  },
+
+  {
+    "id": "choice:subclass.elemental-affinity.damage-type",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Damage Type",
+    "prompt": "Choose a damage type for Elemental Affinity.",
+    "count": 0,
+    "from": { "kind": "fromContentFacet" },
+    "distinct": true
+  },
+  {
+    "id": "value:elemental-affinity.damage-type.acid.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Affinity: Acid Active"
+  },
+  {
+    "id": "value:elemental-affinity.damage-type.cold.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Affinity: Cold Active"
+  },
+  {
+    "id": "value:elemental-affinity.damage-type.fire.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Affinity: Fire Active"
+  },
+  {
+    "id": "value:elemental-affinity.damage-type.lightning.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Affinity: Lightning Active"
+  },
+  {
+    "id": "value:elemental-affinity.damage-type.poison.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Affinity: Poison Active"
+  },
+  {
+    "id": "progression:subclass.elemental-affinity",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Elemental Affinity",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 6,
+        "choices": [
+          {
+            "choiceSet": "choice:subclass.elemental-affinity.damage-type",
+            "count": 1,
+            "from": [
+              "value:elemental-affinity.damage-type.acid.active",
+              "value:elemental-affinity.damage-type.cold.active",
+              "value:elemental-affinity.damage-type.fire.active",
+              "value:elemental-affinity.damage-type.lightning.active",
+              "value:elemental-affinity.damage-type.poison.active"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "progression:subclass.fighting-style-additional",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Additional Fighting Style",
+    "keyedBy": "value:level",
+    "rows": [
+      { "at": 7, "choices": [{ "choiceSet": "choice:feat.fighting-style.fs-only", "count": 1 }] }
+    ]
+  },
+
+  {
+    "id": "source:hunters-prey.colossus-slayer",
+    "kind": "source",
+    "category": "combat",
+    "label": "Hunter's Prey: Colossus Slayer",
+    "modifiers": []
+  },
+  {
+    "id": "source:hunters-prey.horde-breaker",
+    "kind": "source",
+    "category": "combat",
+    "label": "Hunter's Prey: Horde Breaker",
+    "modifiers": []
+  },
+  {
+    "id": "source:defensive-tactics.escape-the-horde",
+    "kind": "source",
+    "category": "combat",
+    "label": "Defensive Tactics: Escape the Horde",
+    "modifiers": []
+  },
+  {
+    "id": "source:defensive-tactics.multiattack-defense",
+    "kind": "source",
+    "category": "combat",
+    "label": "Defensive Tactics: Multiattack Defense",
+    "modifiers": []
+  },
+  {
+    "id": "progression:subclass.feature-option.defensive-tactics",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Defensive Tactics",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 7,
+        "choices": [
+          {
+            "choiceSet": "choice:subclass.feature-option",
+            "count": 1,
+            "from": ["source:defensive-tactics.escape-the-horde", "source:defensive-tactics.multiattack-defense"]
+          }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "source:aspect-of-the-wilds.owl",
+    "kind": "source",
+    "category": "combat",
+    "label": "Aspect of the Wilds: Owl",
+    "modifiers": []
+  },
+  {
+    "id": "source:aspect-of-the-wilds.panther",
+    "kind": "source",
+    "category": "combat",
+    "label": "Aspect of the Wilds: Panther",
+    "modifiers": []
+  },
+  {
+    "id": "source:aspect-of-the-wilds.salmon",
+    "kind": "source",
+    "category": "combat",
+    "label": "Aspect of the Wilds: Salmon",
+    "modifiers": []
+  },
+  {
+    "id": "progression:subclass.feature-option.aspect-of-the-wilds",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Aspect of the Wilds",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 6,
+        "choices": [
+          {
+            "choiceSet": "choice:subclass.feature-option",
+            "count": 1,
+            "from": ["source:aspect-of-the-wilds.owl", "source:aspect-of-the-wilds.panther", "source:aspect-of-the-wilds.salmon"]
+          }
+        ]
+      }
+    ]
   }
 ]

@@ -65,7 +65,7 @@ import {
   type SpellFlag,
   type StoredSpellEntry
 } from '~/lib/characters/spellcasting'
-import { computeOptimisticExpended, createResourceWriteQueue } from './characterResourceInteraction'
+import { computeOptimisticExpended, createResourceWriteQueue, createResourceWriteSequencer } from './characterResourceInteraction'
 import type { StoredCharacterHealth } from '~/lib/characters/health'
 import type { CharacterSheet, EncounterView } from './useCharacterSheet'
 
@@ -526,6 +526,13 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   // right moments and reflecting `isPending` into reactive state for the
   // UI (`resourcesPendingIds`).
   const resourceWriteQueue = createResourceWriteQueue()
+  // RESOURCE ORB RACE FIX -- real browser defect, rapid double-click (see
+  // characterResourceInteraction.ts's own header, decision 4). The queue
+  // above only orders NETWORK CALLS; this sequencer additionally tracks
+  // which write is still the user's LATEST intent for a given resourceId,
+  // so an earlier write's own response can never visibly revert a newer
+  // optimistic guess once a click has already superseded it.
+  const resourceWriteSequencer = createResourceWriteSequencer()
 
   function markResourcePending(resourceId: string, pending: boolean) {
     const next = new Set(resourcesPendingIds.value)
@@ -540,16 +547,37 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   // route; this function never clamps or validates it as AUTHORITY -- the
   // server independently bounds it against the real max/zero regardless
   // of what is sent.
-  async function performResourceWrite(resourceId: string, action: 'expend' | 'restore', amount: number) {
+  async function performResourceWrite(resourceId: string, action: 'expend' | 'restore', amount: number, ticket: number) {
     try {
       const result = await $fetch<{ success: true, resource: { id: string, max: number, expended: number, remaining: number } }>(
         `/api/worlds/${worldId.value}/characters/${characterId.value}/resources`,
         { method: 'PUT', body: { resourceId, action, amount } }
       )
+      // RESOURCE ORB RACE FIX -- recorded regardless of ticket recency
+      // (a superseded success is still a real, persisted server fact a
+      // later FAILURE may need to fall back to); only the LATEST click's
+      // own response may touch the DISPLAYED override, since a newer
+      // click already queued behind this write will apply its own
+      // eventual response instead.
+      resourceWriteSequencer.recordConfirmed(resourceId, result.resource.expended)
+      if (!resourceWriteSequencer.isLatest(resourceId, ticket)) return
       sheet.setResourceOverride(resourceId, result.resource.expended)
       resourcesError.value = ''
     } catch (saveError: any) {
-      sheet.clearResourceOverride(resourceId)
+      if (!resourceWriteSequencer.isLatest(resourceId, ticket)) return
+      // FAILURE RECONCILIATION -- roll back to the last CONFIRMED
+      // (server-persisted) value for this resourceId, never straight to
+      // the original base: an earlier sibling write (superseded here,
+      // but still genuinely successful) may have already moved the real
+      // server state away from the base. Only when nothing has ever been
+      // confirmed does clearing the override (falling back to the base)
+      // become correct.
+      const lastConfirmed = resourceWriteSequencer.getLastConfirmed(resourceId)
+      if (lastConfirmed !== undefined) {
+        sheet.setResourceOverride(resourceId, lastConfirmed)
+      } else {
+        sheet.clearResourceOverride(resourceId)
+      }
       resourcesError.value =
         saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to update resource'
     }
@@ -566,8 +594,13 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
     // correctly without waiting for a round trip between them.
     sheet.setResourceOverride(resourceId, computeOptimisticExpended(current, action, amount))
 
+    // Ticket issued synchronously, in the SAME tick as the optimistic
+    // overlay above -- so a second rapid click's own ticket is already
+    // the latest one by the time either write's response arrives.
+    const ticket = resourceWriteSequencer.next(resourceId)
+
     markResourcePending(resourceId, true)
-    resourceWriteQueue.enqueue(resourceId, () => performResourceWrite(resourceId, action, amount))
+    resourceWriteQueue.enqueue(resourceId, () => performResourceWrite(resourceId, action, amount, ticket))
       .finally(() => markResourcePending(resourceId, resourceWriteQueue.isPending(resourceId)))
   }
 

@@ -18,8 +18,10 @@ import {
   clearResourceOverride,
   computeOptimisticExpended,
   createResourceWriteQueue,
+  createResourceWriteSequencer,
   mergeResourceOverrides,
-  type DisplayableResource
+  type DisplayableResource,
+  type ResourceOverrides
 } from '../../app/composables/characterResourceInteraction'
 
 function rage(expended = 0, max = 2): DisplayableResource {
@@ -198,5 +200,199 @@ describe('createResourceWriteQueue -- ordering/isolation, no timing luck', () =>
     let secondRan = false
     await queue.enqueue('rage', async () => { secondRan = true })
     expect(secondRan).toBe(true)
+  })
+})
+
+describe('createResourceWriteSequencer -- real browser defect, rapid double-click', () => {
+  it('a superseded ticket is never "latest" once a newer one has been issued for the same resourceId', () => {
+    const sequencer = createResourceWriteSequencer()
+    const ticket1 = sequencer.next('resource:rage')
+    const ticket2 = sequencer.next('resource:rage')
+
+    expect(sequencer.isLatest('resource:rage', ticket1)).toBe(false)
+    expect(sequencer.isLatest('resource:rage', ticket2)).toBe(true)
+  })
+
+  it('different resourceIds never supersede one another', () => {
+    const sequencer = createResourceWriteSequencer()
+    const rageTicket = sequencer.next('resource:rage')
+    sequencer.next('resource:bardic.inspiration')
+
+    expect(sequencer.isLatest('resource:rage', rageTicket)).toBe(true)
+  })
+
+  it('REGRESSION -- a rapid double-click no longer lets the earlier PUT response revert the later optimistic value', async () => {
+    // Reproduces useCharacterMutations.ts's adjustResource/
+    // performResourceWrite orchestration verbatim (that module is
+    // Vue-coupled and cannot run directly under Vitest), WITH the
+    // sequencer fix wired in exactly as it is there -- proving the fix,
+    // not just the helper in isolation.
+    const rage = (expended: number, max = 2): DisplayableResource => ({ id: 'resource:rage', max, expended, remaining: max - expended })
+    const base = [rage(0, 2)]
+    let overrides: ResourceOverrides = {}
+    const observed: number[] = []
+
+    const queue = createResourceWriteQueue()
+    const sequencer = createResourceWriteSequencer()
+
+    let serverExpended = 0
+    function simulatedPut(delayMs: number): Promise<{ resource: { expended: number } }> {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          serverExpended += 1
+          resolve({ resource: { expended: serverExpended } })
+        }, delayMs)
+      })
+    }
+
+    function adjustResource(delayMs: number) {
+      const current = mergeResourceOverrides(base, overrides).find((c) => c.id === 'resource:rage')!
+      overrides = applyResourceOverride(overrides, 'resource:rage', computeOptimisticExpended(current, 'expend', 1))
+      observed.push(mergeResourceOverrides(base, overrides)[0].expended)
+      const ticket = sequencer.next('resource:rage')
+
+      return queue.enqueue('resource:rage', async () => {
+        try {
+          const result = await simulatedPut(delayMs)
+          sequencer.recordConfirmed('resource:rage', result.resource.expended)
+          if (!sequencer.isLatest('resource:rage', ticket)) return
+          overrides = applyResourceOverride(overrides, 'resource:rage', result.resource.expended)
+          observed.push(mergeResourceOverrides(base, overrides)[0].expended)
+        } catch {
+          if (!sequencer.isLatest('resource:rage', ticket)) return
+          const lastConfirmed = sequencer.getLastConfirmed('resource:rage')
+          overrides = lastConfirmed !== undefined
+            ? applyResourceOverride(overrides, 'resource:rage', lastConfirmed)
+            : clearResourceOverride(overrides, 'resource:rage')
+        }
+      })
+    }
+
+    const click1 = adjustResource(20) // slower first write
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const click2 = adjustResource(5)
+    await Promise.all([click1, click2])
+
+    expect(mergeResourceOverrides(base, overrides)[0].expended).toBe(2)
+    // No dip back to 1 in between -- click 1's own now-stale response is
+    // silently dropped, only click 2's (the latest ticket) ever applies.
+    expect(observed).toEqual([1, 2, 2])
+  })
+})
+
+describe('FAILURE RECONCILIATION -- a superseded success must not be lost to a later failure', () => {
+  // Reproduces performResourceWrite's fixed orchestration verbatim: on
+  // success, `recordConfirmed` runs regardless of ticket recency (a
+  // superseded success is still a real, persisted server fact); on
+  // failure, the override rolls back to `getLastConfirmed`, never
+  // straight to the original base, UNLESS nothing has ever been
+  // confirmed for this resourceId.
+  function makeHarness() {
+    const rage = (expended: number, max = 2): DisplayableResource => ({ id: 'resource:rage', max, expended, remaining: max - expended })
+    const base = [rage(0, 2)]
+    let overrides: ResourceOverrides = {}
+    const queue = createResourceWriteQueue()
+    const sequencer = createResourceWriteSequencer()
+
+    function adjustResource(outcome: 'success' | 'failure', delayMs: number, serverExpended?: number) {
+      const current = mergeResourceOverrides(base, overrides).find((c) => c.id === 'resource:rage')!
+      overrides = applyResourceOverride(overrides, 'resource:rage', computeOptimisticExpended(current, 'expend', 1))
+      const ticket = sequencer.next('resource:rage')
+
+      return queue.enqueue('resource:rage', async () => {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        if (outcome === 'success') {
+          sequencer.recordConfirmed('resource:rage', serverExpended!)
+          if (!sequencer.isLatest('resource:rage', ticket)) return
+          overrides = applyResourceOverride(overrides, 'resource:rage', serverExpended!)
+        } else {
+          if (!sequencer.isLatest('resource:rage', ticket)) return
+          const lastConfirmed = sequencer.getLastConfirmed('resource:rage')
+          overrides = lastConfirmed !== undefined
+            ? applyResourceOverride(overrides, 'resource:rage', lastConfirmed)
+            : clearResourceOverride(overrides, 'resource:rage')
+        }
+      })
+    }
+
+    return { adjustResource, display: () => mergeResourceOverrides(base, overrides)[0].expended }
+  }
+
+  it('A succeeds (expended=1), B fails -> final state is 1, never stuck at B\'s failed optimistic 2', async () => {
+    const h = makeHarness()
+    const a = h.adjustResource('success', 20, 1)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const b = h.adjustResource('failure', 5)
+    await Promise.all([a, b])
+    expect(h.display()).toBe(1)
+  })
+
+  it('A fails, B succeeds (expended=2) -> final state is 2', async () => {
+    const h = makeHarness()
+    const a = h.adjustResource('failure', 20)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const b = h.adjustResource('success', 5, 2)
+    await Promise.all([a, b])
+    expect(h.display()).toBe(2)
+  })
+
+  it('both fail -> final state is 0 (the original base; nothing was ever confirmed)', async () => {
+    const h = makeHarness()
+    const a = h.adjustResource('failure', 20)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const b = h.adjustResource('failure', 5)
+    await Promise.all([a, b])
+    expect(h.display()).toBe(0)
+  })
+
+  it('both succeed -> final state is 2 (B\'s own confirmed value, the true latest)', async () => {
+    const h = makeHarness()
+    const a = h.adjustResource('success', 20, 1)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const b = h.adjustResource('success', 5, 2)
+    await Promise.all([a, b])
+    expect(h.display()).toBe(2)
+  })
+
+  it('different resourceIds reconcile independently', async () => {
+    const rage = (expended: number, max = 2) => ({ id: 'resource:rage', max, expended, remaining: max - expended })
+    const inspiration = (expended: number, max = 3) => ({ id: 'resource:bardic.inspiration', max, expended, remaining: max - expended })
+    const base = [rage(0, 2), inspiration(0, 3)]
+    let overrides: ResourceOverrides = {}
+    const queue = createResourceWriteQueue()
+    const sequencer = createResourceWriteSequencer()
+
+    function adjustResource(resourceId: string, outcome: 'success' | 'failure', delayMs: number, serverExpended?: number) {
+      const current = mergeResourceOverrides(base, overrides).find((c) => c.id === resourceId)!
+      overrides = applyResourceOverride(overrides, resourceId, computeOptimisticExpended(current, 'expend', 1))
+      const ticket = sequencer.next(resourceId)
+
+      return queue.enqueue(resourceId, async () => {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        if (outcome === 'success') {
+          sequencer.recordConfirmed(resourceId, serverExpended!)
+          if (!sequencer.isLatest(resourceId, ticket)) return
+          overrides = applyResourceOverride(overrides, resourceId, serverExpended!)
+        } else {
+          if (!sequencer.isLatest(resourceId, ticket)) return
+          const lastConfirmed = sequencer.getLastConfirmed(resourceId)
+          overrides = lastConfirmed !== undefined
+            ? applyResourceOverride(overrides, resourceId, lastConfirmed)
+            : clearResourceOverride(overrides, resourceId)
+        }
+      })
+    }
+
+    // Rage: A succeeds then B fails -> should settle on 1 (A's confirmed value).
+    const rageA = adjustResource('resource:rage', 'success', 20, 1)
+    // Bardic Inspiration: single failing write, independent of Rage entirely.
+    const inspirationFail = adjustResource('resource:bardic.inspiration', 'failure', 5)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    const rageB = adjustResource('resource:rage', 'failure', 5)
+
+    await Promise.all([rageA, inspirationFail, rageB])
+
+    expect(mergeResourceOverrides(base, overrides).find((c) => c.id === 'resource:rage')!.expended).toBe(1)
+    expect(mergeResourceOverrides(base, overrides).find((c) => c.id === 'resource:bardic.inspiration')!.expended).toBe(0)
   })
 })

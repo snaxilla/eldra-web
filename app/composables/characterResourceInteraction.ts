@@ -30,11 +30,40 @@
 //    per resourceId (the server's own PUT route is a read-modify-write
 //    against one persisted record; two concurrent writes for the SAME
 //    resource could otherwise race and lose an update), while leaving
-//    DIFFERENT resourceIds fully independent of one another. Because at
-//    most one write per resourceId is ever in flight, no response for a
-//    given resource can arrive out of the order its own request was sent
-//    -- "stale response" protection falls out of this structure, never
-//    out of comparing timestamps.
+//    DIFFERENT resourceIds fully independent of one another. This
+//    guarantees responses for one resourceId are never seen out of the
+//    order their own requests were sent -- but, on its own, does NOT
+//    guarantee an EARLIER request's response can never visibly overwrite
+//    a NEWER optimistic guess already applied ahead of it (see
+//    `createResourceWriteSequencer` immediately below for that gap).
+// 4. SEQUENCING -- `createResourceWriteSequencer`: a real, reproduced
+//    browser defect (see this file's own test suite, "rapid double-click"),
+//    found DOWNSTREAM of the queue above. The queue only serializes
+//    NETWORK CALLS; it says nothing about which RESPONSE is still the
+//    user's current intent by the time it arrives. Two rapid clicks on
+//    the same orb (expend, expend) produce: optimistic 1, optimistic 2,
+//    THEN click 1's own PUT resolves and unconditionally re-applies ITS
+//    OWN authoritative value (1) -- visibly reverting the display back
+//    to "1 expended" for one render, before click 2's PUT finally
+//    resolves and corrects it back to 2. The sequencer hands each write a
+//    ticket; a write's success/failure handler only touches the DISPLAYED
+//    override if its own ticket is STILL the latest one issued for that
+//    resourceId -- a superseded response's value is never shown directly,
+//    since a newer write (whose own eventual response WILL be applied)
+//    has already superseded it.
+//
+//    FAILURE RECONCILIATION -- a superseded SUCCESS is still RECORDED
+//    (`recordConfirmed`), even though it is not shown, because it is a
+//    REAL, persisted server fact a later FAILURE must be able to fall
+//    back to. Example: click A (expend, succeeds, server confirms
+//    expended=1) is superseded by click B (expend, issued before A's
+//    response lands); if B then FAILS, the display must settle on A's
+//    own confirmed 1 -- NOT on the original pre-click base (0, which
+//    would silently un-spend a use the server genuinely recorded) and
+//    NOT on B's own failed optimistic guess (2, which never happened).
+//    A failure handler therefore rolls back to `getLastConfirmed`, never
+//    straight to the base, and only clears the override outright when
+//    NOTHING for that resourceId has ever been confirmed in this session.
 
 import { expendResource, restoreResource } from '~/lib/characters/resources'
 
@@ -150,4 +179,58 @@ export function createResourceWriteQueue(): ResourceWriteQueue {
   }
 
   return { enqueue, isPending }
+}
+
+// ---------------------------------------------------------------------------
+// Per-key write sequencer -- real browser defect, rapid double-click.
+// ---------------------------------------------------------------------------
+// See this file's own header, decision 4, for the full scenario this
+// closes. `next(resourceId)` is called ONCE per write, synchronously,
+// at the same moment the optimistic overlay is applied (never inside the
+// queued task itself, which may not run until long after a NEWER click
+// has already issued its own ticket). A write's response handler then
+// asks `isLatest(resourceId, itsOwnTicket)` before touching the override:
+// true only for the most recently issued ticket for that resourceId --
+// false for any ticket a later click has since superseded, in which case
+// the response is silently dropped (the superseding click's own eventual
+// response is what will be applied instead).
+export type ResourceWriteSequencer = {
+  next: (resourceId: string) => number
+  isLatest: (resourceId: string, ticket: number) => boolean
+  // Records a write's REAL, server-confirmed expended count -- called on
+  // every success, regardless of whether that ticket is still latest (a
+  // superseded success is still a fact a later failure may need). Never
+  // called on failure: a failed write confirms nothing.
+  recordConfirmed: (resourceId: string, expended: number) => void
+  // The most recently CONFIRMED (successfully persisted) value for this
+  // resourceId in this session, or `undefined` if nothing ever succeeded
+  // -- the fallback a failure handler reconciles to, never the original
+  // base (which would silently discard an earlier sibling write's real,
+  // persisted result).
+  getLastConfirmed: (resourceId: string) => number | undefined
+}
+
+export function createResourceWriteSequencer(): ResourceWriteSequencer {
+  const latestTicket: Record<string, number> = {}
+  const lastConfirmed: Record<string, number> = {}
+
+  function next(resourceId: string): number {
+    const ticket = (latestTicket[resourceId] ?? 0) + 1
+    latestTicket[resourceId] = ticket
+    return ticket
+  }
+
+  function isLatest(resourceId: string, ticket: number): boolean {
+    return latestTicket[resourceId] === ticket
+  }
+
+  function recordConfirmed(resourceId: string, expended: number): void {
+    lastConfirmed[resourceId] = expended
+  }
+
+  function getLastConfirmed(resourceId: string): number | undefined {
+    return lastConfirmed[resourceId]
+  }
+
+  return { next, isLatest, recordConfirmed, getLastConfirmed }
 }

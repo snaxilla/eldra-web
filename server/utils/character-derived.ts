@@ -248,6 +248,12 @@ export type DerivedCharacterResult =
   // package into "no rules configured" and hide the failure, which
   // world-runtime-service.ts names as the single most likely mistake here.
   | { available: false; reason: 'rules-broken'; message: string }
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- relayed verbatim from
+  // `assembleCharacter`'s own identical reason (character-assembly.ts): the
+  // `resources` block's authoritative Postgres read failed. See that
+  // module's own doc comment for why this fails the whole character closed
+  // rather than silently reporting zero expenditure.
+  | { available: false; reason: 'resource-persistence-unavailable'; message: string }
 
 function describeBlueprint(blueprint: CharacterAssemblyBlueprint) {
   return {

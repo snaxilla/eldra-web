@@ -44,10 +44,13 @@
 // ---------------------------------------------------------------------------
 // ORDERING AND RACE -- CLOSED (CHARACTER MECHANICS PHASE A5, Checkpoint 1)
 // ---------------------------------------------------------------------------
-// Costs are checked against a fresh read first (step 2-4 above, against one
-// `getDerivedCharacter`/`loadCharacterResources` pair) PURELY for a precise,
-// per-resource error message -- that read is no longer authoritative. The
-// actual mutation is one atomic, database-level, all-or-nothing statement
+// Costs are checked against a fresh read first (step 2-4 above, against
+// `getDerivedCharacter`'s own `derivedResult.derived.resources`) PURELY for
+// a precise, per-resource error message -- that read is no longer
+// authoritative, though as of the cache-coherency hotfix (see
+// character-assembly.ts's own doc comment) it is no LESS fresh than the
+// atomic write below, either. The actual mutation is one atomic,
+// database-level, all-or-nothing statement
 // (`expendCharacterResourcesAtomic`, server/utils/character-resource-atomic.ts)
 // that re-checks every cost's sufficiency against the row's LIVE value at
 // write time, closing the race this header previously documented as
@@ -72,9 +75,7 @@ import { getDerivedCharacter } from './character-derived'
 import { assembleCharacter } from './character-assembly'
 import { getWorldRuntime } from './world-runtime-service'
 import { buildActorState } from './character-actor-bridge'
-import { loadCharacterResources } from './character-resources'
 import { expendCharacterResourcesAtomic } from './character-resource-atomic'
-import { emptyCharacterResources } from '../../app/lib/characters/resources'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import type { Expression, RuleValue } from '../../app/lib/rules/types'
@@ -95,6 +96,13 @@ export type ConsumeActionCostFailureReason =
   // (a best-effort, non-authoritative read for a precise error message)
   // could not see.
   | 'resource-persistence-failure'
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- relayed verbatim from
+  // `getDerivedCharacter`'s own identical reason (character-assembly.ts's
+  // `readCharacterResourcesAtomic` doc comment): the `resources` block's
+  // authoritative Postgres read itself failed, before any cost was even
+  // resolved. Distinct from `resource-persistence-failure` above, which is
+  // specifically the atomic WRITE failing.
+  | 'resource-persistence-unavailable'
 
 export type ConsumeActionCostResult =
   | { ok: true; consumed: { resourceId: string; amount: number; remaining: number }[] }
@@ -176,8 +184,19 @@ export async function consumeActionResourceCosts(
   const acquiredResourceIds = new Set(derivedResult.derived.resources.map((resource) => resource.id))
   const resourceById = new Map(derivedResult.derived.resources.map((resource) => [resource.id, resource]))
 
-  const storedResources = (await loadCharacterResources(characterId)) ?? emptyCharacterResources()
-
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- this used to re-read the stored
+  // `resources` block a second time here (`loadCharacterResources`, via
+  // Directus REST), purely for this pre-check. That second read is no
+  // longer needed at all: `derivedResult.derived.resources` above already
+  // carries each resource's own `expended`/`remaining`, and -- since
+  // `getDerivedCharacter` -> `assembleCharacter` now reads the `resources`
+  // block through the SAME atomic, Directus-independent path the write
+  // below uses (character-assembly.ts's own doc comment) -- it is already
+  // exactly as authoritative as a fresh read would be. Removing the
+  // redundant call closes the one remaining place this file could have
+  // seen a Directus-cache-stale value, by deleting the read entirely rather
+  // than swapping it for another database round trip.
+  //
   // Resolve every cost's authoritative amount and current availability
   // BEFORE consuming anything (step 2-4 of this file's own AUTHORITY
   // header) -- an all-or-nothing batch, never a partial deduction.
@@ -206,8 +225,7 @@ export async function consumeActionResourceCosts(
     )
 
     const resource = resourceById.get(cost.resource)!
-    const currentExpended = storedResources.expended[cost.resource] ?? 0
-    const remaining = resource.max - currentExpended
+    const remaining = resource.remaining
 
     if (remaining < amount) {
       return {
@@ -227,8 +245,8 @@ export async function consumeActionResourceCosts(
   // CHARACTER MECHANICS PHASE A5 -- the actual mutation is now one atomic,
   // database-level, all-or-nothing statement (character-resource-atomic.ts)
   // instead of a JS-computed read-modify-write -- the pre-check above
-  // (against `storedResources`, read once at the top of this function)
-  // stays only as a best-effort, non-authoritative source for a precise
+  // (against `derivedResult.derived.resources`, read once at the top of
+  // this function) stays only a best-effort source for a precise
   // per-resource error message; the atomic call below is the SOLE authority
   // for whether this consumption actually happens.
   const atomicResult = await expendCharacterResourcesAtomic({

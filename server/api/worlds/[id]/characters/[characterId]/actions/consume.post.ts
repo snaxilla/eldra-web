@@ -23,7 +23,10 @@ const STATUS_BY_REASON: Record<ConsumeActionCostFailureReason, number> = {
   // itself can now fail independently of every structural/eligibility
   // check above (a misconfigured/unreachable persistence layer, or a
   // genuine last-moment race the pre-check could not see).
-  'resource-persistence-failure': 502
+  'resource-persistence-failure': 502,
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- the `resources` block's own
+  // authoritative Postgres read failed before any cost was even resolved.
+  'resource-persistence-unavailable': 502
 }
 
 export default defineEventHandler(async (event) => {

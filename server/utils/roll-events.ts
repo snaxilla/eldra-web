@@ -331,6 +331,8 @@ function statusForDerivedCharacterFailure(
       return { statusCode: 409, statusMessage: result.message }
     case 'rules-broken':
       return { statusCode: 500, statusMessage: result.message }
+    case 'resource-persistence-unavailable':
+      return { statusCode: 502, statusMessage: result.message }
     default: {
       const exhaustive: never = result
       return exhaustive

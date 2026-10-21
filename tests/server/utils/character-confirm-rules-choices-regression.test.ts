@@ -43,10 +43,11 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock, getWorldContentCatalogueMock, getWorldRuntimeMock } = vi.hoisted(() => ({
+const { directusServiceRequestMock, getWorldContentCatalogueMock, getWorldRuntimeMock, readCharacterResourcesAtomicMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
   getWorldContentCatalogueMock: vi.fn(),
-  getWorldRuntimeMock: vi.fn()
+  getWorldRuntimeMock: vi.fn(),
+  readCharacterResourcesAtomicMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -59,6 +60,14 @@ vi.mock('../../../server/utils/world-content-catalogue', () => ({
 
 vi.mock('../../../server/utils/world-runtime-service', () => ({
   getWorldRuntime: getWorldRuntimeMock
+}))
+
+// PRODUCTION CACHE-COHERENCY HOTFIX -- resources no longer read through
+// Directus; see character-assembly.ts's own doc comment. Not this file's
+// concern (ability-score/rules-choices confirm regression), so a flat
+// "nothing expended".
+vi.mock('../../../server/utils/character-resource-atomic', () => ({
+  readCharacterResourcesAtomic: readCharacterResourcesAtomicMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -157,6 +166,8 @@ beforeEach(() => {
   directusServiceRequestMock.mockReset()
   getWorldContentCatalogueMock.mockReset()
   getWorldRuntimeMock.mockReset()
+  readCharacterResourcesAtomicMock.mockReset()
+  readCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: {} })
 
   getWorldContentCatalogueMock.mockResolvedValue(catalogue())
   const runtime = loadRealRuntime()

@@ -39,32 +39,47 @@
 // (inventory, HP, spellcasting, rules choices, progression, content packs)
 // keeps reading and writing through Directus's REST API, completely
 // untouched. Only the `resources` block's own expenditure/restoration/
-// recovery mutation moves here. Reads of this same block
-// (`character-resources.ts`'s own `loadCharacterResources`) ALSO stay on
-// Directus's REST API unchanged -- reads were never the problem; only the
-// conditional write was.
+// recovery mutation moves here.
+//
+// PRODUCTION CACHE-COHERENCY HOTFIX -- READS NOW LIVE HERE TOO. Directus
+// 11.12.0's response cache (CACHE_ENABLED=true, CACHE_STORE=redis,
+// CACHE_AUTO_PURGE=true in production, confirmed directly against the live
+// container's own runtime config) invalidates ONLY as a side effect of
+// `ItemsService` create/update/delete calls (confirmed by reading
+// `api/src/services/items.ts`: every mutation method calls
+// `shouldClearCache` -> `this.cache.clear()`). This module's writes go
+// straight to Postgres and never touch `ItemsService`, so they never
+// trigger that invalidation -- a `GET /items/block_instances` made through
+// Directus's REST API (`character-assembly.ts`'s old read) could keep
+// returning a cached, PRE-expenditure response for as long as nothing else
+// happens to flush Directus's cache. Proven against a real production
+// reproduction (Borc, World 4/entity 1655): a confirmed, durable
+// expenditure did not survive a hard page refresh, and a second
+// expenditure's own optimistic guess (computed from the stale displayed
+// base) was visibly overwritten by this module's own, correct, Postgres-
+// truthful result once its write resolved. `readCharacterResourcesAtomic`
+// closes this by making the `resources` block's READ path exactly as
+// Directus-independent as its WRITE path already was -- the one character
+// block where Directus's cache can never be stale relative to the truth,
+// because nothing here ever asks Directus at all.
 //
 // ---------------------------------------------------------------------------
-// CONFIGURATION -- NOT YET PROVISIONED IN ANY REAL ENVIRONMENT
+// CONFIGURATION
 // ---------------------------------------------------------------------------
-// Reads `process.env.ELDRA_RESOURCE_DB_URL` lazily, on first use. No such
-// credential exists in this project's `.env` today (confirmed: only
-// `DIRECTUS_URL`/`DIRECTUS_TOKEN` are present) -- this is intentional. This
-// module throws a clear, actionable configuration error rather than
-// silently falling back to the old read-modify-write path: the whole point
-// of retargeting every writer onto this module is that NONE of them may
-// remain on the known-unsafe path once this exists, so a misconfigured
-// deployment must fail loudly, not quietly regress to the race it was
-// built to close. Provisioning the real credential, running the index
-// migration against the live database, and deciding to actually deploy
-// this are all separate, later, explicitly-approved steps -- none of them
-// happen as a side effect of this file existing in the working tree.
-// `ELDRA_RESOURCE_DB_URL` is expected to be a LEAST-PRIVILEGE role, never
-// the schema owner/a superuser -- see
+// Reads `process.env.ELDRA_RESOURCE_DB_URL` lazily, on first use, throwing a
+// clear, actionable configuration error rather than silently falling back
+// to a less-safe path if it is ever unset -- the whole point of retargeting
+// every writer (and now every read of this one block) onto this module is
+// that NONE of them may remain on a known-unsafe path, so a misconfigured
+// deployment must fail loudly. In production this credential is already
+// provisioned, naming the same least-privilege `eldra_resource_writer` role
+// the atomic writers above use (not the schema owner/a superuser), over the
+// same private network the writers already use -- see
 // scripts/directus/create-resources-unique-index.mjs's own header for the
-// exact grant set this module was verified against (empirically, not
-// assumed: a role with ONLY those grants ran the full real-PostgreSQL
-// integration suite successfully).
+// exact grant set this module was verified against. That role already has
+// `SELECT` on `block_instances`/`entities` (needed for the writers' own
+// ownership/sufficiency `WHERE` clauses already); `readCharacterResourcesAtomic`
+// below needs no new grant.
 //
 // SQL INJECTION -- every value this module ever receives (resourceId,
 // amount, max, worldId, characterId) is passed as a bound parameter
@@ -389,6 +404,66 @@ export async function reduceCharacterResourcesAtomic(input: {
       }
 
       return { ok: true as const, expended: rows.rows[0].expended as Record<string, number> }
+    } finally {
+      client.release()
+    }
+  })
+
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// readCharacterResourcesAtomic -- the authoritative READ, Directus-
+// independent exactly like the writers above.
+// ---------------------------------------------------------------------------
+// ONE query, a LEFT JOIN rather than two round trips, so "character exists
+// but has never touched this resource" and "character does not exist /
+// belongs to a different world" are told apart in a single statement:
+//   - Zero rows: no `entities` row matches BOTH id and world_id -- not-found
+//     (the exact same ownership check the writers' own `ownership` CTE
+//     performs), never conflated with a legitimate empty resources block.
+//   - One row, `expended IS NULL`: the entity is real and owned, but no
+//     `resources` block_instances row has ever been created for it (true of
+//     every character before their first-ever expenditure) -- a legal,
+//     first-class "nothing spent yet" state, matching
+//     `loadCharacterResources`'s own "absence is legal" reading exactly,
+//     never an error.
+//   - One row, `expended` a JSON object: the real, current, durable truth.
+// `data` is `json` (not `jsonb` -- see the writers' own PRODUCTION HOTFIX
+// comments), and `->` is defined natively for `json` in Postgres, so this
+// read needs no cast at all, unlike the writers' `jsonb_set` chains.
+export type ReadResourcesFailureReason = 'not-found' | 'persistence-unconfigured' | 'persistence-failure'
+
+export type ReadResourcesResult =
+  | { ok: true; expended: Record<string, number> }
+  | { ok: false; reason: ReadResourcesFailureReason; message: string }
+
+export async function readCharacterResourcesAtomic(input: {
+  worldId: string | number
+  characterId: string | number
+}): Promise<ReadResourcesResult> {
+  if (!isValidIdentity(input.worldId, input.characterId)) {
+    return { ok: false, reason: 'not-found', message: 'worldId and characterId are required' }
+  }
+
+  const result = await withPersistenceFailureHandling(async () => {
+    const client = await getPool().connect()
+    try {
+      const sql = `
+        SELECT bi.data->'expended' AS expended
+        FROM entities e
+        LEFT JOIN block_instances bi
+          ON bi.entity_id = e.id AND bi.block_key = 'resources'
+        WHERE e.id = $1 AND e.world_id = $2
+      `
+      const rows = await client.query(sql, [input.characterId, input.worldId])
+
+      if (rows.rowCount === 0) {
+        return { ok: false as const, reason: 'not-found' as const, message: 'Character not found in this world' }
+      }
+
+      const expended = rows.rows[0].expended as Record<string, number> | null
+      return { ok: true as const, expended: expended ?? {} }
     } finally {
       client.release()
     }

@@ -76,7 +76,6 @@ import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
 import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
 import { CHARACTER_SPELLCASTING_BLOCK_KEY } from './character-spellcasting'
 import { CHARACTER_PROGRESSION_BLOCK_KEY } from './character-progression'
-import { CHARACTER_RESOURCES_BLOCK_KEY } from './character-resources'
 import {
   normalizeStoredCharacterHealth,
   type StoredCharacterHealth
@@ -105,6 +104,7 @@ import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import { normalizeStoredProgression, type StoredCharacterProgression } from '../../app/lib/characters/progression'
 import { normalizeStoredResources, type StoredCharacterResources } from '../../app/lib/characters/resources'
+import { readCharacterResourcesAtomic } from './character-resource-atomic'
 import type { WorldContentPackResolution } from './world-content-runtime'
 
 const CATALOGUE_SELECTION_BLOCK_KEY = 'catalogue_selection'
@@ -284,6 +284,17 @@ export type CharacterAssemblyResult =
   | { available: true; blueprint: CharacterAssemblyBlueprint }
   | { available: false; reason: 'character-not-found' }
   | { available: false; reason: 'no-catalogue-selection'; message: string }
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- the `resources` block's own
+  // authoritative read (character-resource-atomic.ts's
+  // `readCharacterResourcesAtomic`) is a REQUIRED dependency, unlike every
+  // other block here which degrades to null/empty on a bad shape. A read
+  // FAILURE (not "nothing persisted yet," which is its own legal `{}`
+  // state) must never be papered over with an empty expended map -- that
+  // would silently under-report real expenditure in exactly the direction
+  // that lets a resource be double-spent, the same failure mode this whole
+  // hotfix exists to close. Fails the WHOLE assembly closed rather than
+  // risk that.
+  | { available: false; reason: 'resource-persistence-unavailable'; message: string }
 
 function extractRef(value: unknown): StoredChoiceRef | null {
   if (!value || typeof value !== 'object') return null
@@ -475,10 +486,28 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All eight blocks in ONE query rather than eight round trips -- they
-  // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
-  // `fields` because the rows now have to be told apart.
-  const blockRes: any = await directusServiceRequest('/items/block_instances', {
+  // All seven remaining blocks in ONE query rather than seven round trips --
+  // they differ only by block_key, and `_in` costs nothing over `_eq`.
+  // `block_key` is added to `fields` because the rows now have to be told
+  // apart.
+  //
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- `resources` is deliberately NO
+  // LONGER in this `_in` list. It used to be read here, through Directus's
+  // REST API, like every other block -- but Directus's own response cache
+  // (CACHE_ENABLED=true in production) is invalidated only as a side effect
+  // of writes made through Directus's OWN API, and `resources` is the one
+  // block whose writes (character-resource-atomic.ts) go straight to
+  // Postgres instead, specifically to be atomic. That combination let a
+  // `GET` here return a cached, pre-expenditure response for as long as
+  // nothing else happened to flush Directus's cache -- proven against a
+  // real production reproduction (Borc, World 4/entity 1655): a durable,
+  // confirmed expenditure did not survive a hard page refresh. `resources`
+  // now reads through the SAME atomic, Directus-independent path its own
+  // writes already use (`readCharacterResourcesAtomic`, fetched below
+  // alongside this query, never serially after it). Every OTHER block here
+  // is unaffected -- none of them are written outside Directus's own API, so
+  // none of them share this risk.
+  const blocksPromise: Promise<any> = directusServiceRequest('/items/block_instances', {
     method: 'GET',
     query: {
       filter: {
@@ -495,17 +524,19 @@ export async function assembleCharacter(
                 CHARACTER_NOTES_BLOCK_KEY,
                 CHARACTER_HEALTH_BLOCK_KEY,
                 CHARACTER_SPELLCASTING_BLOCK_KEY,
-                CHARACTER_PROGRESSION_BLOCK_KEY,
-                CHARACTER_RESOURCES_BLOCK_KEY
+                CHARACTER_PROGRESSION_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 10,
+      limit: 9,
       fields: 'block_key,data'
     }
   })
+  const resourcesReadPromise = readCharacterResourcesAtomic({ worldId, characterId })
+
+  const [blockRes, resourcesRead] = await Promise.all([blocksPromise, resourcesReadPromise])
 
   const blocks: any[] = Array.isArray(blockRes?.data) ? blockRes.data : []
   const findBlock = (key: string) => blocks.find((row) => row?.block_key === key) ?? null
@@ -525,7 +556,24 @@ export async function assembleCharacter(
   const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
   const spellcasting = normalizeStoredSpellcasting(findBlock(CHARACTER_SPELLCASTING_BLOCK_KEY)?.data ?? null)
   const storedProgression = normalizeStoredProgression(findBlock(CHARACTER_PROGRESSION_BLOCK_KEY)?.data ?? null)
-  const resources = normalizeStoredResources(findBlock(CHARACTER_RESOURCES_BLOCK_KEY)?.data ?? null)
+
+  // `not-found` here (despite the entity check already having passed, just
+  // above) degrades to "no resources block yet" rather than failing the
+  // whole assembly -- ownership was already authoritatively confirmed
+  // against this SAME Postgres database a moment ago; a `not-found` from
+  // this second, independent query could only mean the row was deleted in
+  // the narrow window between the two reads, which leaves the character
+  // failing elsewhere anyway. `persistence-unconfigured`/`persistence-
+  // failure` are different: a genuine read failure, never silently
+  // under-reported as "nothing spent."
+  if (!resourcesRead.ok && resourcesRead.reason !== 'not-found') {
+    return {
+      available: false,
+      reason: 'resource-persistence-unavailable',
+      message: resourcesRead.message
+    }
+  }
+  const resources = normalizeStoredResources(resourcesRead.ok ? { expended: resourcesRead.expended } : null)
 
   if (!selection) {
     return {

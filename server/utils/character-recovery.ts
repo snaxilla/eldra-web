@@ -129,7 +129,14 @@ export type RecoveryAction =
 
 export type RecoveryResult =
   | { ok: true; health: StoredCharacterHealth }
-  | { ok: false; reason: 'character-not-found' | 'no-catalogue-selection' | 'rules-unconfigured' | 'rules-broken'; message: string }
+  | {
+      ok: false
+      // PRODUCTION CACHE-COHERENCY HOTFIX -- `resource-persistence-
+      // unavailable` added, relayed verbatim from `assembleCharacter`'s
+      // own identical reason (character-assembly.ts).
+      reason: 'character-not-found' | 'no-catalogue-selection' | 'rules-unconfigured' | 'rules-broken' | 'resource-persistence-unavailable'
+      message: string
+    }
   | { ok: false; reason: 'invalid-amount'; message: string }
 
 // Definition IDs this module reads -- named once here, the same "the fixed

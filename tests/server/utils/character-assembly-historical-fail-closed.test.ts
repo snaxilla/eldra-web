@@ -9,11 +9,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   directusServiceRequest: vi.fn(),
-  getWorldContentCatalogue: vi.fn()
+  getWorldContentCatalogue: vi.fn(),
+  readCharacterResourcesAtomic: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({ directusServiceRequest: mocks.directusServiceRequest }))
 vi.mock('../../../server/utils/world-content-catalogue', () => ({ getWorldContentCatalogue: mocks.getWorldContentCatalogue }))
+// PRODUCTION CACHE-COHERENCY HOTFIX -- resources no longer read through
+// Directus; see character-assembly.ts's own doc comment. Not this file's
+// concern (historical fail-closed behavior), so a flat "nothing expended".
+vi.mock('../../../server/utils/character-resource-atomic', () => ({ readCharacterResourcesAtomic: mocks.readCharacterResourcesAtomic }))
 
 import { assembleCharacter } from '../../../server/utils/character-assembly'
 import { findRulesFacet } from '../../../app/lib/content-rules'
@@ -42,6 +47,7 @@ const CATALOGUE_SELECTION = {
 
 beforeEach(() => {
   mocks.getWorldContentCatalogue.mockResolvedValue(CATALOGUE)
+  mocks.readCharacterResourcesAtomic.mockResolvedValue({ ok: true, expended: {} })
   mocks.directusServiceRequest.mockImplementation(async (path: string) => {
     if (path.startsWith('/items/entities')) {
       return { data: { id: Number(CHARACTER_ID), world_id: Number(WORLD_ID), entity_type: 'pc', title: 'Historic' } }

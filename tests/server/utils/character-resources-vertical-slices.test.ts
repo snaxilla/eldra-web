@@ -32,10 +32,11 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock, getWorldContentCatalogueMock, getWorldRuntimeMock } = vi.hoisted(() => ({
+const { directusServiceRequestMock, getWorldContentCatalogueMock, getWorldRuntimeMock, readCharacterResourcesAtomicMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
   getWorldContentCatalogueMock: vi.fn(),
-  getWorldRuntimeMock: vi.fn()
+  getWorldRuntimeMock: vi.fn(),
+  readCharacterResourcesAtomicMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -46,6 +47,16 @@ vi.mock('../../../server/utils/world-content-catalogue', () => ({
 }))
 vi.mock('../../../server/utils/world-runtime-service', () => ({
   getWorldRuntime: getWorldRuntimeMock
+}))
+// PRODUCTION CACHE-COHERENCY HOTFIX -- the `resources` block no longer
+// reads through Directus (character-assembly.ts's own doc comment); it
+// reads through `readCharacterResourcesAtomic` (character-resource-
+// atomic.ts), straight against Postgres. Mocked here at the same module
+// boundary every other dependency above already is -- `mockEntityAndBlocks`
+// below now sets this instead of including a 'resources' row in the
+// Directus block_instances mock.
+vi.mock('../../../server/utils/character-resource-atomic', () => ({
+  readCharacterResourcesAtomic: readCharacterResourcesAtomicMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -121,13 +132,14 @@ function mockEntityAndBlocks(input: {
         data: [
           { block_key: 'catalogue_selection', data: { species: { packageId: 'eldra.content.xphb', slug: 'human-xphb' }, class: { packageId: 'eldra.content.xphb', slug: input.classSlug }, background: { packageId: 'eldra.content.xphb', slug: 'sage-xphb' } } },
           { block_key: 'ability_scores', data: { method: 'standard-array', scores: input.abilityScores } },
-          { block_key: 'progression', data: progression },
-          { block_key: 'resources', data: { expended: input.resourcesExpended ?? {} } }
+          { block_key: 'progression', data: progression }
         ]
       }
     }
     throw new Error(`unexpected directusServiceRequest path: ${path}`)
   })
+
+  readCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: input.resourcesExpended ?? {} })
 }
 
 function findResource(resources: readonly { id: string }[], id: string) {
@@ -138,6 +150,7 @@ beforeEach(() => {
   directusServiceRequestMock.mockReset()
   getWorldContentCatalogueMock.mockReset()
   getWorldRuntimeMock.mockReset()
+  readCharacterResourcesAtomicMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({

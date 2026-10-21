@@ -7,9 +7,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getWorldContentCatalogueMock, directusServiceRequestMock } = vi.hoisted(() => ({
+const { getWorldContentCatalogueMock, directusServiceRequestMock, readCharacterResourcesAtomicMock } = vi.hoisted(() => ({
   getWorldContentCatalogueMock: vi.fn(),
-  directusServiceRequestMock: vi.fn()
+  directusServiceRequestMock: vi.fn(),
+  readCharacterResourcesAtomicMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/world-content-catalogue', () => ({
@@ -18,6 +19,16 @@ vi.mock('../../../server/utils/world-content-catalogue', () => ({
 
 vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
+}))
+
+// PRODUCTION CACHE-COHERENCY HOTFIX -- `resources` no longer reads through
+// Directus (see character-assembly.ts's own doc comment); it reads through
+// `readCharacterResourcesAtomic` (character-resource-atomic.ts), straight
+// against Postgres. Defaults to "nothing ever expended" for every test in
+// this file -- none of them are about resource VALUES, only about the
+// other nine blocks' own resolution/reporting logic.
+vi.mock('../../../server/utils/character-resource-atomic', () => ({
+  readCharacterResourcesAtomic: readCharacterResourcesAtomicMock
 }))
 
 import { assembleCharacter } from '../../../server/utils/character-assembly'
@@ -100,6 +111,8 @@ function mockEntityAndBlock(
 beforeEach(() => {
   getWorldContentCatalogueMock.mockReset()
   directusServiceRequestMock.mockReset()
+  readCharacterResourcesAtomicMock.mockReset()
+  readCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: {} })
 })
 
 describe('assembleCharacter', () => {
@@ -454,7 +467,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all ten blocks in ONE Directus round trip', async () => {
+  it('reads the remaining nine blocks in ONE Directus round trip -- resources no longer among them', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -472,8 +485,40 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'currency', 'notes', 'health', 'spellcasting', 'progression', 'resources'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'currency', 'notes', 'health', 'spellcasting', 'progression'
     ])
+  })
+
+  // PRODUCTION CACHE-COHERENCY HOTFIX
+  it('reads resources through readCharacterResourcesAtomic, never through Directus', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      { species: selectionRef(catalogue.species[0]), class: selectionRef(catalogue.classes[0]), background: selectionRef(catalogue.backgrounds[0]) }
+    )
+    readCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: { 'resource:rage': 1 } })
+
+    const result = await assembleCharacter('5', '42')
+    if (!result.available) throw new Error('expected an available blueprint')
+
+    expect(result.blueprint.resources).toEqual({ expended: { 'resource:rage': 1 } })
+    expect(readCharacterResourcesAtomicMock).toHaveBeenCalledWith({ worldId: '5', characterId: '42' })
+  })
+
+  it('fails assembly closed when the resources read itself fails -- never silently reports zero expenditure', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      { species: selectionRef(catalogue.species[0]), class: selectionRef(catalogue.classes[0]), background: selectionRef(catalogue.backgrounds[0]) }
+    )
+    readCharacterResourcesAtomicMock.mockResolvedValue({ ok: false, reason: 'persistence-failure', message: 'connection lost' })
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available).toBe(false)
+    if (result.available) return
+    expect(result.reason).toBe('resource-persistence-unavailable')
   })
 })
 

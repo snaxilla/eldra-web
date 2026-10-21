@@ -138,6 +138,9 @@ export type CharacterActionsResult =
   | { available: true; actions: CharacterAction[] }
   | { available: false; reason: 'character-not-found' }
   | { available: false; reason: 'no-catalogue-selection'; message: string }
+  // PRODUCTION CACHE-COHERENCY HOTFIX -- relayed verbatim from
+  // `assembleCharacter`'s own identical reason (character-assembly.ts).
+  | { available: false; reason: 'resource-persistence-unavailable'; message: string }
 
 const MELEE_ATTACK_BONUS_ID = 'value:combat.melee_attack_bonus'
 const RANGED_ATTACK_BONUS_ID = 'value:combat.ranged_attack_bonus'

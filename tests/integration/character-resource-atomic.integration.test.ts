@@ -35,6 +35,7 @@ import { Client } from 'pg'
 import {
   expendCharacterResourcesAtomic,
   reduceCharacterResourcesAtomic,
+  readCharacterResourcesAtomic,
   __closePoolForTesting
 } from '../../server/utils/character-resource-atomic'
 
@@ -470,5 +471,96 @@ describe('ownership does not leak across characters in the same world', () => {
     const rowB = await readResourcesRow(otherCharacterId)
     expect(rowA?.data.expended['resource:focus_points']).toBe(1)
     expect(rowB?.data.expended['resource:focus_points']).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// readCharacterResourcesAtomic -- PRODUCTION CACHE-COHERENCY HOTFIX.
+// ---------------------------------------------------------------------------
+// The exact regression-acceptance sequence the hotfix's own task named:
+// read 0 -> expend -> read 1 -> expend -> read 2 -> restore/recover ->
+// read reflects it -- proven against the SAME disposable, real-json-column
+// Postgres instance and the SAME least-privilege role every write test
+// above already uses, never a superuser, never a second schema.
+describe('readCharacterResourcesAtomic -- authoritative read, Directus-independent', () => {
+  it('a character with no resources block yet reads expended={} -- legal, not an error', async () => {
+    const result = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(result).toEqual({ ok: true, expended: {} })
+  })
+
+  it('1. read returns expended=0 (nothing persisted) for an acquired-but-untouched resource', async () => {
+    const result = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.expended['resource:rage'] ?? 0).toBe(0)
+  })
+
+  it('2-3. an atomic expenditure persists expended=1, and the very next read returns it', async () => {
+    const expend = await expendCharacterResourcesAtomic({
+      worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }]
+    })
+    expect(expend.ok).toBe(true)
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(read).toEqual({ ok: true, expended: { 'resource:rage': 1 } })
+  })
+
+  it('4-5. a second expenditure persists expended=2, and the next read reflects it immediately', async () => {
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }] })
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }] })
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(read).toEqual({ ok: true, expended: { 'resource:rage': 2 } })
+  })
+
+  it('6a. restoration updates the very next read', async () => {
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 2, max: 2 }] })
+    await reduceCharacterResourcesAtomic({ worldId: worldAId, characterId, reductions: [{ resourceId: 'resource:rage', amount: 1 }] })
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(read).toEqual({ ok: true, expended: { 'resource:rage': 1 } })
+  })
+
+  it('6b. Long Rest recovery (\'full\') updates the very next read, deleting the key entirely', async () => {
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 2, max: 2 }] })
+    await reduceCharacterResourcesAtomic({ worldId: worldAId, characterId, reductions: [{ resourceId: 'resource:rage', amount: 'full' }] })
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(read).toEqual({ ok: true, expended: {} })
+  })
+
+  it('a wrong-world read fails closed as not-found, never leaking another world\'s/character\'s data', async () => {
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }] })
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldBId, characterId })
+    expect(read).toEqual({ ok: false, reason: 'not-found', message: expect.any(String) })
+  })
+
+  it('a non-existent characterId fails closed as not-found', async () => {
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId: 999999 })
+    expect(read).toEqual({ ok: false, reason: 'not-found', message: expect.any(String) })
+  })
+
+  it('reads for different characters in the same world stay fully independent', async () => {
+    await expendCharacterResourcesAtomic({ worldId: worldAId, characterId, costs: [{ resourceId: 'resource:rage', amount: 1, max: 2 }] })
+
+    const readA = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    const readB = await readCharacterResourcesAtomic({ worldId: worldAId, characterId: otherCharacterId })
+    expect(readA).toEqual({ ok: true, expended: { 'resource:rage': 1 } })
+    expect(readB).toEqual({ ok: true, expended: {} })
+  })
+
+  it('a malicious-looking resourceId key already persisted reads back exactly as stored, never misinterpreted', async () => {
+    await admin.query(
+      "INSERT INTO block_instances (entity_id, block_key, label, sort, repeatable, data) VALUES ($1, 'resources', 'Resources', 80, false, $2)",
+      [characterId, JSON.stringify({ expended: { "resource:rage'; DROP TABLE block_instances; --": 1 } })]
+    )
+
+    const read = await readCharacterResourcesAtomic({ worldId: worldAId, characterId })
+    expect(read).toEqual({ ok: true, expended: { "resource:rage'; DROP TABLE block_instances; --": 1 } })
+
+    // The table is still here at all, which is the point.
+    const row = await readResourcesRow(characterId)
+    expect(row).not.toBeNull()
   })
 })

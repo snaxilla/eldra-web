@@ -37,7 +37,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   directusServiceRequestMock, getWorldContentCatalogueMock, getWorldRuntimeMock,
   listContentPackBindingsForWorldMock, saveCharacterProgressionMock,
-  loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock, saveCharacterSpellcastingMock
+  loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock, saveCharacterSpellcastingMock,
+  readCharacterResourcesAtomicMock
 } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
   getWorldContentCatalogueMock: vi.fn(),
@@ -46,11 +47,16 @@ const {
   saveCharacterProgressionMock: vi.fn(),
   loadCharacterRulesChoicesMock: vi.fn(),
   saveCharacterRulesChoicesMock: vi.fn(),
-  saveCharacterSpellcastingMock: vi.fn()
+  saveCharacterSpellcastingMock: vi.fn(),
+  readCharacterResourcesAtomicMock: vi.fn()
 }))
 
 // character-assembly is DELIBERATELY NEVER MOCKED -- see this file's own header.
 vi.mock('../../../server/utils/directus', () => ({ directusServiceRequest: directusServiceRequestMock }))
+// PRODUCTION CACHE-COHERENCY HOTFIX -- resources no longer read through
+// Directus; see character-assembly.ts's own doc comment. Not this file's
+// concern (subclass direct-choice acceptance), so a flat "nothing expended".
+vi.mock('../../../server/utils/character-resource-atomic', () => ({ readCharacterResourcesAtomic: readCharacterResourcesAtomicMock }))
 vi.mock('../../../server/utils/world-content-catalogue', () => ({ getWorldContentCatalogue: getWorldContentCatalogueMock }))
 vi.mock('../../../server/utils/world-runtime-service', () => ({ getWorldRuntime: getWorldRuntimeMock }))
 vi.mock('../../../server/utils/world-content-packs', () => ({ listContentPackBindingsForWorld: listContentPackBindingsForWorldMock }))
@@ -207,6 +213,8 @@ beforeEach(() => {
   loadCharacterRulesChoicesMock.mockReset()
   saveCharacterRulesChoicesMock.mockReset()
   saveCharacterSpellcastingMock.mockReset()
+  readCharacterResourcesAtomicMock.mockReset()
+  readCharacterResourcesAtomicMock.mockResolvedValue({ ok: true, expended: {} })
 
   getWorldRuntimeMock.mockResolvedValue({ configured: true, ok: true, runtime: REAL_RUNTIME, integrityHash: 'sha256-test', settings: {}, rollTypeOverrides: {} })
   listContentPackBindingsForWorldMock.mockResolvedValue([])

@@ -153,10 +153,10 @@ function onSlotSelect(slotIndex: number, event: Event) {
     </legend>
 
     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <p class="text-sm font-semibold text-[#fff7df]">
+      <p class="font-serif text-sm font-semibold text-eldra-text-strong">
         <span
           v-if="slotLabel"
-          class="text-[#9f9278]"
+          class="font-sans text-eldra-text-faint"
         >{{ slotLabel }}:</span>
         {{ prompt || 'Choose your options' }}
       </p>
@@ -164,7 +164,7 @@ function onSlotSelect(slotIndex: number, event: Event) {
       <!-- Progress is stated in words, never by colour alone. -->
       <p
         class="text-xs"
-        :class="complete ? 'text-[#9ec37d]' : 'text-[#9f9278]'"
+        :class="complete ? 'text-eldra-positive' : 'text-eldra-text-faint'"
         aria-live="polite"
       >
         <template v-if="complete">
@@ -179,7 +179,7 @@ function onSlotSelect(slotIndex: number, event: Event) {
 
     <p
       v-if="!displayed.length"
-      class="mt-3 text-xs text-[#9f9278]"
+      class="mt-3 text-xs text-eldra-text-faint"
     >
       This choice offers no options, so there is nothing to pick.
     </p>
@@ -191,11 +191,11 @@ function onSlotSelect(slotIndex: number, event: Event) {
       <label
         v-for="slotIndex in slotIndexes"
         :key="slotIndex"
-        class="flex min-h-14 flex-col justify-center gap-1 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.55)] px-3 py-2"
+        class="flex min-h-14 flex-col justify-center gap-1 rounded-none border border-eldra-accent/24 bg-eldra-panel/55 px-3 py-2"
       >
-        <span class="text-xs text-[#9f9278]">Selection {{ slotIndex + 1 }}</span>
+        <span class="text-xs text-eldra-text-faint">Selection {{ slotIndex + 1 }}</span>
         <select
-          class="min-h-11 bg-transparent text-sm text-[#e8dcc0]"
+          class="min-h-11 bg-transparent text-sm text-eldra-text-soft"
           :value="slotDraft[slotIndex]"
           @change="onSlotSelect(slotIndex, $event)"
         >
@@ -224,25 +224,25 @@ function onSlotSelect(slotIndex: number, event: Event) {
         class="flex min-h-14 cursor-pointer items-center gap-3 rounded-none border px-3 py-2 transition-colors"
         :class="[
           isSelected(offered.value)
-            ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)]'
-            : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.55)]',
+            ? 'border-eldra-accent/65 bg-eldra-accent/12'
+            : 'border-eldra-accent/24 bg-eldra-panel/55',
           isDisabled(offered.value)
             ? 'cursor-not-allowed opacity-45'
-            : 'hover:border-[rgba(201,164,90,0.45)]'
+            : 'hover:border-eldra-accent/45'
         ]"
       >
         <input
           type="checkbox"
-          class="size-5 shrink-0 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
+          class="size-5 shrink-0 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
           :checked="isSelected(offered.value)"
           :disabled="isDisabled(offered.value)"
           @change="toggle(offered.value)"
         >
-        <span class="min-w-0 text-sm text-[#e8dcc0]">
+        <span class="min-w-0 text-sm text-eldra-text-soft">
           {{ labelFor(offered.value) }}
           <span
             v-if="reasonFor(offered.value)"
-            class="block text-xs text-[#9f9278]"
+            class="block text-xs text-eldra-text-faint"
           >{{ reasonFor(offered.value) }}</span>
         </span>
       </label>

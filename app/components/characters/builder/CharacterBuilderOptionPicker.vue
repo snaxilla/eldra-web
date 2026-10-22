@@ -41,6 +41,7 @@ import {
   optionKey,
   type BuilderCatalogueEntry
 } from './characterBuilderSelection'
+import CreationEntityEmblem from './CreationEntityEmblem.vue'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -93,7 +94,7 @@ function select(entry: BuilderCatalogueEntry) {
         type="search"
         autocomplete="off"
         :placeholder="`Search ${label.toLowerCase()}…`"
-        class="min-h-11 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-base text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)] sm:text-sm"
+        class="eldra-input min-h-11 w-full rounded-none px-4 py-2.5 text-base sm:text-sm"
       >
     </div>
 
@@ -101,41 +102,46 @@ function select(entry: BuilderCatalogueEntry) {
          so filtering never reads as "my selection was cleared". -->
     <p
       v-if="selectionHidden && selectedEntry"
-      class="mb-3 rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs text-[#f5e7bd]"
+      class="mb-3 rounded-none border border-eldra-accent/42 bg-eldra-accent/12 px-3 py-2 text-xs text-eldra-text-strong"
     >
       Selected: <strong class="font-semibold">{{ selectedEntry.title }}</strong>
       <template v-if="selectedEntry.sourceBook"> · {{ selectedEntry.sourceBook }}</template>
-      <span class="text-[#c9b98d]"> — not shown by this search</span>
+      <span class="text-eldra-accent-text"> — not shown by this search</span>
     </p>
 
     <p
       v-if="!options.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
 
     <p
       v-else-if="!visibleOptions.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
     >
       No {{ label.toLowerCase() }} matches “{{ query }}”.
     </p>
 
+    <!-- Visual option cards (this task's own reusable-component requirement):
+         bigger than a plain list row, an emblem so each option reads as a
+         "someone"/"something" rather than a line of text, but still a
+         native radio + label underneath -- see this file's own header on
+         why that accessibility shape is never replaced by a styled div. -->
     <div
       v-else
-      class="grid gap-2"
+      class="grid gap-3"
       :class="compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'"
     >
       <label
         v-for="entry in visibleOptions"
         :key="optionKey(entry)"
-        class="group relative flex min-h-14 items-center gap-3 rounded-none border px-4 py-3 transition"
+        class="eldra-card-glyph group relative flex min-h-20 items-center gap-4 rounded-none border px-4 py-3 transition"
         :class="[
           creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
           modelValue === optionKey(entry)
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
-            : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'
+            ? 'eldra-ornate-card border-eldra-accent/62'
+            : 'border-eldra-accent/20 bg-eldra-panel/55 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'
         ]"
       >
         <input
@@ -148,49 +154,51 @@ function select(entry: BuilderCatalogueEntry) {
           @change="select(entry)"
         >
 
-        <!-- Selection indicator: shape + fill, never colour alone. -->
-        <span
-          aria-hidden="true"
-          class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
-          :class="modelValue === optionKey(entry)
-            ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.85)]'
-            : 'border-[rgba(201,164,90,0.35)]'"
-        >
-          <span
-            v-if="modelValue === optionKey(entry)"
-            class="h-2 w-2 rounded-full bg-[#12100b]"
-          />
-        </span>
+        <CreationEntityEmblem :title="entry.title" />
 
         <span class="min-w-0 flex-1">
-          <span class="block truncate text-base font-semibold text-[#fff7df]">
+          <span class="block truncate font-serif text-lg font-semibold text-eldra-text-strong">
             {{ entry.title }}
           </span>
           <span
             class="mt-0.5 block truncate text-xs"
-            :class="ambiguous ? 'text-[#d8ceb8]' : 'text-[#9f9278]'"
+            :class="ambiguous ? 'text-eldra-text-soft' : 'text-eldra-text-faint'"
           >
             <template v-if="entry.sourceBook">{{ entry.sourceBook }} · </template>{{ entry.packageId }}
           </span>
           <span
             v-if="creationUnavailableReason(entry)"
-            class="mt-1 block text-xs text-[#c9b98d]"
+            class="mt-1 block text-xs text-eldra-caution"
           >
             Not available yet. {{ creationUnavailableReason(entry) }}
           </span>
         </span>
 
+        <!-- Selection indicator: shape + fill, never colour alone. -->
+        <span
+          aria-hidden="true"
+          class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
+          :class="modelValue === optionKey(entry)
+            ? 'border-eldra-accent-bright bg-eldra-accent-bright'
+            : 'border-eldra-accent/35'"
+        >
+          <span
+            v-if="modelValue === optionKey(entry)"
+            class="h-2 w-2 rounded-full bg-eldra-ink"
+          />
+        </span>
+
         <!-- Keyboard focus ring, matched to what hover shows a mouse user. -->
         <span
           aria-hidden="true"
-          class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-[rgba(201,164,90,0.65)]"
+          class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-eldra-accent/65"
         />
       </label>
     </div>
 
     <p
       v-if="options.length"
-      class="mt-2 text-xs text-[#6f6754]"
+      class="mt-2 text-xs text-eldra-text-ghost"
     >
       {{ visibleOptions.length }} of {{ options.length }} shown
     </p>

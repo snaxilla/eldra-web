@@ -138,6 +138,10 @@ import {
 } from '~/components/characters/builder/characterBuilderSelection'
 import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
 import CharacterChoiceSetPicker from '~/components/characters/builder/CharacterChoiceSetPicker.vue'
+import CreationStageRail from '~/components/characters/builder/CreationStageRail.vue'
+import CharacterPreviewPanel from '~/components/characters/builder/CharacterPreviewPanel.vue'
+import CreationDetailPanel from '~/components/characters/builder/CreationDetailPanel.vue'
+import CreationValidationBanner from '~/components/characters/builder/CreationValidationBanner.vue'
 import type { AbilityKey, AbilityScoreMethod } from '~/lib/characters/ability-scores'
 
 definePageMeta({
@@ -412,6 +416,21 @@ const summaryRows = computed(() =>
   }))
 )
 
+// CINEMATIC REDESIGN (Milestone B1) -- the generic {key, label, title,
+// sourceBook} shape CharacterPreviewPanel.vue reads; `summaryRows` already
+// carries everything this needs, restated here only because the preview
+// panel is deliberately typed against no Builder-specific shape at all
+// (see that component's own header -- B2's Level-Up Wizard previews an
+// EXISTING character, never this draft).
+const previewRows = computed(() =>
+  summaryRows.value.map((row) => ({
+    key: row.key,
+    label: row.label,
+    title: row.entry?.title ?? null,
+    sourceBook: row.entry?.sourceBook
+  }))
+)
+
 function goTo(step: BuilderStepKey) {
   activeStep.value = step
 }
@@ -462,24 +481,32 @@ async function createCharacter() {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
+    <!-- Atmospheric backdrop -- restrained, fixed, never competing with the
+         choices themselves (this task's own "restrained transitions and
+         motion" direction). -->
+    <div
+      aria-hidden="true"
+      class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(120%_60%_at_50%_-10%,rgb(var(--eldra-accent-rgb)/0.10),transparent_60%)]"
+    />
+
     <div
       class="mx-auto px-4 pb-32 pt-8 sm:px-6"
-      :class="compact ? 'max-w-2xl' : 'max-w-6xl'"
+      :class="compact ? 'max-w-2xl' : 'max-w-7xl pb-16'"
     >
       <div class="eldra-kicker text-xs">
         Character Builder
       </div>
-      <h1 class="eldra-title mt-2 text-2xl font-semibold sm:text-3xl">
+      <h1 class="eldra-title mt-2 font-serif text-2xl font-semibold sm:text-3xl">
         Create Character
       </h1>
-      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-eldra-text-soft">
         Choose a Species, Class, and Background from this World's bound Content Packs.
       </p>
 
       <!-- States ---------------------------------------------------------- -->
       <div
         v-if="catalogueLoading"
-        class="mt-8 text-sm text-[#9f9278]"
+        class="mt-8 text-sm text-eldra-text-faint"
       >
         Loading the World's Content Catalogue…
       </div>
@@ -493,7 +520,7 @@ async function createCharacter() {
 
       <div
         v-else-if="catalogueIsEmpty"
-        class="mt-8 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-4 text-sm text-[#d8ceb8]"
+        class="mt-8 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 p-4 text-sm text-eldra-text-soft"
       >
         <template v-if="!hasAnyBoundPack">
           This World has no Content Packs bound yet. Bind one from Game Admin before creating a character.
@@ -504,326 +531,369 @@ async function createCharacter() {
       </div>
 
       <!-- ================================================================ -->
-      <!-- COMPACT: one step at a time + sticky action bar                   -->
+      <!-- CINEMATIC COMPOSITION -- three regions, one shared stage content.
+           `compact` (see this file's own header for the exact heuristic)
+           changes ONLY arrangement: a vertical Region A rail beside a
+           sticky Region B preview on desktop/tablet becomes a horizontal
+           rail above a compact preview strip on a phone, and the inline
+           Back/Next buttons become a thumb-reach sticky bar -- never a
+           change in which stage, choice, or control exists. See this
+           file's own header on why nothing is ever gated by layout. -->
       <!-- ================================================================ -->
-      <template v-else-if="compact">
-        <!-- Progress rail: buttons, so any step is reachable at any time. -->
-        <nav
-          aria-label="Builder steps"
-          class="mt-6 flex gap-1.5 overflow-x-auto pb-1"
+      <template v-else>
+        <div
+          class="mt-6"
+          :class="compact ? 'flex flex-col gap-4' : 'grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)_21rem] lg:items-start'"
         >
-          <button
-            v-for="step in steps"
-            :key="step.key"
-            type="button"
-            class="flex min-h-11 shrink-0 items-center gap-1.5 rounded-none border px-3 text-xs font-semibold uppercase tracking-[0.12em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
-            :class="activeStep === step.key
-              ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-              : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] text-[#9f9278]'"
-            :aria-current="activeStep === step.key ? 'step' : undefined"
-            @click="goTo(step.key)"
-          >
-            <span
-              v-if="step.complete"
-              aria-hidden="true"
-            >✓</span>
-            {{ step.label }}
-            <span class="sr-only">{{ step.complete ? '(complete)' : '(incomplete)' }}</span>
-          </button>
-        </nav>
+          <!-- Region A: Navigation / Progress ---------------------------- -->
+          <aside :class="compact ? '' : 'lg:order-1'">
+            <CreationStageRail
+              :stages="steps"
+              :active-key="activeStep"
+              :vertical="!compact"
+              @select="(key: string) => goTo(key as BuilderStepKey)"
+            />
+          </aside>
 
-        <section class="mt-5">
-          <div v-if="activeStep === 'identity'">
-            <label
-              for="character-name-compact"
-              class="mb-2 block text-sm font-semibold text-[#d8ceb8]"
-            >Character Name</label>
-            <input
-              id="character-name-compact"
-              v-model="draft.name"
-              type="text"
-              autocomplete="off"
-              placeholder="Character name"
-              class="min-h-12 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-3 text-base text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)]"
-            >
-          </div>
-
-          <div
-            v-for="key in CHOICE_KEYS"
-            v-show="activeStep === key"
-            :key="key"
-          >
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ STEP_LABELS[key] }}
-            </h2>
-            <CharacterBuilderOptionPicker
-              :label="STEP_LABELS[key]"
-              :name="`builder-${key}`"
-              :options="optionsFor[key]"
-              :model-value="selectedKeys[key]"
-              compact
-              @update:model-value="(value: string) => chooseOption(key, value)"
+          <!-- Region B: Character Preview --------------------------------- -->
+          <aside :class="compact ? '' : 'lg:order-3 lg:sticky lg:top-8'">
+            <CharacterPreviewPanel
+              :name="draft.name"
+              :rows="previewRows"
+              :compact="compact"
             />
 
-            <!-- Live preview: the selected option, explained in place.
-                 Same component, same models the Character Sheet renders. -->
-            <div class="mt-5">
-              <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                About this {{ STEP_LABELS[key] }}
-              </h3>
-              <div class="eldra-ornate-panel eldra-frame-corners mt-2 min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur">
-                <ContentPresentationPanel
-                  v-if="draft[key]"
-                  :entry="draft[key]?.presentation"
-                  context="preview"
-                  :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
-                />
-                <p
-                  v-else
-                  class="text-sm text-[#9f9278]"
-                >
-                  Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="activeStep === 'proficiencies'">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ STEP_LABELS.proficiencies }}
-            </h2>
-            <p
-              v-if="!proficiencyChoices.length && !contentChoicePickers.length"
-              class="text-sm leading-6 text-[#9f9278]"
-            >
-              The Species, Class, and Background you chose ask no proficiency
-              questions, so there is nothing to answer here.
-            </p>
-
+            <!-- Desktop/tablet's extra room shows the ability summary and
+                 Create action continuously, exactly like the pre-redesign
+                 persistent aside did -- a phone reaches the identical
+                 summary on its own Review stage instead (Region C below). -->
             <div
-              v-else
-              class="grid gap-6"
+              v-if="!compact"
+              class="eldra-ornate-panel eldra-frame-corners mt-4 rounded-none border border-eldra-accent/24 bg-eldra-panel/64 p-4 backdrop-blur"
             >
-              <CharacterChoiceSetPicker
-                v-for="choice in proficiencyChoices"
-                :key="choice.key"
-                :choice="choice"
-                :selected="selectionsFor(choice.key)"
-                :offered="offeredFor(choice.key)"
-                :prompt="promptFor(choice.choiceSetId)"
-                :option-labels="optionLabels"
-                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
-              />
-              <CharacterChoiceSetPicker
-                v-for="choice in contentChoicePickers"
-                :key="choice.key"
-                :choice="choice"
-                :selected="contentSelectionsFor(choice.key)"
-                :offered="contentOfferedFor(choice.key)"
-                :prompt="promptFor(choice.choiceSetId)"
-                :option-labels="contentLabels"
-                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
-              />
-            </div>
-          </div>
-
-          <div v-if="activeStep === 'spells'">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ STEP_LABELS.spells }}
-            </h2>
-            <p
-              v-if="!spellSections.length"
-              class="text-sm leading-6 text-[#9f9278]"
-            >
-              The Class you chose grants no spells at Level 1, so there is nothing to answer here.
-            </p>
-
-            <div
-              v-else
-              class="grid gap-6"
-            >
-              <CharacterChoiceSetPicker
-                v-for="section in spellSections"
-                :key="section.requirementId"
-                :choice="section.choice"
-                :selected="spellSelectionsFor(section.requirementId)"
-                :option-labels="section.optionLabels"
-                :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
-                :slot-label="STEP_LABELS.class"
-                @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
-              />
-            </div>
-          </div>
-
-          <div v-if="activeStep === 'equipment'">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ STEP_LABELS.equipment }}
-            </h2>
-            <p
-              v-if="!equipmentSections.length"
-              class="text-sm leading-6 text-[#9f9278]"
-            >
-              The Species, Class, and Background you chose declare no starting-equipment choice,
-              so there is nothing to answer here.
-            </p>
-
-            <div
-              v-else
-              class="grid gap-6"
-            >
-              <fieldset
-                v-for="section in equipmentSections"
-                :key="section.choiceId"
-                class="min-w-0 border-0 p-0"
-              >
-                <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                  {{ STEP_LABELS[section.slot] }} starting equipment
-                </legend>
-                <div class="grid gap-2">
-                  <label
-                    v-for="bundle in section.bundles"
-                    :key="bundle.id"
-                    class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
-                    :class="section.selectedBundleId === bundle.id
-                      ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
-                      : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'"
-                  >
-                    <input
-                      :name="`equipment-${section.choiceId}`"
-                      type="radio"
-                      class="peer sr-only"
-                      :value="bundle.id"
-                      :checked="section.selectedBundleId === bundle.id"
-                      @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
-                    >
-                    <span
-                      aria-hidden="true"
-                      class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
-                      :class="section.selectedBundleId === bundle.id
-                        ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.85)]'
-                        : 'border-[rgba(201,164,90,0.35)]'"
-                    >
-                      <span
-                        v-if="section.selectedBundleId === bundle.id"
-                        class="h-2 w-2 rounded-full bg-[#12100b]"
-                      />
-                    </span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block text-base font-semibold text-[#fff7df]">{{ bundle.label }}</span>
-                      <span class="mt-0.5 block text-xs text-[#9f9278]">{{ bundle.summary }}</span>
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-[rgba(201,164,90,0.65)]"
-                    />
-                  </label>
-                </div>
-              </fieldset>
-            </div>
-          </div>
-
-          <div v-if="activeStep === 'abilities'">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ STEP_LABELS.abilities }}
-            </h2>
-            <CharacterAbilityScoreEditor
-              :method="draft.abilities.method"
-              :assignment="abilityAssignment"
-              @update:method="chooseAbilityMethod"
-              @update:ability="setAbility"
-            />
-          </div>
-
-          <div v-if="activeStep === 'review'">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              Review
-            </h2>
-            <dl class="grid gap-2">
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3">
-                <dt class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                  Name
-                </dt>
-                <dd class="mt-1 text-base text-[#fff7df]">
-                  {{ draft.name.trim() || '—' }}
-                </dd>
-              </div>
-              <div
-                v-for="row in summaryRows"
-                :key="row.key"
-                class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3"
-              >
-                <dt class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                  {{ row.label }}
-                </dt>
-                <dd class="mt-1 text-base text-[#fff7df]">
-                  {{ row.entry?.title || '—' }}
-                  <span
-                    v-if="row.entry"
-                    class="mt-0.5 block text-xs text-[#9f9278]"
-                  >
-                    <template v-if="row.entry.sourceBook">{{ row.entry.sourceBook }} · </template>{{ row.entry.packageId }}
-                  </span>
-                </dd>
-              </div>
-            </dl>
-
-            <!-- The same read-only panel the Character Sheet renders. -->
-            <div class="mt-4 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3">
-              <div class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+              <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
                 {{ STEP_LABELS.abilities }}
               </div>
               <CharacterAbilityScoresPanel
                 :scores="abilityScores"
                 empty-message="Not assigned yet."
               />
-            </div>
 
-            <!-- Everything chosen, explained, before the Create button is
-                 reachable. The roomy layout does not need this: it shows all
-                 three previews beside the picker simultaneously. -->
-            <div class="mt-5 grid gap-4">
-              <div
-                v-for="row in summaryRows"
-                :key="`review-${row.key}`"
-                class="eldra-ornate-panel eldra-frame-corners min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur"
+              <button
+                type="button"
+                class="eldra-button mt-5 min-h-11 w-full rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                :disabled="!complete || creating"
+                @click="createCharacter"
               >
-                <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                  {{ row.label }}
-                </h3>
-                <div class="mt-2">
-                  <ContentPresentationPanel
-                    v-if="row.entry"
-                    :entry="row.entry.presentation"
-                    context="preview"
-                    :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
-                  />
-                  <p
-                    v-else
-                    class="text-sm text-[#9f9278]"
-                  >
-                    No {{ row.label.toLowerCase() }} chosen yet.
-                  </p>
+                {{ creating ? 'Creating…' : 'Create Character' }}
+              </button>
+
+              <CreationValidationBanner
+                :messages="outstanding"
+                :error-message="createErrorMessage"
+                class="mt-3"
+              />
+
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters`"
+                class="eldra-arcane-link mt-3 inline-block text-sm text-eldra-text-faint"
+              >
+                Cancel
+              </NuxtLink>
+            </div>
+          </aside>
+
+          <!-- Region C: Choices / Details ---------------------------------- -->
+          <main class="min-w-0 lg:order-2">
+            <section>
+              <div v-if="activeStep === 'identity'">
+                <label
+                  for="character-name"
+                  class="mb-2 block text-sm font-semibold text-eldra-text-soft"
+                >Character Name</label>
+                <input
+                  id="character-name"
+                  v-model="draft.name"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Character name"
+                  class="eldra-input min-h-12 w-full max-w-md rounded-none px-4 py-3 text-base"
+                >
+              </div>
+
+              <div
+                v-for="key in CHOICE_KEYS"
+                v-show="activeStep === key"
+                :key="key"
+              >
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  {{ STEP_LABELS[key] }}
+                </h2>
+                <CharacterBuilderOptionPicker
+                  :label="STEP_LABELS[key]"
+                  :name="`builder-${key}`"
+                  :options="optionsFor[key]"
+                  :model-value="selectedKeys[key]"
+                  :compact="compact"
+                  @update:model-value="(value: string) => chooseOption(key, value)"
+                />
+
+                <!-- Live preview: the selected option, explained in place.
+                     Same component, same models the Character Sheet renders. -->
+                <div class="mt-5">
+                  <CreationDetailPanel :title="`About this ${STEP_LABELS[key]}`">
+                    <ContentPresentationPanel
+                      v-if="draft[key]"
+                      :entry="draft[key]?.presentation"
+                      context="preview"
+                      :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
+                    />
+                    <p
+                      v-else
+                      class="text-sm text-eldra-text-faint"
+                    >
+                      Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
+                    </p>
+                  </CreationDetailPanel>
                 </div>
               </div>
+
+              <div v-if="activeStep === 'proficiencies'">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  {{ STEP_LABELS.proficiencies }}
+                </h2>
+                <p
+                  v-if="!proficiencyChoices.length && !contentChoicePickers.length"
+                  class="text-sm leading-6 text-eldra-text-faint"
+                >
+                  The Species, Class, and Background you chose ask no proficiency
+                  questions, so there is nothing to answer here.
+                </p>
+
+                <div
+                  v-else
+                  class="grid gap-6"
+                >
+                  <CharacterChoiceSetPicker
+                    v-for="choice in proficiencyChoices"
+                    :key="choice.key"
+                    :choice="choice"
+                    :selected="selectionsFor(choice.key)"
+                    :offered="offeredFor(choice.key)"
+                    :prompt="promptFor(choice.choiceSetId)"
+                    :option-labels="optionLabels"
+                    :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                    @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+                  />
+                  <CharacterChoiceSetPicker
+                    v-for="choice in contentChoicePickers"
+                    :key="choice.key"
+                    :choice="choice"
+                    :selected="contentSelectionsFor(choice.key)"
+                    :offered="contentOfferedFor(choice.key)"
+                    :prompt="promptFor(choice.choiceSetId)"
+                    :option-labels="contentLabels"
+                    :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                    @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
+                  />
+                </div>
+              </div>
+
+              <div v-if="activeStep === 'spells'">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  {{ STEP_LABELS.spells }}
+                </h2>
+                <p
+                  v-if="!spellSections.length"
+                  class="text-sm leading-6 text-eldra-text-faint"
+                >
+                  The Class you chose grants no spells at Level 1, so there is nothing to answer here.
+                </p>
+
+                <div
+                  v-else
+                  class="grid gap-6"
+                >
+                  <CharacterChoiceSetPicker
+                    v-for="section in spellSections"
+                    :key="section.requirementId"
+                    :choice="section.choice"
+                    :selected="spellSelectionsFor(section.requirementId)"
+                    :option-labels="section.optionLabels"
+                    :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
+                    :slot-label="STEP_LABELS.class"
+                    @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
+                  />
+                </div>
+              </div>
+
+              <div v-if="activeStep === 'equipment'">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  {{ STEP_LABELS.equipment }}
+                </h2>
+                <p
+                  v-if="!equipmentSections.length"
+                  class="text-sm leading-6 text-eldra-text-faint"
+                >
+                  The Species, Class, and Background you chose declare no starting-equipment choice,
+                  so there is nothing to answer here.
+                </p>
+
+                <div
+                  v-else
+                  class="grid gap-6"
+                >
+                  <fieldset
+                    v-for="section in equipmentSections"
+                    :key="section.choiceId"
+                    class="min-w-0 border-0 p-0"
+                  >
+                    <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
+                      {{ STEP_LABELS[section.slot] }} starting equipment
+                    </legend>
+                    <div class="grid gap-2">
+                      <label
+                        v-for="bundle in section.bundles"
+                        :key="bundle.id"
+                        class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
+                        :class="section.selectedBundleId === bundle.id
+                          ? 'border-eldra-accent/62 bg-eldra-accent/16'
+                          : 'border-eldra-accent/20 bg-eldra-panel/55 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'"
+                      >
+                        <input
+                          :name="`equipment-${section.choiceId}`"
+                          type="radio"
+                          class="peer sr-only"
+                          :value="bundle.id"
+                          :checked="section.selectedBundleId === bundle.id"
+                          @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
+                        >
+                        <span
+                          aria-hidden="true"
+                          class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
+                          :class="section.selectedBundleId === bundle.id
+                            ? 'border-eldra-accent-bright bg-eldra-accent-bright'
+                            : 'border-eldra-accent/35'"
+                        >
+                          <span
+                            v-if="section.selectedBundleId === bundle.id"
+                            class="h-2 w-2 rounded-full bg-eldra-ink"
+                          />
+                        </span>
+                        <span class="min-w-0 flex-1">
+                          <span class="block text-base font-semibold text-eldra-text-strong">{{ bundle.label }}</span>
+                          <span class="mt-0.5 block text-xs text-eldra-text-faint">{{ bundle.summary }}</span>
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-eldra-accent/65"
+                        />
+                      </label>
+                    </div>
+                  </fieldset>
+                </div>
+              </div>
+
+              <div v-if="activeStep === 'abilities'">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  {{ STEP_LABELS.abilities }}
+                </h2>
+                <CharacterAbilityScoreEditor
+                  :method="draft.abilities.method"
+                  :assignment="abilityAssignment"
+                  @update:method="chooseAbilityMethod"
+                  @update:ability="setAbility"
+                />
+              </div>
+
+              <div v-if="activeStep === 'review'">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  Review
+                </h2>
+
+                <!-- Desktop/tablet already shows the ability summary and
+                     Create action continuously in Region B -- a phone
+                     reaches them here instead, on its own Review stage. -->
+                <div
+                  v-if="compact"
+                  class="mb-5 rounded-none border border-eldra-accent/20 bg-eldra-panel/55 p-3"
+                >
+                  <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
+                    {{ STEP_LABELS.abilities }}
+                  </div>
+                  <CharacterAbilityScoresPanel
+                    :scores="abilityScores"
+                    empty-message="Not assigned yet."
+                  />
+                </div>
+
+                <!-- Everything chosen, explained, one last time before the
+                     Create button is reachable. -->
+                <div class="grid gap-4">
+                  <div
+                    v-for="row in summaryRows"
+                    :key="`review-${row.key}`"
+                  >
+                    <CreationDetailPanel :title="row.label">
+                      <ContentPresentationPanel
+                        v-if="row.entry"
+                        :entry="row.entry.presentation"
+                        context="preview"
+                        :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
+                      />
+                      <p
+                        v-else
+                        class="text-sm text-eldra-text-faint"
+                      >
+                        No {{ row.label.toLowerCase() }} chosen yet.
+                      </p>
+                    </CreationDetailPanel>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Desktop/tablet's own inline actions -- a phone uses the
+                 sticky bottom bar below instead. -->
+            <div
+              v-if="!compact"
+              class="mt-6 flex items-center gap-2"
+            >
+              <button
+                type="button"
+                class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                :disabled="!previousStep(activeStep)"
+                @click="goBack"
+              >
+                Back
+              </button>
+              <button
+                v-if="activeStep !== 'review'"
+                type="button"
+                class="eldra-button min-h-11 rounded-none px-5 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                @click="goNext"
+              >
+                Next
+              </button>
             </div>
-          </div>
-        </section>
+          </main>
+        </div>
 
-        <p
-          v-if="createErrorMessage"
-          class="mt-4 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+        <!-- Sticky bottom bar: a phone's primary actions, within thumb reach. -->
+        <div
+          v-if="compact"
+          class="fixed inset-x-0 bottom-0 z-20 border-t border-eldra-accent/24 bg-eldra-ink/96 px-4 py-3 backdrop-blur"
         >
-          {{ createErrorMessage }}
-        </p>
-
-        <!-- Sticky bottom bar: primary actions within thumb reach. -->
-        <div class="fixed inset-x-0 bottom-0 z-20 border-t border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.96)] px-4 py-3 backdrop-blur">
+          <CreationValidationBanner
+            v-if="activeStep === 'review'"
+            :messages="outstanding"
+            :error-message="createErrorMessage"
+            class="mx-auto mb-2 max-w-2xl"
+          />
           <div class="mx-auto flex max-w-2xl items-center gap-2">
             <button
               type="button"
-              class="min-h-12 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-4 text-sm font-semibold text-[#d8ceb8] disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              class="min-h-12 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
               :disabled="!previousStep(activeStep)"
               @click="goBack"
             >
@@ -833,7 +903,7 @@ async function createCharacter() {
             <button
               v-if="activeStep !== 'review'"
               type="button"
-              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
               @click="goNext"
             >
               Next
@@ -842,315 +912,13 @@ async function createCharacter() {
             <button
               v-else
               type="button"
-              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
               :disabled="!complete || creating"
               @click="createCharacter"
             >
               {{ creating ? 'Creating…' : 'Create Character' }}
             </button>
           </div>
-          <ul
-            v-if="activeStep === 'review' && outstanding.length"
-            class="mx-auto mt-2 max-w-2xl list-disc pl-5 text-xs text-[#9f9278]"
-          >
-            <li
-              v-for="message in outstanding"
-              :key="message"
-            >
-              {{ message }}
-            </li>
-          </ul>
-        </div>
-      </template>
-
-      <!-- ================================================================ -->
-      <!-- ROOMY: everything at once + persistent summary                    -->
-      <!-- ================================================================ -->
-      <template v-else>
-        <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-          <div class="min-w-0 space-y-8">
-            <section>
-              <label
-                for="character-name"
-                class="mb-2 block text-sm font-semibold text-[#d8ceb8]"
-              >Character Name</label>
-              <input
-                id="character-name"
-                v-model="draft.name"
-                type="text"
-                autocomplete="off"
-                placeholder="Character name"
-                class="min-h-11 w-full max-w-md rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)]"
-              >
-            </section>
-
-            <section
-              v-for="key in CHOICE_KEYS"
-              :key="key"
-            >
-              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-                {{ STEP_LABELS[key] }}
-              </h2>
-              <CharacterBuilderOptionPicker
-                :label="STEP_LABELS[key]"
-                :name="`builder-${key}`"
-                :options="optionsFor[key]"
-                :model-value="selectedKeys[key]"
-                @update:model-value="(value: string) => chooseOption(key, value)"
-              />
-
-              <!-- Live preview: the selected option, explained in place.
-                   Same component, same models the Character Sheet renders. -->
-              <div class="mt-5">
-                <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                  About this {{ STEP_LABELS[key] }}
-                </h3>
-                <div class="eldra-ornate-panel eldra-frame-corners mt-2 min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur">
-                  <ContentPresentationPanel
-                    v-if="draft[key]"
-                    :entry="draft[key]?.presentation"
-                    context="preview"
-                    :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
-                  />
-                  <p
-                    v-else
-                    class="text-sm text-[#9f9278]"
-                  >
-                    Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-                {{ STEP_LABELS.proficiencies }}
-              </h2>
-            <p
-              v-if="!proficiencyChoices.length && !contentChoicePickers.length"
-              class="text-sm leading-6 text-[#9f9278]"
-            >
-              The Species, Class, and Background you chose ask no proficiency
-              questions, so there is nothing to answer here.
-            </p>
-
-            <div
-              v-else
-              class="grid gap-6"
-            >
-              <CharacterChoiceSetPicker
-                v-for="choice in proficiencyChoices"
-                :key="choice.key"
-                :choice="choice"
-                :selected="selectionsFor(choice.key)"
-                :offered="offeredFor(choice.key)"
-                :prompt="promptFor(choice.choiceSetId)"
-                :option-labels="optionLabels"
-                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
-              />
-              <CharacterChoiceSetPicker
-                v-for="choice in contentChoicePickers"
-                :key="choice.key"
-                :choice="choice"
-                :selected="contentSelectionsFor(choice.key)"
-                :offered="contentOfferedFor(choice.key)"
-                :prompt="promptFor(choice.choiceSetId)"
-                :option-labels="contentLabels"
-                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
-              />
-            </div>
-            </section>
-
-            <section>
-              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-                {{ STEP_LABELS.spells }}
-              </h2>
-              <p
-                v-if="!spellSections.length"
-                class="text-sm leading-6 text-[#9f9278]"
-              >
-                The Class you chose grants no spells at Level 1, so there is nothing to answer here.
-              </p>
-              <div
-                v-else
-                class="grid gap-6"
-              >
-                <CharacterChoiceSetPicker
-                  v-for="section in spellSections"
-                  :key="section.requirementId"
-                  :choice="section.choice"
-                  :selected="spellSelectionsFor(section.requirementId)"
-                  :option-labels="section.optionLabels"
-                  :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
-                  :slot-label="STEP_LABELS.class"
-                  @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
-                />
-              </div>
-            </section>
-
-            <section>
-              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-                {{ STEP_LABELS.equipment }}
-              </h2>
-              <p
-                v-if="!equipmentSections.length"
-                class="text-sm leading-6 text-[#9f9278]"
-              >
-                The Species, Class, and Background you chose declare no starting-equipment choice,
-                so there is nothing to answer here.
-              </p>
-              <div
-                v-else
-                class="grid gap-6"
-              >
-                <fieldset
-                  v-for="section in equipmentSections"
-                  :key="section.choiceId"
-                  class="min-w-0 border-0 p-0"
-                >
-                  <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
-                    {{ STEP_LABELS[section.slot] }} starting equipment
-                  </legend>
-                  <div class="grid gap-2">
-                    <label
-                      v-for="bundle in section.bundles"
-                      :key="bundle.id"
-                      class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
-                      :class="section.selectedBundleId === bundle.id
-                        ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
-                        : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'"
-                    >
-                      <input
-                        :name="`equipment-${section.choiceId}`"
-                        type="radio"
-                        class="peer sr-only"
-                        :value="bundle.id"
-                        :checked="section.selectedBundleId === bundle.id"
-                        @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
-                      >
-                      <span
-                        aria-hidden="true"
-                        class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
-                        :class="section.selectedBundleId === bundle.id
-                          ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.85)]'
-                          : 'border-[rgba(201,164,90,0.35)]'"
-                      >
-                        <span
-                          v-if="section.selectedBundleId === bundle.id"
-                          class="h-2 w-2 rounded-full bg-[#12100b]"
-                        />
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="block text-base font-semibold text-[#fff7df]">{{ bundle.label }}</span>
-                        <span class="mt-0.5 block text-xs text-[#9f9278]">{{ bundle.summary }}</span>
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-[rgba(201,164,90,0.65)]"
-                      />
-                    </label>
-                  </div>
-                </fieldset>
-              </div>
-            </section>
-
-            <section>
-              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-                {{ STEP_LABELS.abilities }}
-              </h2>
-              <CharacterAbilityScoreEditor
-                :method="draft.abilities.method"
-                :assignment="abilityAssignment"
-                @update:method="chooseAbilityMethod"
-                @update:ability="setAbility"
-              />
-            </section>
-          </div>
-
-          <!-- Persistent summary: desktop's extra room used to show state
-               continuously that compact shows on its Review step. -->
-          <aside class="lg:sticky lg:top-8">
-            <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-              <h2 class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-                Summary
-              </h2>
-
-              <dl class="mt-3 space-y-3 text-sm">
-                <div>
-                  <dt class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-                    Name
-                  </dt>
-                  <dd class="mt-0.5 text-[#fff7df]">
-                    {{ draft.name.trim() || '—' }}
-                  </dd>
-                </div>
-                <div
-                  v-for="row in summaryRows"
-                  :key="row.key"
-                >
-                  <dt class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-                    {{ row.label }}
-                  </dt>
-                  <dd class="mt-0.5 text-[#fff7df]">
-                    {{ row.entry?.title || '—' }}
-                    <span
-                      v-if="row.entry"
-                      class="mt-0.5 block text-xs text-[#9f9278]"
-                    >
-                      <template v-if="row.entry.sourceBook">{{ row.entry.sourceBook }} · </template>{{ row.entry.packageId }}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
-
-              <div class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-3">
-                <div class="mb-2 text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-                  {{ STEP_LABELS.abilities }}
-                </div>
-                <CharacterAbilityScoresPanel
-                  :scores="abilityScores"
-                  empty-message="Not assigned yet."
-                />
-              </div>
-
-              <button
-                type="button"
-                class="eldra-button mt-5 min-h-11 w-full rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
-                :disabled="!complete || creating"
-                @click="createCharacter"
-              >
-                {{ creating ? 'Creating…' : 'Create Character' }}
-              </button>
-
-              <ul
-                v-if="outstanding.length"
-                class="mt-2 list-disc pl-5 text-xs text-[#9f9278]"
-              >
-                <li
-                  v-for="message in outstanding"
-                  :key="message"
-                >
-                  {{ message }}
-                </li>
-              </ul>
-
-              <p
-                v-if="createErrorMessage"
-                class="mt-3 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
-              >
-                {{ createErrorMessage }}
-              </p>
-
-              <NuxtLink
-                :to="`/worlds/${worldId}/characters`"
-                class="mt-3 inline-block text-sm text-[#9f9278] hover:text-[#d8ceb8]"
-              >
-                Cancel
-              </NuxtLink>
-            </div>
-          </aside>
         </div>
       </template>
     </div>

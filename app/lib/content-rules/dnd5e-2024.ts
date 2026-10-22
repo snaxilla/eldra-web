@@ -371,7 +371,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           id: 'spell-requirement.bard-xphb.spell',
           pool: 'spell',
           filter: { classList: ['Bard'] },
-          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22],
+          // CHARACTER MECHANICS A6 -- Magical Secrets (XPHB, Level 10): "whenever you reach a
+          // Bard level... and the Prepared Spells number... increases, you can choose any of
+          // your new prepared spells from the Bard/Cleric/Druid/Wizard spell lists... In
+          // addition, whenever you replace a spell prepared for this class, you can replace it
+          // with a spell from those lists." The replacement clause means the WHOLE pool's own
+          // eligible membership widens from Level 10 onward, never just the newly-gained slots
+          // -- see SpellRequirement.expandedFilter's own header for why this is modeled as one
+          // widening filter on the EXISTING requirement, never a second pool.
+          expandedFilter: { fromLevel: 10, filter: { classList: ['Bard', 'Cleric', 'Druid', 'Wizard'] } }
         },
         {
           id: 'spell-requirement.bard-xphb.cantrip',

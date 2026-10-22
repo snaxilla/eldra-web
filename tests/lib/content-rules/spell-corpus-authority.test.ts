@@ -199,36 +199,52 @@ describe('P2 spell corpus authority', () => {
   // phase (only gaining the SAME funding metadata, not a new grant), so it does not shift this
   // count; Psi Warrior's own Telekinetic Master remains blocked, deliberately deferred (see this
   // phase's own report).
-  it('the Phase-0 decision census after Resource-Funded Spellcasting: 654 total, 613 implemented, 6 blocked, 35 optional', () => {
+  //
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION -- +1 reclassify blocked -> implemented:
+  // Bard's own Magical Secrets (XPHB, Level 10), re-verified directly against the real class
+  // feature text, is a level-conditional widening of the class's own main prepared-spell
+  // requirement (the new, generic, class-agnostic SpellRequirement.expandedFilter), never a
+  // second acquisition pool. Spell Mastery / Signature Spells remain genuinely blocked --
+  // confirmed, not reclassified: both need a "choose from my own already-known spellbook"
+  // selector kind the generic pipeline does not have, and neither feature grants a new spell at
+  // all. Psi Warrior's own Telekinetic Master remains blocked, unaffected by this phase. Moving
+  // the census from 654/613/6/35 to 654/614/5/35.
+  it('the Phase-0 decision census after Advanced Spell Acquisition: 654 total, 614 implemented, 5 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
-    expect(counts.implemented).toBe(613)
-    expect(counts.blocked).toBe(6)
+    expect(counts.implemented).toBe(614)
+    expect(counts.blocked).toBe(5)
     expect(counts.optional).toBe(35)
   })
 
   // D&D 2024 Character Rules P3.5 -- exactly 171 of the 174 class-owned spell-family decisions are
   // now implemented (cantrip/prepared counts, Level-1 creation selection, Mystic Arcanum's four
   // tiers, Wizard's spellbook growth) -- proven per-decision, never a bare family/name match, by
-  // tests/rules/mandatory-decision-coverage.test.ts's own bidirectional contract. The three real
-  // residuals (Magical Secrets, Spell Mastery, Signature Spells) are confirmed still NOT
-  // implemented: none of them is a new ACQUISITION the generic pipeline models (Magical Secrets
-  // reads from ANY class's list, not the owning class's own; Spell Mastery/Signature Spells flag
-  // an ALREADY-KNOWN spellbook spell, never acquire a new one).
-  it('class-owned spell-family decisions: 171 of 174 are now implemented; the 3 real residuals are not', () => {
+  // tests/rules/mandatory-decision-coverage.test.ts's own bidirectional contract.
+  //
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Magical Secrets is now ALSO
+  // implemented, re-verified directly against the real XPHB text: it is a LEVEL-CONDITIONAL
+  // WIDENING of Bard's own main prepared-spell requirement's classList filter
+  // (SpellRequirement.expandedFilter), never a new acquisition shape, so the generic
+  // acquisition/validation/persistence pipeline already covers it once the facet is authored
+  // with the new, generic, class-agnostic field. Spell Mastery / Signature Spells remain the only
+  // two real residuals: neither is a new ACQUISITION the generic pipeline models at all -- both
+  // flag an ALREADY-KNOWN spellbook spell as always-prepared/limited-free-cast, which needs a
+  // "choose from what I already know" selector kind that does not exist (confirmed genuinely
+  // blocked on a new primitive, not implemented this phase).
+  it('class-owned spell-family decisions: 172 of 174 are now implemented; the 2 real residuals are not', () => {
     const classSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
       (d) => d.owner.kind === 'class' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
     )
     expect(classSpellDecisions.length).toBe(174)
     const implemented = classSpellDecisions.filter((d) => classifyDecision(d).status === 'implemented')
     const residual = classSpellDecisions.filter((d) => classifyDecision(d).status !== 'implemented')
-    expect(implemented.length).toBe(171)
+    expect(implemented.length).toBe(172)
     expect(residual.map((d) => d.id).sort()).toEqual([
-      'class:bard-xphb:L10:spell-choice:magical-secrets',
       'class:wizard-xphb:L18:spell-choice:spell-mastery',
       'class:wizard-xphb:L20:spell-choice:signature-spells'
     ])

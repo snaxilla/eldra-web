@@ -247,7 +247,7 @@ export function planSpellAcquisition(input: {
   }
   const effectiveCandidates = [...effectiveByIdentity.values()]
 
-  const evaluated = evaluateRequirements(requirements, effectiveCandidates, maxSpellLevel)
+  const evaluated = evaluateRequirements(requirements, effectiveCandidates, maxSpellLevel, characterLevel)
 
   // Every catalogue entry, forced visible to any flag -- see this file's own OPTION DISCOVERY header.
   const catalogueProbe: SpellStateCandidate[] = catalogue.map((entry) => ({
@@ -270,7 +270,7 @@ export function planSpellAcquisition(input: {
       const membershipSet = requirement.requiresMembershipPool
         ? (evaluated.get(requirement.requiresMembershipPool)?.legal ?? new Set<string>())
         : null
-      const probeEvaluated = evaluate(requirement, catalogueProbe, maxSpellLevel, membershipSet)
+      const probeEvaluated = evaluate(requirement, catalogueProbe, maxSpellLevel, membershipSet, characterLevel)
       for (const identity of probeEvaluated.legal) {
         if (stateEvaluated.legal.has(identity)) continue // already selected for THIS requirement
         const entry = catalogueByIdentity.get(identity)

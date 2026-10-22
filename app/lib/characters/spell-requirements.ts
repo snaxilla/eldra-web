@@ -252,12 +252,22 @@ export function evaluate(
   requirement: SpellRequirement,
   candidates: readonly SpellStateCandidate[],
   maxSpellLevel: number,
-  membershipIdentities: ReadonlySet<string> | null
+  membershipIdentities: ReadonlySet<string> | null,
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. The character's own current level, read
+  // ONLY to resolve `requirement.expandedFilter` below (see that field's own header) -- every
+  // other check in this function is already level-independent (gating is via `maxSpellLevel`,
+  // itself already derived from the character's own slot progression by the caller). A
+  // requirement with no `expandedFilter` ignores this parameter entirely, byte-identical to
+  // before this phase.
+  characterLevel: number
 ): Evaluated {
   const flag = flagFor(requirement.pool)
   const gated = isLevelGated(requirement.pool)
   const legal = new Set<string>()
   const issues: SpellRequirementIssue[] = []
+  const baseFilter = requirement.expandedFilter && characterLevel >= requirement.expandedFilter.fromLevel
+    ? requirement.expandedFilter.filter
+    : requirement.filter
 
   for (const candidate of candidates) {
     if (!candidate[flag]) continue
@@ -285,11 +295,11 @@ export function evaluate(
     // before A3 ever set `school`/`ritual` on a gated pool (confirmed by inspection), so this
     // fix changes behavior for zero pre-A3 requirement. A non-gated pool (cantrip/arcanum/fixed)
     // still hands its FULL filter (exact level included) to the same resolver, unchanged.
-    const filterForVerdict = gated ? { ...requirement.filter, level: undefined } : requirement.filter
+    const filterForVerdict = gated ? { ...baseFilter, level: undefined } : baseFilter
     const verdict = spellOptionVerdict({ mechanics: candidate.mechanics, filter: filterForVerdict })
     if (!verdict.eligible) {
       if (!gated && verdict.reason === 'wrong-level') {
-        issues.push({ kind: 'illegal-wrong-level', identity: candidate.identity, level: candidate.mechanics.level, maxLevel: requirement.filter.level ?? candidate.mechanics.level })
+        issues.push({ kind: 'illegal-wrong-level', identity: candidate.identity, level: candidate.mechanics.level, maxLevel: baseFilter.level ?? candidate.mechanics.level })
       } else {
         issues.push({ kind: 'illegal-wrong-class-list', identity: candidate.identity })
       }
@@ -392,7 +402,9 @@ export function detectRequirementTopologyIssues(requirements: readonly SpellRequ
 export function evaluateRequirements(
   requirements: readonly SpellRequirement[],
   candidates: readonly SpellStateCandidate[],
-  maxSpellLevel: number
+  maxSpellLevel: number,
+  // CHARACTER MECHANICS A6 -- see `evaluate`'s own identical parameter header.
+  characterLevel: number
 ): Map<string, Evaluated> {
   const evaluated = new Map<string, Evaluated>()
   const topologyIssues = detectRequirementTopologyIssues(requirements)
@@ -406,7 +418,7 @@ export function evaluateRequirements(
       evaluated.set(requirement.id, { legal: new Set(), issues: [] })
       continue
     }
-    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, null))
+    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, null, characterLevel))
   }
 
   // Pass 2: every requirement that names a membership pool. A malformed reference (unknown/self/
@@ -421,7 +433,7 @@ export function evaluateRequirements(
       continue
     }
     const membershipIdentities = evaluated.get(requirement.requiresMembershipPool)?.legal ?? new Set<string>()
-    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, membershipIdentities))
+    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, membershipIdentities, characterLevel))
   }
 
   return evaluated
@@ -438,7 +450,7 @@ export function validateSpellRequirements(input: {
 }): SpellRequirementResult[] {
   const { requirements, characterLevel, candidates, spellSlotLevels } = input
   const maxSpellLevel = maxSpellLevelOf(spellSlotLevels)
-  const evaluated = evaluateRequirements(requirements, candidates, maxSpellLevel)
+  const evaluated = evaluateRequirements(requirements, candidates, maxSpellLevel, characterLevel)
 
   // Original declaration order, not pass order -- callers should see requirements in the same
   // order the facet declared them.

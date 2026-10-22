@@ -134,9 +134,11 @@ describe('P3.5 -- spell decision reconciliation', () => {
     expect(classSpellDecisions.length).toBe(174)
   })
 
-  it('RECLASSIFICATION -- exactly 171 of the 174 are now implemented; the exact 3 residuals are unchanged', () => {
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION moved a 172nd: Bard's own Magical
+  // Secrets, via the new, generic SpellRequirement.expandedFilter.
+  it('RECLASSIFICATION -- exactly 172 of the 174 are now implemented; the exact 2 residuals are unchanged', () => {
     const implemented = classSpellDecisions.filter((d) => classifyDecision(d).status === 'implemented')
-    expect(implemented.length).toBe(171)
+    expect(implemented.length).toBe(172)
   })
 
   it('BY CLASS -- all eight casters are represented among the reclassified decisions, none left out', () => {
@@ -154,10 +156,14 @@ describe('P3.5 -- spell decision reconciliation', () => {
     }
   })
 
-  it('STILL BLOCKED -- the exact 3 residual class-owned decisions are named and unchanged (Magical Secrets, Spell Mastery, Signature Spells)', () => {
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Magical Secrets is now implemented
+  // (see `impl:magical-secrets` -- a level-conditional widening of Bard's own main prepared-spell
+  // requirement, never a new acquisition shape). The 2 real residuals, Spell Mastery and
+  // Signature Spells, remain genuinely blocked: both need a "choose from my own already-known
+  // spellbook" selector kind the generic pipeline does not have.
+  it('STILL BLOCKED -- the exact 2 residual class-owned decisions are named and unchanged (Spell Mastery, Signature Spells)', () => {
     const residual = classSpellDecisions.filter((d) => classifyDecision(d).status !== 'implemented')
     expect(residual.map((d) => `${d.owner.slug}:${d.source}`).sort()).toEqual([
-      'bard-xphb:Magical Secrets',
       'wizard-xphb:Signature Spells',
       'wizard-xphb:Spell Mastery'
     ])

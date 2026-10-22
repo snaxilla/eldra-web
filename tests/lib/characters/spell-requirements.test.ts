@@ -561,4 +561,55 @@ describe('P3.2.1 -- SPELL REQUIREMENT PROVENANCE (the cross-pool collision fix)'
       expect(result.issues).toEqual([{ kind: 'missing', count: 3 }]) // never counted, never even flagged illegal -- simply not a candidate
     })
   })
+
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Synthetic requirement, arbitrary class
+  // names ('Foo'/'Bar'/'Baz') -- proves `SpellRequirement.expandedFilter` is a generic, level-
+  // keyed mechanism with no class/feature name baked into the validator itself. Bard's own real
+  // Magical Secrets is tested separately, through the real facet, in
+  // tests/server/utils/character-progression-spell-acquisition.test.ts.
+  describe('expandedFilter -- a generic, level-conditional filter override (synthetic classes)', () => {
+    const EXPANDING: SpellRequirement = {
+      id: 'req.expanding',
+      pool: 'spell',
+      filter: { classList: ['Foo'] },
+      totalByLevel: Array(20).fill(1),
+      expandedFilter: { fromLevel: 5, filter: { classList: ['Foo', 'Bar', 'Baz'] } }
+    }
+
+    it('below fromLevel: only the BASE filter\'s class list is legal', () => {
+      const barSpell = candidate('bar-spell', { prepared: true, mechanics: mechanics('Bar Spell', 1, ['Bar']) })
+      const [result] = validateSpellRequirements({ requirements: [EXPANDING], characterLevel: 4, spellSlotLevels: SLOTS_UP_TO_1, candidates: [barSpell] })
+      expect(result.owned).toBe(0)
+      expect(result.issues).toEqual([{ kind: 'missing', count: 1 }, { kind: 'illegal-wrong-class-list', identity: barSpell.identity }])
+    })
+
+    it('AT fromLevel exactly: the expanded filter\'s own class list becomes legal', () => {
+      const barSpell = candidate('bar-spell', { prepared: true, mechanics: mechanics('Bar Spell', 1, ['Bar']) })
+      const [result] = validateSpellRequirements({ requirements: [EXPANDING], characterLevel: 5, spellSlotLevels: SLOTS_UP_TO_1, candidates: [barSpell] })
+      expect(result.owned).toBe(1)
+      expect(result.issues).toEqual([])
+    })
+
+    it('above fromLevel: still legal (the widening persists, never a one-level window)', () => {
+      const bazSpell = candidate('baz-spell', { prepared: true, mechanics: mechanics('Baz Spell', 1, ['Baz']) })
+      const [result] = validateSpellRequirements({ requirements: [EXPANDING], characterLevel: 12, spellSlotLevels: SLOTS_UP_TO_1, candidates: [bazSpell] })
+      expect(result.owned).toBe(1)
+      expect(result.issues).toEqual([])
+    })
+
+    it('a class on NEITHER list is illegal at any level', () => {
+      const quxSpell = candidate('qux-spell', { prepared: true, mechanics: mechanics('Qux Spell', 1, ['Qux']) })
+      const [belowResult] = validateSpellRequirements({ requirements: [EXPANDING], characterLevel: 4, spellSlotLevels: SLOTS_UP_TO_1, candidates: [quxSpell] })
+      const [aboveResult] = validateSpellRequirements({ requirements: [EXPANDING], characterLevel: 10, spellSlotLevels: SLOTS_UP_TO_1, candidates: [quxSpell] })
+      expect(belowResult.owned).toBe(0)
+      expect(aboveResult.owned).toBe(0)
+    })
+
+    it('a requirement with NO expandedFilter is completely unaffected by this mechanism at any level', () => {
+      const barSpell = candidate('bar-spell', { prepared: true, mechanics: mechanics('Bar Spell', 1, ['Bar']) })
+      const [result] = validateSpellRequirements({ requirements: [SYN_SPELL], characterLevel: 20, spellSlotLevels: SLOTS_UP_TO_3, candidates: [barSpell] })
+      expect(result.owned).toBe(0)
+      expect(result.issues).toEqual([{ kind: 'missing', count: 2 }, { kind: 'illegal-wrong-class-list', identity: barSpell.identity }])
+    })
+  })
 })

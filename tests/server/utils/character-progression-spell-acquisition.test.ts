@@ -340,6 +340,98 @@ describe('toProgressionSpellPlan', () => {
 })
 
 // ---------------------------------------------------------------------------
+// CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Bard's own real Magical Secrets (XPHB,
+// Level 10): the main prepared-spell requirement's own `expandedFilter` (content-rules/types.ts)
+// widens from Bard-only to Bard/Cleric/Druid/Wizard starting at character level 10. Through the
+// REAL, shipped bard-xphb facet and the REAL buildProgressionSpellPlan -- no synthetic
+// SpellRequirement, no second acquisition path.
+// ---------------------------------------------------------------------------
+describe('buildProgressionSpellPlan -- BARD Magical Secrets (CHARACTER MECHANICS A6, Level 10+ cross-class widening)', () => {
+  const requirements = findRulesFacet('dnd5e.2024', 'class', 'bard-xphb')!.spellRequirements!
+  const spellRequirement = requirements.find((r) => r.pool === 'spell')!
+  const bardSpell = spellEntry('bard-only-spell', 1, ['Bard'])
+  const clericSpell = spellEntry('cleric-only-spell', 1, ['Cleric'])
+  const druidSpell = spellEntry('druid-only-spell', 1, ['Druid'])
+  const wizardSpell = spellEntry('wizard-only-spell', 1, ['Wizard'])
+  const catalogue = [bardSpell, clericSpell, druidSpell, wizardSpell]
+
+  it('BELOW the real unlock level (9): only Bard\'s own list is offered -- Cleric/Druid/Wizard-only spells correctly excluded', () => {
+    const plan = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 1, max: 4, expended: 0 }], targetLevel: 9, persisted: [], tentative: []
+    })
+    const spellPlan = plan.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    const offered = spellPlan.options.map((o) => o.slug)
+    expect(offered).toContain('bard-only-spell')
+    expect(offered).not.toContain('cleric-only-spell')
+    expect(offered).not.toContain('druid-only-spell')
+    expect(offered).not.toContain('wizard-only-spell')
+  })
+
+  it('AT the real unlock level (10): the full Bard/Cleric/Druid/Wizard union is offered', () => {
+    const plan = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 5, max: 4, expended: 0 }], targetLevel: 10, persisted: [], tentative: []
+    })
+    const spellPlan = plan.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    const offered = spellPlan.options.map((o) => o.slug)
+    expect(offered).toEqual(expect.arrayContaining(['bard-only-spell', 'cleric-only-spell', 'druid-only-spell', 'wizard-only-spell']))
+  })
+
+  it('ILLEGAL CROSS-CLASS SELECTION REJECTS below Level 10, the IDENTICAL selection is legal at Level 10', () => {
+    const clericPick = tentative(spellRequirement.id, 'cleric-only-spell')
+    const below = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 1, max: 4, expended: 0 }], targetLevel: 9, persisted: [], tentative: [clericPick]
+    })
+    const belowPlan = below.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    expect(belowPlan.selected).not.toContain(`ref:${PKG}::cleric-only-spell`)
+    expect(belowPlan.issues.length).toBeGreaterThan(0)
+
+    const at10 = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 5, max: 4, expended: 0 }], targetLevel: 10, persisted: [], tentative: [clericPick]
+    })
+    const atPlan = at10.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    expect(atPlan.selected).toContain(`ref:${PKG}::cleric-only-spell`)
+  })
+
+  it('PERSISTENCE + FRESH RELOAD: a cross-class spell accepted at Level 10 is still legal re-validated at a LATER level from PERSISTED state alone, zero issues', () => {
+    const storedCleric: StoredSpellEntry = {
+      instanceId: 'x1', ref: { packageId: PKG, slug: 'cleric-only-spell' }, known: false, prepared: true, requirementIds: [spellRequirement.id]
+    }
+    const persisted = assembledFromStored([storedCleric], catalogue)
+    const plan = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 6, max: 4, expended: 0 }], targetLevel: 12, persisted, tentative: []
+    })
+    const spellPlan = plan.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    expect(spellPlan.selected).toContain(`ref:${PKG}::cleric-only-spell`)
+    // Only a "missing" issue (the character's own prepared-spell COUNT is far from filled with
+    // just one persisted entry) -- never an `illegal-wrong-class-list` issue, which would mean
+    // the persisted cross-class spell itself was rejected on reload.
+    expect(spellPlan.issues.every((issue) => issue.kind === 'missing')).toBe(true)
+  })
+
+  it('DIRECT LEVEL JUMP straight to Level 15 (never incrementally visiting Level 10) still offers the widened list -- target-state, never a sequential walk', () => {
+    const plan = buildProgressionSpellPlan({
+      requirements, catalogue, spellSlotLevels: [{ level: 8, max: 4, expended: 0 }], targetLevel: 15, persisted: [], tentative: []
+    })
+    const spellPlan = plan.requirements.find((r) => r.requirementId === spellRequirement.id)!
+    const offered = spellPlan.options.map((o) => o.slug)
+    expect(offered).toEqual(expect.arrayContaining(['bard-only-spell', 'cleric-only-spell', 'druid-only-spell', 'wizard-only-spell']))
+  })
+
+  it('EXISTING ORDINARY BARD ACQUISITION UNCHANGED: the cantrip pool (never widened) still only offers Bard\'s own list at Level 10+', () => {
+    const cantripRequirement = requirements.find((r) => r.pool === 'cantrip')!
+    const bardCantrip = spellEntry('bard-cantrip-x', 0, ['Bard'])
+    const clericCantrip = spellEntry('cleric-cantrip-x', 0, ['Cleric'])
+    const plan = buildProgressionSpellPlan({
+      requirements, catalogue: [bardCantrip, clericCantrip], spellSlotLevels: [{ level: 5, max: 4, expended: 0 }], targetLevel: 10, persisted: [], tentative: []
+    })
+    const cantripPlan = plan.requirements.find((r) => r.requirementId === cantripRequirement.id)!
+    const offered = cantripPlan.options.map((o) => o.slug)
+    expect(offered).toContain('bard-cantrip-x')
+    expect(offered).not.toContain('cleric-cantrip-x')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // spellTentativeSelectionsFromAnswers -- wire decoding, THIS module's own fixed slot/at convention.
 // ---------------------------------------------------------------------------
 describe('spellTentativeSelectionsFromAnswers', () => {

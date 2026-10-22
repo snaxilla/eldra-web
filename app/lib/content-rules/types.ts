@@ -363,6 +363,23 @@ export type SpellRequirement = {
   // line of new conditional logic. Magic Initiate's own three spell-list variants are the first
   // real authored use (each requirement active only while ITS OWN chosen-list Source is active).
   requiresActive?: readonly DefinitionId[]
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. The one new, small, generic primitive
+  // this phase adds: starting at character level `fromLevel` (inclusive), `filter` ABOVE is
+  // entirely REPLACED by this `filter` for every candidate this requirement evaluates -- never
+  // merged, never additive. Needed for Bard's own real Magical Secrets text (XPHB, Level 10):
+  // "whenever you reach a Bard level... and the Prepared Spells number... increases, you can
+  // choose any of your new prepared spells from the Bard/Cleric/Druid/Wizard lists... In
+  // addition, whenever you REPLACE a spell prepared for this class, you can replace it with a
+  // spell from those lists" -- the replacement clause means EVERY member of this pool, not just
+  // ones freshly gained at Level 10+, becomes eligible for the wider list over time, so this is
+  // correctly modeled as the WHOLE requirement's own filter widening from that level on, never a
+  // second, separate pool with its own count (which would either double-count against this
+  // requirement's own `totalByLevel` or need two requirements to subtract against each other,
+  // which target-state planning does not support). Omitted (every requirement authored before
+  // this phase) means `filter` above applies at every level, unchanged. Generic and
+  // class-agnostic: any future class/feature whose own spell list widens at a specific level
+  // reuses this identically -- nothing here names Bard.
+  expandedFilter?: { fromLevel: number; filter: SpellCatalogueFilter }
 }
 
 // FEAT-OWNED SPELL ACQUISITION PHASE -- the smallest shape for "this content ALWAYS grants this one

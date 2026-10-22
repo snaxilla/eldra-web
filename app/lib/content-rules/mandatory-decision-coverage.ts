@@ -355,6 +355,21 @@ function spellbookGrowthCovered(d: DecisionRecord): boolean {
   return (requirement.totalByLevel[d.level - 1] ?? 0) > (requirement.totalByLevel[d.level - 2] ?? 0)
 }
 
+// CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Bard's own Magical Secrets (XPHB, Level
+// 10): re-verified directly against the real class feature text, this is a LEVEL-CONDITIONAL
+// WIDENING of the class's own main 'spell' requirement's filter (SpellRequirement.expandedFilter
+// -- see that field's own header in content-rules/types.ts for the full reasoning), never a
+// second pool with its own count. Covered only when the facet's own 'spell' requirement actually
+// carries an `expandedFilter` unlocking at EXACTLY the discovered level, with a GENUINELY wider
+// classList than the base filter (never a same-size or narrower override masquerading as one).
+function magicalSecretsCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'class', 'spell-choice') && d.source === 'Magical Secrets')) return false
+  const requirement = classSpellRequirements(d.owner.slug).find((r) => r.pool === 'spell')
+  if (!requirement?.expandedFilter) return false
+  return requirement.expandedFilter.fromLevel === d.level
+    && (requirement.expandedFilter.filter.classList?.length ?? 0) > (requirement.filter.classList?.length ?? 0)
+}
+
 // ---------------------------------------------------------------------------
 // Proficiency coverage (P1). A proficiency decision is covered only when a facet that owns it
 // really grants (fixed) or offers (choice) exactly the Values its discovery detail names. The
@@ -931,45 +946,40 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'spell-choice') && d.source === 'Spellcasting' && d.detail === 'spellbook-growth' && spellbookGrowthCovered(d)
   },
-  // CHARACTER MECHANICS PHASE A5 COMPLETION -- re-verified directly against the real XPHB class
-  // feature text (not just the Phase-0 discovery's own structural guess) for all three named
-  // residuals, to confirm the blocker is a genuine missing primitive and not merely imprecise
-  // wording:
-  //   - Magical Secrets (Bard L10, class-bard.json): NOT a separate +N spell pool as the
-  //     discovery layer's shape ("broad-list prepared increase") might suggest. The real text is
-  //     "whenever you reach a Bard level... and the Prepared Spells number... increases, you can
-  //     choose any of your new prepared spells from the Bard/Cleric/Druid/Wizard lists" -- a
-  //     LEVEL-CONDITIONAL WIDENING of the EXISTING main prepared-spell SpellRequirement's own
-  //     classList filter (unrestricted below Level 10, four-class from Level 10 on), never a
-  //     second, additional requirement with its own count. SpellRequirement.filter is fixed per
-  //     requirement for its whole lifetime; no existing primitive lets one requirement's own
-  //     filter vary by character level. A second, independent requirement cannot substitute for
-  //     this without either double-counting against the main pool's own totalByLevel or needing
-  //     the two requirements to subtract against each other, which target-state planning does
-  //     not support. Genuinely blocked on a new primitive (a level-keyed filter override), not a
-  //     missing authoring.
-  //   - Spell Mastery (Wizard L18) / Signature Spells (Wizard L20), class-wizard.json: both read
-  //     "choose a spell... in your spellbook" -- the candidate pool is THIS CHARACTER'S OWN
-  //     already-learned spells, not a static content filter (class/level/school). Every existing
-  //     selector (SpellRequirement.filter, ChoiceSetDefinition's from/fromContentFacet/
-  //     fromContentCatalogue) resolves against authored CONTENT, never against a character's own
-  //     prior acquisition state -- there is no "choose from what I already know" selector kind at
-  //     all. Confirmed: genuinely blocked on a new selector primitive, not a new acquisition
-  //     (the features grant no new spell -- they flag an existing one as always-prepared/
-  //     limited-free-cast, a presentation/mechanics fact these two features' own real text never
-  //     asks Phase 0 to track as an acquisition anyway).
-  // None of the three is implemented here -- per this task's own "do not create a one-off
-  // class-specific mechanic, do not force the census to 100%" instruction, inventing either
-  // missing primitive for exactly one class's own feature would be exactly that.
+  // CHARACTER MECHANICS A6 -- ADVANCED SPELL ACQUISITION. Magical Secrets is reclassified below
+  // (`impl:magical-secrets`), closed via the new, generic `SpellRequirement.expandedFilter`
+  // primitive (content-rules/types.ts's own header has the full reasoning: a LEVEL-CONDITIONAL
+  // WIDENING of the existing main prepared-spell requirement's own classList filter, never a
+  // second pool). Re-verified directly against the real XPHB class feature text (not reused from
+  // any prior report): Spell Mastery (Wizard L18) / Signature Spells (Wizard L20),
+  // class-wizard.json, both read "choose a spell... in your spellbook" -- the candidate pool is
+  // THIS CHARACTER'S OWN already-learned spells, not a static content filter (class/level/
+  // school). Every existing selector (SpellRequirement.filter, ChoiceSetDefinition's
+  // from/fromContentFacet/fromContentCatalogue) resolves against authored CONTENT, never against
+  // a character's own prior acquisition state -- there is no "choose from what I already know"
+  // selector kind at all, and the features grant no new spell to begin with (each only flags an
+  // existing one as always-prepared/limited-free-cast, a presentation/mechanics fact these
+  // features' own real text never asks Phase 0 to track as an acquisition anyway). Confirmed
+  // genuinely blocked on a new selector primitive, not implemented here -- per this task's own
+  // "do not create a one-off class-specific mechanic" instruction, inventing a "from my own
+  // spellbook" selector for exactly two Wizard features would be exactly that.
   {
     id: 'blk:class-spell-choice-other',
     status: 'blocked',
-    reason: 'Spell choices the generic acquisition pipeline does not model, re-verified directly against the real XPHB text: Magical Secrets (Bard L10 -- a LEVEL-CONDITIONAL WIDENING of the existing main prepared-spell requirement\'s own classList filter, which no requirement can vary by character level today, never a separate +N pool), Spell Mastery / Signature Spells (Wizard L18/20 -- choosing FROM this character\'s own already-known spellbook, a "pick from what I already have" selector kind that does not exist; neither feature grants a new spell at all, each only flags an existing one as always-prepared/limited-free-cast). Confirmed residual, not reclassified.',
+    reason: 'Spell choices the generic acquisition pipeline does not model, re-verified directly against the real XPHB text: Spell Mastery / Signature Spells (Wizard L18/20 -- choosing FROM this character\'s own already-known spellbook, a "pick from what I already have" selector kind that does not exist; neither feature grants a new spell at all, each only flags an existing one as always-prepared/limited-free-cast). Confirmed residual, not reclassified.',
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'spell-choice')
       && !(d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic'))
       && d.source !== 'Mystic Arcanum'
       && !(d.source === 'Spellcasting' && d.detail === 'spellbook-growth')
+      && !(d.source === 'Magical Secrets' && magicalSecretsCovered(d))
+  },
+  {
+    id: 'impl:magical-secrets',
+    status: 'implemented',
+    reason: 'Bard Magical Secrets (XPHB, Level 10): a level-conditional widening of the class\'s own main prepared-spell SpellRequirement (expandedFilter), reusing the existing acquisition/validation/persistence pipeline unchanged -- never a second pool, never a class name baked into the generic engine.',
+    ledgerIds: [],
+    matches: (d) => is(d, 'class', 'spell-choice') && d.source === 'Magical Secrets' && magicalSecretsCovered(d)
   },
   // ROGUE EXPERTISE PHASE -- the two blocked rules that used to own Rogue
   // Level 1 and Ranger Level 2 Deft Explorer are RETIRED: both decisions are

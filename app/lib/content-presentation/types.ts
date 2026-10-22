@@ -34,7 +34,13 @@
 // hit points are not derived. Nothing here belongs to the Rules Engine
 // (app/lib/rules/**), which this layer neither imports nor duplicates.
 
-export type PresentationKind = 'species' | 'class' | 'background'
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- 'spell' added. The
+// server already passed this kind for every spell catalogue entry
+// (PRESENTATION_KIND_BY_CATEGORY, world-content-catalogue.ts) -- with no
+// real member for it here, the dispatcher silently fell through to
+// `resolveBackground`, producing a nonsense presentation for every spell
+// in the game. See dnd5e.ts's own `resolveSpell` for the real resolver.
+export type PresentationKind = 'species' | 'class' | 'background' | 'spell'
 
 export type PresentationFact = {
   label: string

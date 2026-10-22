@@ -156,6 +156,11 @@ import type { RulesFacetCorpus } from './types'
 // `'xphb'` is the PACKAGE/content-source token, never the player-facing label "Copper Pieces" --
 // exactly how every other denominationless identity in this corpus is tokenized.
 export const DND5E_2024_CURRENCY_DENOMINATION = 'currency:xphb.copper'
+// The gp/sp/cp presentation formatter for this denomination lives in
+// app/lib/content-presentation/dnd5e.ts's own `formatDnd5eCopperAmount` -- a PRESENTATION
+// concern, not content authoring, and this file's own corpus-purity test (character-actor-
+// bridge.test.ts's own "contains no expressions, no formulas" check) structurally forbids any
+// arithmetic-looking code from appearing after this point in this file.
 
 // The D&D-specific half of EquipmentGrant's `crossReference` resolution (see
 // app/lib/characters/equipment-bundle.ts's own header for why this mapping is injected by the

@@ -70,15 +70,23 @@ const hasAnyChoice = computed(() => props.rows.some((row) => row.title))
         {{ displayName }}
       </h2>
 
+      <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- CHARACTER SUMMARY. The real reported
+           bug: `.eldra-gold-divider` is a decorative, fixed `height: 1px` line (see
+           app/assets/css/eldra-fieldguide.css), never a border utility -- applying it to a
+           container that also holds real dt/dd TEXT forced that text into a 1px box, which is
+           exactly what read as "overlapping text and broken layout". Replaced with a real
+           `border-t`, and the compact (phone) row switches from a column-flow grid (which could
+           overflow a narrow screen once three rows' worth of titles/source books were long) to a
+           wrapping flex row instead. -->
       <dl
-        class="mt-3 grid gap-2"
-        :class="compact ? 'grid-flow-col auto-cols-max gap-x-4' : 'grid-cols-1'"
+        class="mt-3"
+        :class="compact ? 'flex flex-wrap gap-x-4 gap-y-1.5' : 'grid grid-cols-1 gap-2.5'"
       >
         <div
-          v-for="row in rows"
+          v-for="(row, index) in rows"
           :key="row.key"
           class="min-w-0 transition-opacity duration-300 motion-reduce:transition-none"
-          :class="compact ? 'text-left' : 'eldra-gold-divider border-0 pt-2 first:border-0 first:pt-0'"
+          :class="compact ? '' : (index > 0 ? 'border-t border-eldra-accent/14 pt-2.5' : '')"
         >
           <dt class="text-[0.65rem] uppercase tracking-[0.22em] text-eldra-text-ghost">
             {{ row.label }}

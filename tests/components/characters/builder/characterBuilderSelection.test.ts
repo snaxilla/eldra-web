@@ -20,6 +20,7 @@ vi.mock('../../../../app/lib/content-rules/creation-completeness', async (import
 import {
   CHOICE_KEYS,
   STEP_KEYS,
+  choiceOptionLabelOverrides,
   choiceSelections,
   declaredChoices,
   effectiveSpellSelections,
@@ -56,6 +57,7 @@ import {
   type CharacterBuilderDraft
 } from '../../../../app/components/characters/builder/characterBuilderSelection'
 import { findRulesFacet } from '../../../../app/lib/content-rules'
+import { formatDnd5eCopperAmount } from '../../../../app/lib/content-presentation/dnd5e'
 import { resolveDnd5eSpellMechanics } from '../../../../app/lib/spell-mechanics/dnd5e'
 import { resolveDnd5eFeatMechanics } from '../../../../app/lib/feat-mechanics/dnd5e'
 import xphbFeats from '../../../lib/feat-mechanics/fixtures/xphb-feats.json'
@@ -254,6 +256,14 @@ describe('validation', () => {
     expect(isStepComplete(draft, 'abilities')).toBe(false)
     expect(isStepComplete(draft, 'review')).toBe(false)
   })
+
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. The merged 'identity' stage is
+  // complete only once BOTH its own real questions (name, species) are answered -- neither alone.
+  it('the merged identity stage needs BOTH a name and a Species -- neither alone completes it', () => {
+    expect(isStepComplete({ ...emptyDraft(), name: 'Aria' }, 'identity')).toBe(false)
+    expect(isStepComplete({ ...emptyDraft(), species: XPHB_HUMAN }, 'identity')).toBe(false)
+    expect(isStepComplete({ ...emptyDraft(), name: 'Aria', species: XPHB_HUMAN }, 'identity')).toBe(true)
+  })
 })
 
 describe('toCreatePayload', () => {
@@ -366,13 +376,16 @@ describe('ability scores (Phase 3)', () => {
 })
 
 describe('step navigation', () => {
-  it('walks the full step order forwards and backwards', () => {
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. Species is no longer its own
+  // NAVIGABLE stage -- merged into 'identity' (see STEP_KEYS's own header) to close the reported
+  // near-empty "just type a name" first screen.
+  it('walks the full step order forwards and backwards, with Species merged into Identity', () => {
     // Proficiencies sits after the three content choices, because the
     // questions it asks are declared BY those choices.
     expect(STEP_KEYS).toEqual([
-      'identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review'
+      'identity', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review'
     ])
-    expect(nextStep('identity')).toBe('species')
+    expect(nextStep('identity')).toBe('class')
     expect(nextStep('background')).toBe('proficiencies')
     // D&D 2024 Character Rules P3.3 -- 'spells' sits right after 'proficiencies', for the same
     // "its questions are declared by the chosen Class" reason.
@@ -381,7 +394,7 @@ describe('step navigation', () => {
     expect(nextStep('spells')).toBe('equipment')
     expect(nextStep('equipment')).toBe('abilities')
     expect(nextStep('abilities')).toBe('review')
-    expect(previousStep('species')).toBe('identity')
+    expect(previousStep('class')).toBe('identity')
   })
 
   it('stops at both ends rather than wrapping', () => {
@@ -829,6 +842,27 @@ describe('FEAT-OWNED SPELL ACQUISITION PHASE -- Background switching revalidates
     // toward it, and the old requirement id is no longer live at all.
     expect(effectiveSpellSelections(draft, contextWithFeat(clericListSpells())).some((s) => s.requirementId === acolyteCantripId)).toBe(false)
   })
+
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- PLAYER-FACING LABELS. The real reported bug:
+  // Magic Initiate's own gate Values (`value:magic-initiate.list.1/2/3.active`) are authored with
+  // internal-plumbing labels ("Magic Initiate: List 1 Active"), never meant for a player to read.
+  // `choiceOptionLabelOverrides` derives the REAL class name structurally, from the SAME facet's
+  // own classList-filtered, requiresActive-gated SpellRequirement -- never a hardcoded "list 1 is
+  // Cleric" fact, and never an edit to the package's own Definition label.
+  it('derives a real class-list label for Magic Initiate\'s own internal gate id, from the SAME facet\'s classList-filtered requirement -- never the raw "List N Active" label', () => {
+    const requirements = spellRequirementsFor(draftWith(ACOLYTE_ENTRY), contextWithFeat(clericListSpells()))
+    const gateId = requirements[0]?.requiresActive?.[0]
+    expect(gateId).toBeTruthy()
+
+    const overrides = choiceOptionLabelOverrides(draftWith(ACOLYTE_ENTRY), contextWithFeat(clericListSpells()))
+    expect(overrides[gateId!]).toBe('Cleric spell list')
+    expect(overrides[gateId!]).not.toMatch(/list \d/i)
+  })
+
+  it('an option id with no classList-filtered requirement gating it is simply absent from the override map -- never a fabricated label', () => {
+    const overrides = choiceOptionLabelOverrides(draftWith(ACOLYTE_ENTRY), contextWithFeat(clericListSpells()))
+    expect(overrides['value:some-unrelated-gate.active']).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1117,12 +1151,36 @@ describe('D&D 2024 Character Rules P8B -- Builder starting equipment', () => {
     expect(fighterSection.bundles.map((b) => b.id)).toEqual(['A', 'B', 'C'])
   })
 
-  it('8. a pure-currency bundle renders intelligibly (Bard bundle B)', () => {
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT. Previously asserted the raw,
+  // internal form ("9000 (currency: currency:xphb.copper)") -- the real reported bug. 9000
+  // copper is 90 gp (the standard 5e 100:1 conversion, dnd5e-2024.ts's own
+  // `formatDnd5eCopperAmount`) -- never the raw amount or the raw denomination id, either of
+  // which a player would have no way to read.
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT. The standard 5e gp/sp/cp
+  // breakdown (1 gp = 10 sp = 100 cp), applied to the one real copper-denominated amount this
+  // package ever grants -- never a fabricated conversion, never shown for an amount of 0.
+  describe('formatDnd5eCopperAmount', () => {
+    it('breaks a mixed amount into gp/sp/cp, largest denomination first, omitting zero denominations', () => {
+      expect(formatDnd5eCopperAmount(1500)).toBe('15 gp')
+      expect(formatDnd5eCopperAmount(1555)).toBe('15 gp 5 sp 5 cp')
+      expect(formatDnd5eCopperAmount(50)).toBe('5 sp')
+      expect(formatDnd5eCopperAmount(7)).toBe('7 cp')
+    })
+
+    it('zero or invalid input reads honestly as 0 cp, never a fabricated amount', () => {
+      expect(formatDnd5eCopperAmount(0)).toBe('0 cp')
+      expect(formatDnd5eCopperAmount(-5)).toBe('0 cp')
+      expect(formatDnd5eCopperAmount(NaN)).toBe('0 cp')
+    })
+  })
+
+  it('8. a pure-currency bundle renders intelligibly as GP, never the raw amount or denomination id (Bard bundle B)', () => {
     const draft = draftFor({ class: BARD })
     const sections = equipmentChoiceSections(draft, contextWith())
     const bundleB = sections.find((s) => s.choiceId.includes('bard'))!.bundles.find((b) => b.id === 'B')!
-    expect(bundleB.summary).toMatch(/9000/)
-    expect(bundleB.summary).toMatch(/currency/)
+    expect(bundleB.summary).toBe('90 gp')
+    expect(bundleB.summary).not.toMatch(/9000/)
+    expect(bundleB.summary).not.toMatch(/currency:/)
   })
 
   it('9. a bundle containing real catalogue items renders intelligibly (Criminal bundle A)', () => {

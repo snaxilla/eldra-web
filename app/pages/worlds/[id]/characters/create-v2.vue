@@ -109,6 +109,7 @@ import {
   STEP_KEYS,
   STEP_LABELS,
   activeAssignment,
+  choiceOptionLabelOverrides,
   creationChoicePresentation,
   creationContentPresentation,
   equipmentChoiceSections,
@@ -143,6 +144,8 @@ import CharacterPreviewPanel from '~/components/characters/builder/CharacterPrev
 import CreationDetailPanel from '~/components/characters/builder/CreationDetailPanel.vue'
 import CreationValidationBanner from '~/components/characters/builder/CreationValidationBanner.vue'
 import type { AbilityKey, AbilityScoreMethod } from '~/lib/characters/ability-scores'
+import { serializeContentRef } from '~/lib/characters/progression-plan'
+import type { PresentationEntry } from '~/lib/content-presentation'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -236,6 +239,11 @@ function chooseOption(key: BuilderChoiceKey, value: string) {
   draft[key] = findOptionByKey(optionsFor.value[key], value)
 }
 
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. Species renders INLINE within the
+// merged 'identity' stage below (see STEP_KEYS's own header on the merge) -- this is the
+// remainder CHOICE_KEYS renders through the generic per-key stage loop.
+const STAGE_PICKER_KEYS: readonly BuilderChoiceKey[] = ['class', 'background']
+
 // ---------------------------------------------------------------------------
 // Ability scores (Phase 3) -- state only; all logic is in the pure modules.
 // ---------------------------------------------------------------------------
@@ -267,7 +275,16 @@ const { data: choiceOptions } = await useFetch<{
   universalCreation?: { grants?: { set: string; to: boolean | number | string }[]; choices?: { choiceSet: string; count: number; from?: string[]; requiresActive?: (string | null)[] }[] }
 }>(() => `/api/worlds/${worldId.value}/rules/choice-options`)
 
-const optionLabels = computed(() => choiceOptions.value?.optionLabels ?? {})
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- PLAYER-FACING LABELS.
+// `choiceOptionLabelOverrides` only ever REPLACES an option whose own
+// authored label is internal plumbing (Magic Initiate's own "List 1/2/3"
+// gates) with the real class-list name the SAME facet already declares
+// structurally -- see that function's own header. Spread order matters:
+// the override wins only where it has an answer.
+const optionLabels = computed(() => ({
+  ...(choiceOptions.value?.optionLabels ?? {}),
+  ...choiceOptionLabelOverrides(draft, creationContext.value)
+}))
 
 // PHASE 2C.2B -- the one creation context the Builder judges against: which
 // choice sets are CONTENT-backed (the package's own declaration, echoed by the
@@ -364,6 +381,20 @@ function chooseSelections(key: string, selected: string[]) {
 // of the SAME plan the prepared section reads, so no save/reload/prepare round trip.
 const spellSections = computed(() => spellRequirementSections(draft, creationContext.value))
 
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. Every spell's own already-
+// resolved presentation (level/school/casting time/range/duration/components/effect text --
+// resolveDnd5ePresentation's own new 'spell' branch, content-presentation/dnd5e.ts), keyed by the
+// SAME wire ref format spellRequirementSections' own option/selection values already use, so
+// CharacterChoiceSetPicker's `optionDetails` lookup needs no second ref format. The catalogue's
+// own `/catalogue` response already carries this -- no second fetch, no new server call.
+const spellPresentationByRef = computed<Record<string, PresentationEntry | null>>(() => {
+  const byRef: Record<string, PresentationEntry | null> = {}
+  for (const entry of catalogue.value?.spells ?? []) {
+    byRef[serializeContentRef({ packageId: entry.packageId, slug: entry.slug })] = entry.presentation ?? null
+  }
+  return byRef
+})
+
 function spellSelectionsFor(requirementId: string): string[] {
   return draft.spellSelections[requirementId] ?? []
 }
@@ -407,6 +438,10 @@ const steps = computed(() =>
 
 const complete = computed(() => isDraftComplete(draft, creationContext.value))
 const outstanding = computed(() => missingRequirements(draft, creationContext.value))
+
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- NAVIGATION. "Stage N of Total" for the
+// persistent top toolbar, below.
+const activeStepPosition = computed(() => STEP_KEYS.indexOf(activeStep.value) + 1)
 
 const summaryRows = computed(() =>
   CHOICE_KEYS.map((key) => ({
@@ -541,6 +576,45 @@ async function createCharacter() {
            file's own header on why nothing is ever gated by layout. -->
       <!-- ================================================================ -->
       <template v-else>
+        <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- NAVIGATION. A PERSISTENT top
+             toolbar, sticky to this page's own scroll container -- Back/Next/Create are
+             reachable the instant a stage opens, never after scrolling past a long
+             description first (the real reported problem with the previous bottom-only
+             placement on desktop/tablet). Replaces both the old inline desktop buttons and
+             the old phone-only fixed bottom bar -- one control, one place, every viewport. -->
+        <div class="sticky top-0 z-30 -mx-4 mb-6 flex items-center justify-between gap-3 border-b border-eldra-accent/24 bg-eldra-ink/92 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6">
+          <button
+            type="button"
+            class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+            :disabled="!previousStep(activeStep)"
+            @click="goBack"
+          >
+            Back
+          </button>
+
+          <p class="min-w-0 truncate text-center text-xs uppercase tracking-[0.14em] text-eldra-text-faint">
+            Stage {{ activeStepPosition }} of {{ steps.length }} · <span class="text-eldra-text-soft">{{ STEP_LABELS[activeStep] }}</span>
+          </p>
+
+          <button
+            v-if="activeStep !== 'review'"
+            type="button"
+            class="eldra-button min-h-11 shrink-0 rounded-none px-5 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+            @click="goNext"
+          >
+            Next
+          </button>
+          <button
+            v-else
+            type="button"
+            class="eldra-button min-h-11 shrink-0 rounded-none px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+            :disabled="!complete || creating"
+            @click="createCharacter"
+          >
+            {{ creating ? 'Creating…' : 'Create Character' }}
+          </button>
+        </div>
+
         <div
           class="mt-6"
           :class="compact ? 'flex flex-col gap-4' : 'grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)_21rem] lg:items-start'"
@@ -563,10 +637,13 @@ async function createCharacter() {
               :compact="compact"
             />
 
-            <!-- Desktop/tablet's extra room shows the ability summary and
-                 Create action continuously, exactly like the pre-redesign
-                 persistent aside did -- a phone reaches the identical
-                 summary on its own Review stage instead (Region C below). -->
+            <!-- Desktop/tablet's extra room shows the ability summary
+                 continuously -- a phone reaches the identical summary on
+                 its own Review stage instead (Region C below). Back/Next/
+                 Create live in the persistent top toolbar now (every
+                 viewport), so this panel stays focused on readability:
+                 clean ability scores, and incomplete requirements kept
+                 COMPACT and expandable rather than a growing list. -->
             <div
               v-if="!compact"
               class="eldra-ornate-panel eldra-frame-corners mt-4 rounded-none border border-eldra-accent/24 bg-eldra-panel/64 p-4 backdrop-blur"
@@ -579,19 +656,11 @@ async function createCharacter() {
                 empty-message="Not assigned yet."
               />
 
-              <button
-                type="button"
-                class="eldra-button mt-5 min-h-11 w-full rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-                :disabled="!complete || creating"
-                @click="createCharacter"
-              >
-                {{ creating ? 'Creating…' : 'Create Character' }}
-              </button>
-
               <CreationValidationBanner
                 :messages="outstanding"
                 :error-message="createErrorMessage"
-                class="mt-3"
+                compact
+                class="mt-4"
               />
 
               <NuxtLink
@@ -606,6 +675,10 @@ async function createCharacter() {
           <!-- Region C: Choices / Details ---------------------------------- -->
           <main class="min-w-0 lg:order-2">
             <section>
+              <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. Name AND Species,
+                   one stage: the reported problem was a near-empty "just type a name" screen
+                   with the single most visually rich choice in the whole Builder stranded on
+                   its own separate stage right after it. -->
               <div v-if="activeStep === 'identity'">
                 <label
                   for="character-name"
@@ -619,10 +692,43 @@ async function createCharacter() {
                   placeholder="Character name"
                   class="eldra-input min-h-12 w-full max-w-md rounded-none px-4 py-3 text-base"
                 >
+
+                <h2 class="mb-3 mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
+                  Species
+                </h2>
+                <CharacterBuilderOptionPicker
+                  label="Species"
+                  name="builder-species"
+                  :options="optionsFor.species"
+                  :model-value="selectedKeys.species"
+                  :compact="compact"
+                  @update:model-value="(value: string) => chooseOption('species', value)"
+                />
+
+                <!-- Prominent species artwork/description, updating reactively as the
+                     selection changes -- the SAME component, same models the Character
+                     Sheet renders. -->
+                <div class="mt-5">
+                  <CreationDetailPanel title="About this Species">
+                    <ContentPresentationPanel
+                      v-if="draft.species"
+                      :entry="draft.species?.presentation"
+                      context="preview"
+                      collapse-first-section
+                      empty-message="This Content Pack publishes no further details for this species."
+                    />
+                    <p
+                      v-else
+                      class="text-sm text-eldra-text-faint"
+                    >
+                      Choose a species above to see what it is and what it grants.
+                    </p>
+                  </CreationDetailPanel>
+                </div>
               </div>
 
               <div
-                v-for="key in CHOICE_KEYS"
+                v-for="key in STAGE_PICKER_KEYS"
                 v-show="activeStep === key"
                 :key="key"
               >
@@ -646,6 +752,7 @@ async function createCharacter() {
                       v-if="draft[key]"
                       :entry="draft[key]?.presentation"
                       context="preview"
+                      collapse-first-section
                       :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
                     />
                     <p
@@ -720,6 +827,7 @@ async function createCharacter() {
                     :choice="section.choice"
                     :selected="spellSelectionsFor(section.requirementId)"
                     :option-labels="section.optionLabels"
+                    :option-details="spellPresentationByRef"
                     :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
                     :slot-label="STEP_LABELS.class"
                     @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
@@ -839,6 +947,7 @@ async function createCharacter() {
                         v-if="row.entry"
                         :entry="row.entry.presentation"
                         context="preview"
+                        collapse-first-section
                         :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
                       />
                       <p
@@ -850,75 +959,19 @@ async function createCharacter() {
                     </CreationDetailPanel>
                   </div>
                 </div>
+
+                <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- NAVIGATION. Back/Next/
+                     Create itself now live in the persistent top toolbar (every viewport) --
+                     this stays the Review stage's own validation feedback, moved up from the
+                     old bottom bar it used to share a home with. -->
+                <CreationValidationBanner
+                  :messages="outstanding"
+                  :error-message="createErrorMessage"
+                  class="mt-5"
+                />
               </div>
             </section>
-
-            <!-- Desktop/tablet's own inline actions -- a phone uses the
-                 sticky bottom bar below instead. -->
-            <div
-              v-if="!compact"
-              class="mt-6 flex items-center gap-2"
-            >
-              <button
-                type="button"
-                class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-                :disabled="!previousStep(activeStep)"
-                @click="goBack"
-              >
-                Back
-              </button>
-              <button
-                v-if="activeStep !== 'review'"
-                type="button"
-                class="eldra-button min-h-11 rounded-none px-5 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-                @click="goNext"
-              >
-                Next
-              </button>
-            </div>
           </main>
-        </div>
-
-        <!-- Sticky bottom bar: a phone's primary actions, within thumb reach. -->
-        <div
-          v-if="compact"
-          class="fixed inset-x-0 bottom-0 z-20 border-t border-eldra-accent/24 bg-eldra-ink/96 px-4 py-3 backdrop-blur"
-        >
-          <CreationValidationBanner
-            v-if="activeStep === 'review'"
-            :messages="outstanding"
-            :error-message="createErrorMessage"
-            class="mx-auto mb-2 max-w-2xl"
-          />
-          <div class="mx-auto flex max-w-2xl items-center gap-2">
-            <button
-              type="button"
-              class="min-h-12 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-              :disabled="!previousStep(activeStep)"
-              @click="goBack"
-            >
-              Back
-            </button>
-
-            <button
-              v-if="activeStep !== 'review'"
-              type="button"
-              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-              @click="goNext"
-            >
-              Next
-            </button>
-
-            <button
-              v-else
-              type="button"
-              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-              :disabled="!complete || creating"
-              @click="createCharacter"
-            >
-              {{ creating ? 'Creating…' : 'Create Character' }}
-            </button>
-          </div>
         </div>
       </template>
     </div>

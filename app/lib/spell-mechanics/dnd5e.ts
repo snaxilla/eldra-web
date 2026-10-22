@@ -230,7 +230,16 @@
 // and separately cross-validates dice SHAPE, so a die-size-changing table
 // could never silently masquerade as a same-size count-scaling one either.
 
-import { cleanText, flattenEntries } from '../content-presentation/dnd5e'
+import {
+  cleanText,
+  flattenEntries,
+  SPELL_SCHOOL_LABELS,
+  describeSpellRange,
+  describeSpellCastingTime,
+  describeSpellComponents,
+  describeSpellDuration,
+  isSpellConcentration
+} from '../content-presentation/dnd5e'
 import type { AbilityKey } from '../characters/ability-scores'
 import type {
   CanonicalSpellMechanics,
@@ -242,91 +251,20 @@ import type {
   SpellScaling
 } from './types'
 
-const SCHOOL_LABELS: Record<string, string> = {
-  A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
-  V: 'Evocation', I: 'Illusion', N: 'Necromancy', T: 'Transmutation'
-}
+// SCHOOL_LABELS, describeRange/describeCastingTime/describeComponents/describeDuration, and
+// isConcentration moved to app/lib/content-presentation/dnd5e.ts (CINEMATIC CREATOR REFINEMENT,
+// Milestone B1.1) -- that module needed them for its own new spell resolver and cannot import
+// FROM here (this file already imports `cleanText`/`flattenEntries` from it; the reverse would be
+// circular), so they relocated there instead of duplicating. Imported above as
+// SPELL_SCHOOL_LABELS/describeSpellRange/describeSpellCastingTime/describeSpellComponents/
+// describeSpellDuration/isSpellConcentration -- byte-identical logic, new names only to read
+// honestly at their new address (a general content-presentation module, not spell-mechanics-only).
 
 // 5etools' own damageInflict strings are lowercase ('lightning') -- the
 // label a `SpellChoiceOption` shows a player is the same word, capitalized,
 // never a second hand-typed vocabulary that could drift from the id.
 function capitalizeWord(value: string): string {
   return value.length ? value[0]!.toUpperCase() + value.slice(1) : value
-}
-
-const CASTING_TIME_UNIT_LABELS: Record<string, string> = {
-  action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction',
-  minute: 'Minute', hour: 'Hour'
-}
-
-function describeRange(range: unknown): string | undefined {
-  if (!range || typeof range !== 'object') return undefined
-  const node = range as Record<string, unknown>
-  if (node.type !== 'point') return 'Special'
-
-  const distance = node.distance as Record<string, unknown> | undefined
-  if (!distance) return undefined
-
-  if (distance.type === 'self') return 'Self'
-  if (distance.type === 'touch') return 'Touch'
-  if (distance.type === 'feet' && typeof distance.amount === 'number') return `${distance.amount} ft.`
-  return undefined
-}
-
-function describeCastingTime(time: unknown): string | undefined {
-  const first = Array.isArray(time) ? (time[0] as Record<string, unknown> | undefined) : undefined
-  if (!first) return undefined
-
-  const unitLabel = CASTING_TIME_UNIT_LABELS[String(first.unit)] ?? cleanText(first.unit)
-  const number = typeof first.number === 'number' ? first.number : 1
-  const label = number > 1 ? `${number} ${unitLabel}s` : unitLabel
-  const condition = typeof first.condition === 'string' ? cleanText(first.condition) : ''
-
-  return condition ? `${label} (${condition})` : label
-}
-
-function describeComponents(components: unknown): string | undefined {
-  if (!components || typeof components !== 'object') return undefined
-  const node = components as Record<string, unknown>
-  const parts: string[] = []
-  if (node.v) parts.push('V')
-  if (node.s) parts.push('S')
-  if (node.m) {
-    const material = typeof node.m === 'string' ? node.m : (node.m as Record<string, unknown>)?.text
-    parts.push(typeof material === 'string' && material ? `M (${cleanText(material)})` : 'M')
-  }
-  return parts.length ? parts.join(', ') : undefined
-}
-
-// 5etools' own duration shapes are a small closed set
-// ('instant'|'timed'|'permanent'|'special'|...); this restates only the
-// SHAPE, never the game-specific meaning of what a duration DOES.
-function describeDuration(duration: unknown): string | undefined {
-  const first = Array.isArray(duration) ? (duration[0] as Record<string, unknown> | undefined) : undefined
-  if (!first) return undefined
-
-  if (first.type === 'instant') return 'Instantaneous'
-  if (first.type === 'permanent') return 'Until dispelled'
-  if (first.type === 'special') return 'Special'
-
-  if (first.type === 'timed') {
-    const timed = first.duration as Record<string, unknown> | undefined
-    const amount = typeof timed?.amount === 'number' ? timed.amount : undefined
-    const unit = typeof timed?.type === 'string' ? timed.type : ''
-    if (amount === undefined || !unit) return undefined
-    const unitLabel = amount > 1 ? `${unit}s` : unit
-    return `${amount} ${unitLabel}`
-  }
-
-  return undefined
-}
-
-// Concentration lives on the DURATION entry, never top-level and never
-// under `meta` -- see this file's own header on the importer bug this
-// deliberately does not repeat.
-function isConcentration(duration: unknown): boolean {
-  if (!Array.isArray(duration)) return false
-  return duration.some((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).concentration === true)
 }
 
 // Character Sheet Body Phase 1B.4 -- signal 2 of `extractHealingRoll`'s own
@@ -667,7 +605,7 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   if (typeof raw.name !== 'string' || !raw.name.trim()) return null
 
   const level = typeof raw.level === 'number' ? raw.level : 0
-  const school = SCHOOL_LABELS[String(raw.school)]
+  const school = SPELL_SCHOOL_LABELS[String(raw.school)]
 
   // Character Sheet Body Phase 1B.2 -- THE CHROMATIC ORB FINDING, structured
   // by 1B.2.1. 5etools' `damageInflict` names every LEGAL damage type a
@@ -753,11 +691,11 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   return {
     level,
     school,
-    castingTime: describeCastingTime(raw.time),
-    range: describeRange(raw.range),
-    components: describeComponents(raw.components),
-    duration: describeDuration(raw.duration),
-    concentration: isConcentration(raw.duration),
+    castingTime: describeSpellCastingTime(raw.time),
+    range: describeSpellRange(raw.range),
+    components: describeSpellComponents(raw.components),
+    duration: describeSpellDuration(raw.duration),
+    concentration: isSpellConcentration(raw.duration),
     ritual: Boolean((raw.meta as Record<string, unknown> | undefined)?.ritual),
     description: descriptionText || undefined,
     resolution,

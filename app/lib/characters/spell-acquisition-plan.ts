@@ -160,8 +160,10 @@ export type SpellAcquisitionRequirementPlan = {
   // The identities (P3.1's own `spellIdentityOf` form, catalogue-ref OR custom-name) this
   // requirement currently counts as legally selected.
   selected: string[]
-  // [] whenever `missing` is 0 -- see this file's own OPTION DISCOVERY header for why "always list
-  // every theoretically addable spell" is out of scope.
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- every OTHER legal option for this
+  // requirement, whether or not it is already satisfied (see this file's own OPTION DISCOVERY
+  // header for the full history of that change). [] only when this requirement has no real target
+  // at this level at all (`target === 0`).
   options: SpellAcquisitionOption[]
   issues: SpellAcquisitionIssue[]
 }
@@ -265,8 +267,19 @@ export function planSpellAcquisition(input: {
     const issues: SpellAcquisitionIssue[] = [...stateResult.issues, ...tentativeIssues]
     const missing = Math.max(0, target - stateResult.owned)
 
+    // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. Previously gated on
+    // `missing > 0` (this file's own original OPTION DISCOVERY scope, above): the REAL reported
+    // bug this caused is that the full alternative-spell list vanished the instant a requirement
+    // became exactly satisfied, leaving no way to see (or swap toward) any spell other than the
+    // ones already picked without first deselecting one. Gating on `target > 0` instead keeps
+    // every legal alternative visible for the whole lifetime of a real requirement (one with
+    // something to pick at all), satisfied or not -- `stateEvaluated.legal` below still excludes
+    // whatever is ALREADY selected, so a satisfied requirement shows its OTHER legal options,
+    // never a duplicate of the current picks. Never changes which selection is LEGAL (`evaluate`
+    // itself, and `stateResult`'s own satisfied/issues, are completely untouched) -- only which
+    // options this plan SURFACES for the player to swap toward.
     const options: SpellAcquisitionOption[] = []
-    if (missing > 0 && KNOWN_POOL_KINDS.includes(requirement.pool)) {
+    if (target > 0 && KNOWN_POOL_KINDS.includes(requirement.pool)) {
       const membershipSet = requirement.requiresMembershipPool
         ? (evaluated.get(requirement.requiresMembershipPool)?.legal ?? new Set<string>())
         : null

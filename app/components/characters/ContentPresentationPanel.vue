@@ -48,7 +48,7 @@
 
 import type { PresentationEntry } from '~/lib/content-presentation'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   entry?: PresentationEntry | null
   // Shown when there is no entry at all, or the pack published nothing
   // readable for it.
@@ -56,10 +56,19 @@ withDefaults(defineProps<{
   // 'preview' is the Builder's before-selection framing; 'detail' is the
   // Sheet's after-creation framing. Heading emphasis only.
   context?: 'preview' | 'detail'
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- READABILITY. The real reported problem:
+  // Class Features (and a Background's own printed Equipment paragraph) are always the FIRST
+  // section, so they rendered OPEN by default, reading as a wall of prose the instant a choice
+  // was made. Defaults to `false` (preserving every existing caller's behaviour byte-for-byte,
+  // Sheet included) -- the Builder passes `true` explicitly, since ITS OWN complaint is "too much
+  // open text before a real decision is even made." Every section is still ONE CLICK away either
+  // way; nothing here removes information, only its default visibility.
+  collapseFirstSection?: boolean
 }>(), {
   entry: null,
   emptyMessage: 'This Content Pack publishes no further details for this entry.',
-  context: 'detail'
+  context: 'detail',
+  collapseFirstSection: false
 })
 </script>
 
@@ -132,7 +141,7 @@ withDefaults(defineProps<{
         <details
           v-for="(section, index) in entry.sections"
           :key="section.title"
-          :open="index === 0"
+          :open="index === 0 && !collapseFirstSection"
           class="group min-w-0 rounded-none border border-eldra-accent/20 bg-eldra-panel/55"
         >
           <summary

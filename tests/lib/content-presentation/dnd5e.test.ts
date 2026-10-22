@@ -204,7 +204,7 @@ describe('resolveDnd5ePresentation -- class (XPHB)', () => {
   })
 
   it('surfaces the printed starting equipment paragraph', () => {
-    const equipment = section(resolveDnd5ePresentation('class', xphb.classes.Fighter)!, 'Starting Equipment')!
+    const equipment = section(resolveDnd5ePresentation('class', xphb.classes.Fighter)!, 'Starting Equipment (finalize on the Equipment stage)')!
 
     expect(equipment.paragraphs[0]).toContain('Chain Mail')
     expect(equipment.paragraphs[0]).toContain('20 Arrows')
@@ -241,14 +241,14 @@ describe('resolveDnd5ePresentation -- background (XPHB)', () => {
     // Ability scores are DISPLAYED because the book prints them. Nothing is
     // chosen, weighted, or applied.
     expect(factValue(acolyte, 'Ability Scores')).toBe('Intelligence, Wisdom, Charisma')
-    expect(section(acolyte, 'Equipment')!.paragraphs[0])
+    expect(section(acolyte, 'Equipment (finalize on the Equipment stage)')!.paragraphs[0])
       .toContain("Choose A or B: (A) Calligrapher's Supplies, Book (prayers)")
   })
 
   it('does not repeat the printed summary list as a section, since its lines are already facts', () => {
     const acolyte = resolveDnd5ePresentation('background', xphb.backgrounds.Acolyte)!
 
-    expect(acolyte.sections.map((item) => item.title)).toEqual(['Equipment'])
+    expect(acolyte.sections.map((item) => item.title)).toEqual(['Equipment (finalize on the Equipment stage)'])
   })
 
   it('reads the REAL background fluff join (fixture: fluff join follow-up task) for Acolyte', () => {
@@ -288,7 +288,51 @@ describe('resolveDnd5ePresentation -- SRD 5.1 (2014 shapes)', () => {
 
     expect(factValue(acolyte, 'Skill Proficiencies')).toBe('Insight, Religion')
     expect(factValue(acolyte, 'Languages')).toBe('Choose any 2 Standard')
-    expect(acolyte.sections.map((item) => item.title)).toContain('Equipment')
+    expect(acolyte.sections.map((item) => item.title)).toContain('Equipment (finalize on the Equipment stage)')
+  })
+})
+
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. Previously MISSING entirely:
+// `resolveDnd5ePresentation('spell', ...)` had no real branch and silently fell through to
+// `resolveBackground`, so every spell in every World's catalogue got a nonsense presentation (a
+// background resolver reading spell data). This is the real resolver's own coverage.
+describe('resolveDnd5ePresentation -- spell (XPHB)', () => {
+  it('reads level, school, casting time, range, duration, and components off the real Misty Step row', () => {
+    const resolved = resolveDnd5ePresentation('spell', xphb.spells['Misty Step'])!
+    expect(resolved.name).toBe('Misty Step')
+    expect(factValue(resolved, 'Level')).toBe('Level 2')
+    expect(factValue(resolved, 'School')).toBe('Conjuration')
+    expect(factValue(resolved, 'Casting Time')).toBe('Bonus Action')
+    expect(factValue(resolved, 'Range')).toBe('Self')
+    expect(factValue(resolved, 'Duration')).toBe('Instantaneous')
+    expect(factValue(resolved, 'Components')).toBe('V')
+    expect(resolved.description.length).toBeGreaterThan(0)
+  })
+
+  it('a cantrip (level 0) reads "Cantrip", never "Level 0"', () => {
+    const resolved = resolveDnd5ePresentation('spell', xphb.spells['Fire Bolt'])!
+    expect(factValue(resolved, 'Level')).toBe('Cantrip')
+  })
+
+  it('a concentration spell states it plainly, prefixed onto the real duration -- never fabricated when absent', () => {
+    const concentrationSpell = Object.values(xphb.spells).find((row: any) => row.duration?.[0]?.concentration) as any
+    expect(concentrationSpell).toBeTruthy()
+    const resolved = resolveDnd5ePresentation('spell', concentrationSpell)!
+    expect(factValue(resolved, 'Duration')).toMatch(/^Concentration, /)
+
+    const instantSpell = xphb.spells['Fire Bolt']
+    expect(instantSpell.duration?.[0]?.concentration).toBeFalsy()
+    expect(factValue(resolveDnd5ePresentation('spell', instantSpell)!, 'Duration')).not.toMatch(/Concentration/)
+  })
+
+  it('a material component is shown with its real text, never just the bare "M"', () => {
+    const withMaterial = Object.values(xphb.spells).find((row: any) => {
+      const material = row.components?.m
+      return typeof material === 'string' ? material.length > 0 : Boolean(material?.text)
+    }) as any
+    if (withMaterial) {
+      expect(factValue(resolveDnd5ePresentation('spell', withMaterial)!, 'Components')).toMatch(/M \([^)]+\)/)
+    }
   })
 })
 
@@ -296,7 +340,8 @@ describe('every XPHB row resolves to something a player can read', () => {
   const cases: Array<[any, any]> = [
     ...Object.values(xphb.species).map((row) => ['species', row] as [any, any]),
     ...Object.values(xphb.classes).map((row) => ['class', row] as [any, any]),
-    ...Object.values(xphb.backgrounds).map((row) => ['background', row] as [any, any])
+    ...Object.values(xphb.backgrounds).map((row) => ['background', row] as [any, any]),
+    ...Object.values(xphb.spells).map((row) => ['spell', row] as [any, any])
   ]
 
   it.each(cases)('%s row resolves with a name, at least one fact, and no leaked markup', (kind, row) => {

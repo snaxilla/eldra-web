@@ -69,6 +69,42 @@ import type {
   PresentationKind,
   PresentationSection
 } from './types'
+import { DND5E_2024_CURRENCY_DENOMINATION } from '../content-rules/dnd5e-2024'
+
+// ---------------------------------------------------------------------------
+// CURRENCY -- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT
+// ---------------------------------------------------------------------------
+// The real reported bug: the Builder's own equipment-bundle summaries showed raw amounts next
+// to the raw denomination STRING itself ("1500 (currency: currency:xphb.copper)") --
+// infrastructure-grade, never intended as player-facing text. `app/lib/characters/currency.ts`'s
+// own header names this exact module (the D&D-specific PRESENTATION layer, never the generic,
+// denomination-opaque currency store) as where a real conversion belongs. The standard 5e gp/sp/
+// cp breakdown (1 gp = 10 sp = 100 cp), applied ONLY to the ONE real denomination this package
+// ever grants (DND5E_2024_CURRENCY_DENOMINATION) -- never a generic currency converter, and
+// never invented for a denomination this function does not recognize (the caller falls back to
+// the existing honest-but-raw text for anything else).
+//
+// Lives here, not in content-rules/dnd5e-2024.ts, because that file's own corpus-purity test
+// (character-actor-bridge.test.ts's own "contains no expressions, no formulas" structural check,
+// scanning everything after its first `export const`) would read this function's own division/
+// modulo arithmetic as Rules Engine expression syntax leaking into content authoring -- this is
+// presentation code, not a facet declaration, and belongs in the module that already owns every
+// other D&D 2024 presentation-vocabulary mapping.
+export function formatDnd5eCopperAmount(copper: number): string {
+  if (!Number.isFinite(copper) || copper <= 0) return '0 cp'
+  const gp = Math.floor(copper / 100)
+  const sp = Math.floor((copper % 100) / 10)
+  const cp = copper % 10
+  const parts: string[] = []
+  if (gp > 0) parts.push(`${gp} gp`)
+  if (sp > 0) parts.push(`${sp} sp`)
+  if (cp > 0) parts.push(`${cp} cp`)
+  return parts.join(' ') || '0 cp'
+}
+
+// Re-exported so a caller never needs to import BOTH modules to tell whether this formatter
+// recognizes a given denomination id.
+export { DND5E_2024_CURRENCY_DENOMINATION }
 
 // ---------------------------------------------------------------------------
 // 5etools text normalization
@@ -182,6 +218,152 @@ export function flattenEntries(value: unknown, out: string[] = []): string[] {
 
   flattenEntries(node.entries ?? node.entry ?? node.items, out)
   return out
+}
+
+// ---------------------------------------------------------------------------
+// SPELL MECHANICS TEXT -- relocated here, not duplicated
+// ---------------------------------------------------------------------------
+// Originally local to app/lib/spell-mechanics/dnd5e.ts, moved HERE (and
+// re-exported to that module, which already imports `cleanText`/
+// `flattenEntries` from this same file) because this file cannot import
+// FROM spell-mechanics/dnd5e.ts without creating a circular import --
+// that module already depends on this one. `resolveSpell` below (CINEMATIC
+// CREATOR REFINEMENT, Milestone B1.1 -- SPELL DISCOVERY) is the first
+// presentation-layer caller; `app/lib/spell-mechanics/dnd5e.ts`'s own
+// `resolveDnd5eSpellMechanics` is the original and remains the other.
+// Pure text formatting only -- no rule, no mechanic, exactly like every
+// other vocabulary map in this file.
+
+export const SPELL_SCHOOL_LABELS: Record<string, string> = {
+  A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
+  V: 'Evocation', I: 'Illusion', N: 'Necromancy', T: 'Transmutation'
+}
+
+const CASTING_TIME_UNIT_LABELS: Record<string, string> = {
+  action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction',
+  minute: 'Minute', hour: 'Hour'
+}
+
+export function describeSpellRange(range: unknown): string | undefined {
+  if (!range || typeof range !== 'object') return undefined
+  const node = range as Record<string, unknown>
+  if (node.type !== 'point') return 'Special'
+
+  const distance = node.distance as Record<string, unknown> | undefined
+  if (!distance) return undefined
+
+  if (distance.type === 'self') return 'Self'
+  if (distance.type === 'touch') return 'Touch'
+  if (distance.type === 'feet' && typeof distance.amount === 'number') return `${distance.amount} ft.`
+  return undefined
+}
+
+export function describeSpellCastingTime(time: unknown): string | undefined {
+  const first = Array.isArray(time) ? (time[0] as Record<string, unknown> | undefined) : undefined
+  if (!first) return undefined
+
+  const unitLabel = CASTING_TIME_UNIT_LABELS[String(first.unit)] ?? cleanText(first.unit)
+  const number = typeof first.number === 'number' ? first.number : 1
+  const label = number > 1 ? `${number} ${unitLabel}s` : unitLabel
+  const condition = typeof first.condition === 'string' ? cleanText(first.condition) : ''
+
+  return condition ? `${label} (${condition})` : label
+}
+
+export function describeSpellComponents(components: unknown): string | undefined {
+  if (!components || typeof components !== 'object') return undefined
+  const node = components as Record<string, unknown>
+  const parts: string[] = []
+  if (node.v) parts.push('V')
+  if (node.s) parts.push('S')
+  if (node.m) {
+    const material = typeof node.m === 'string' ? node.m : (node.m as Record<string, unknown>)?.text
+    parts.push(typeof material === 'string' && material ? `M (${cleanText(material)})` : 'M')
+  }
+  return parts.length ? parts.join(', ') : undefined
+}
+
+// 5etools' own duration shapes are a small closed set
+// ('instant'|'timed'|'permanent'|'special'|...); this restates only the
+// SHAPE, never the game-specific meaning of what a duration DOES.
+export function describeSpellDuration(duration: unknown): string | undefined {
+  const first = Array.isArray(duration) ? (duration[0] as Record<string, unknown> | undefined) : undefined
+  if (!first) return undefined
+
+  if (first.type === 'instant') return 'Instantaneous'
+  if (first.type === 'permanent') return 'Until dispelled'
+  if (first.type === 'special') return 'Special'
+
+  if (first.type === 'timed') {
+    const timed = first.duration as Record<string, unknown> | undefined
+    const amount = typeof timed?.amount === 'number' ? timed.amount : undefined
+    const unit = typeof timed?.type === 'string' ? timed.type : ''
+    if (amount === undefined || !unit) return undefined
+    const unitLabel = amount > 1 ? `${unit}s` : unit
+    return `${amount} ${unitLabel}`
+  }
+
+  return undefined
+}
+
+// Concentration lives on the DURATION entry, never top-level and never
+// under `meta`.
+export function isSpellConcentration(duration: unknown): boolean {
+  if (!Array.isArray(duration)) return false
+  return duration.some((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).concentration === true)
+}
+
+function isSpellRitual(raw: Record<string, unknown>): boolean {
+  return raw.meta != null && typeof raw.meta === 'object' && (raw.meta as Record<string, unknown>).ritual === true
+}
+
+// ---------------------------------------------------------------------------
+// Spell
+// ---------------------------------------------------------------------------
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. Previously MISSING entirely:
+// `PresentationKind` had no 'spell' member, so `resolveDnd5ePresentation('spell', data)` (the
+// server already calls it with exactly that kind -- PRESENTATION_KIND_BY_CATEGORY,
+// world-content-catalogue.ts) silently fell through to `resolveBackground`, producing a
+// nonsense/empty presentation for every spell in every World's catalogue. This is the real
+// resolver: level/school/casting time/range/duration/components as `facts` (the same reader a
+// player needs before picking a spell, never invented -- every field is `undefined`, not
+// fabricated, when the real data does not have it), the book's own effect text as `description`,
+// and higher-level scaling text (when published) as a `sections` entry.
+function resolveSpell(raw: Record<string, unknown>): PresentationEntry {
+  const level = typeof raw.level === 'number' ? raw.level : 0
+  const school = SPELL_SCHOOL_LABELS[String(raw.school)]
+  const ritual = isSpellRitual(raw)
+  const concentration = isSpellConcentration(raw.duration)
+
+  const levelLabel = level === 0 ? 'Cantrip' : `Level ${level}`
+  const schoolLabel = [school, ritual ? '(ritual)' : ''].filter(Boolean).join(' ')
+
+  const description = flattenEntries(raw.entries)
+  const higherLevel = flattenEntries((raw.entriesHigherLevel as unknown[] | undefined) ?? [])
+
+  const sections: PresentationSection[] = []
+  if (higherLevel.length) sections.push({ title: 'At Higher Levels', paragraphs: higherLevel })
+
+  const notes: string[] = []
+  if (!description.length) notes.push(NO_DESCRIPTION_NOTE)
+
+  return {
+    kind: 'spell',
+    name: cleanText(raw.name),
+    sourceBook: raw.source ? String(raw.source) : undefined,
+    sourcePage: raw.page != null ? String(raw.page) : undefined,
+    description,
+    facts: compactFacts([
+      fact('Level', levelLabel),
+      fact('School', schoolLabel || school),
+      fact('Casting Time', describeSpellCastingTime(raw.time)),
+      fact('Range', describeSpellRange(raw.range)),
+      fact('Duration', concentration && describeSpellDuration(raw.duration) ? `Concentration, ${describeSpellDuration(raw.duration)}` : describeSpellDuration(raw.duration)),
+      fact('Components', describeSpellComponents(raw.components))
+    ]),
+    sections,
+    notes
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -557,10 +739,16 @@ function resolveClass(raw: Record<string, unknown>): PresentationEntry {
     })
   }
 
-  // The book's own printed equipment paragraph ("Choose A, B, or C: ...").
+  // The book's own printed equipment paragraph ("Choose A, B, or C: ...") -- reference prose
+  // ONLY. CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT: previously this was the
+  // FIRST section (open by default) with nothing distinguishing it from an actual, resolved
+  // choice, while the REAL interactive pick happens later, on the Builder's own Equipment stage --
+  // reported as "equipment choices presented as noninteractive prose." The title itself now says
+  // where the real choice is made; the section stays collapsed by default like every other
+  // (ContentPresentationPanel's own `collapseFirstSection`).
   const startingEquipment = flattenEntries((raw.startingEquipment as Record<string, unknown>)?.entries)
   if (startingEquipment.length) {
-    sections.push({ title: 'Starting Equipment', paragraphs: startingEquipment })
+    sections.push({ title: 'Starting Equipment (finalize on the Equipment stage)', paragraphs: startingEquipment })
   }
 
   const multiclassing = (raw.multiclassing as Record<string, unknown>)?.proficienciesGained as Record<string, unknown> | undefined
@@ -660,7 +848,10 @@ function resolveBackground(raw: Record<string, unknown>): PresentationEntry {
   const description = readDescription(raw)
 
   const sections: PresentationSection[] = []
-  if (equipment) sections.push({ title: 'Equipment', paragraphs: [equipment] })
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT: same reasoning as the Class's own
+  // "Starting Equipment" section above -- reference prose, the real choice happens on the
+  // Builder's own Equipment stage.
+  if (equipment) sections.push({ title: 'Equipment (finalize on the Equipment stage)', paragraphs: [equipment] })
 
   // Any named prose blocks beyond the printed summary list (2014-era
   // backgrounds carry feature/personality-trait blocks here).
@@ -704,5 +895,6 @@ export function resolveDnd5ePresentation(kind: PresentationKind, data: unknown):
 
   if (kind === 'species') return resolveSpecies(raw)
   if (kind === 'class') return resolveClass(raw)
+  if (kind === 'spell') return resolveSpell(raw)
   return resolveBackground(raw)
 }

@@ -77,13 +77,20 @@ describe('P3.2 planner -- plan core (tests 1-7)', () => {
     expect(r.missing).toBe(1)
   })
 
-  it('3. complete state produces zero deficit and no requested selection', () => {
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. Previously asserted
+  // `r.options` was `[]` once satisfied -- that was the real reported "disappearing options" bug
+  // (every alternative vanished the instant the requirement was exactly filled, leaving no way to
+  // see or swap toward anything else without deselecting first). A satisfied requirement now
+  // keeps surfacing its OTHER legal, not-yet-selected options (here: catalogue entry 'e', legal
+  // for the SAME Wizard-list requirement, correctly excluded from `legalCount`/`missing` either
+  // way) -- `missing`/`satisfied`/`plan.complete` are completely unaffected by this.
+  it('3. complete state produces zero deficit, but still surfaces its other legal options to swap toward', () => {
     const candidates = ['a', 'b', 'c', 'd'].map((s) => stateCandidate(s, { prepared: true, mechanics: mechanics(s, 1, ['Wizard']) }))
     const plan = planSpellAcquisition({ requirements: [SYN_SPELL], characterLevel: 1, candidates, catalogue: [entry('e', 1, ['Wizard'])], spellSlotLevels: SLOTS_L1 })
     const r = planOf(plan, SYN_SPELL.id)
     expect(r.missing).toBe(0)
     expect(r.satisfied).toBe(true)
-    expect(r.options).toEqual([])
+    expect(r.options.map((o) => o.slug)).toEqual(['e'])
     expect(plan.complete).toBe(true)
   })
 

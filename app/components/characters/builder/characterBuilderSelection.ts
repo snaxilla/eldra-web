@@ -98,6 +98,7 @@ import {
   type EquipmentBundleResolvers
 } from '~/lib/characters/equipment-bundle'
 import { DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS } from '~/lib/content-rules/dnd5e-2024'
+import { DND5E_2024_CURRENCY_DENOMINATION, formatDnd5eCopperAmount } from '~/lib/content-presentation/dnd5e'
 import { resolveCreationOriginFeat, originFeatPresetChoices } from '~/lib/characters/creation-origin-feat'
 import { gatherSpellRequirements } from '~/lib/characters/spell-requirement-ownership'
 
@@ -272,10 +273,19 @@ export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'ba
 // `equipmentChoiceOwners`), so there is nothing to ask until at least one is picked, and it is a
 // real, always-present step (empty only if nothing selected yet) for the identical "rail must not
 // jump" reasoning.
-export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review']
+//
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. 'species' is intentionally absent
+// from this NAVIGABLE sequence (merged into 'identity' -- see `isStepComplete`'s own 'identity'
+// branch below): the reported problem was a near-empty "just type a name" first screen, with
+// Species -- the single highest-impact, most visually rich choice in the whole Builder -- on its
+// own SEPARATE stage right after it. `BuilderStepKey` itself still includes 'species' (unchanged,
+// still the real `BuilderChoiceKey` CHOICE_KEYS/STEP_LABELS/equipment-slot labelling etc. already
+// key by) -- only the NAVIGATION sequence drops it, so a player answers both in one stage, and
+// `nextStep('identity')` now reaches 'class' directly.
+export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review']
 
 export const STEP_LABELS: Record<BuilderStepKey, string> = {
-  identity: 'Name',
+  identity: 'Identity',
   species: 'Species',
   class: 'Class',
   background: 'Background',
@@ -587,6 +597,70 @@ export function spellRequirementsFor(draft: CharacterBuilderDraft, context: Buil
   )
 }
 
+// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- PLAYER-FACING LABELS.
+//
+// A choice option's own authored Definition label is sometimes internal
+// plumbing, not a player-facing name -- Magic Initiate's own real text
+// offers "a Cleric, Druid, or Wizard spell list," but the Rules Package's
+// own `value:magic-initiate.list.1.active` label is literally "Magic
+// Initiate: List 1 Active" (a plain boolean gate's own description, never
+// written to be read by a player). This is NOT fixed by editing that
+// Definition's label (this task's own "do not alter package definitions
+// solely for UI labels" instruction, and the label is honestly correct for
+// what the Definition IS -- a gate, not a spell list name): the REAL class
+// name already exists elsewhere in the SAME facet, on whichever
+// SpellRequirement that exact gate id activates (requiresActive), as that
+// requirement's own `filter.classList`. This function derives a better
+// label PURELY from that structural link -- it reads no feat/class name
+// anywhere, so any future content whose own gated choice follows the
+// identical shape (a `requiresActive`-gated SpellRequirement naming a real
+// classList) is covered automatically, never a hardcoded replacement for
+// one specific feat.
+//
+// Returns an OVERRIDE map, merged on top of (never replacing) the
+// package's own `optionLabels` by the caller -- an option this finds
+// nothing better for keeps its existing label untouched.
+function classListOptionLabelOverrides(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext
+): Record<string, string> {
+  const facets: (Pick<RulesFacet, 'spellRequirements'> | null | undefined)[] = [
+    draft.species?.rulesFacet,
+    draft.class?.rulesFacet,
+    draft.background?.rulesFacet,
+    ...context.feats.map((entry) => entry.rulesFacet)
+  ]
+
+  const classListsByOptionId = new Map<string, Set<string>>()
+  for (const facet of facets) {
+    for (const requirement of facet?.spellRequirements ?? []) {
+      const classList = requirement.filter.classList
+      if (!classList?.length || !requirement.requiresActive?.length) continue
+      for (const optionId of requirement.requiresActive) {
+        const set = classListsByOptionId.get(optionId) ?? new Set<string>()
+        classList.forEach((name) => set.add(name))
+        classListsByOptionId.set(optionId, set)
+      }
+    }
+  }
+
+  const overrides: Record<string, string> = {}
+  for (const [optionId, classList] of classListsByOptionId) {
+    overrides[optionId] = `${[...classList].join(' or ')} spell list`
+  }
+  return overrides
+}
+
+// The one map create-v2.vue actually needs: every content choice's own
+// catalogue-title labels (handled already, elsewhere) PLUS this override,
+// so a picker never needs to know which kind of label it is reading.
+export function choiceOptionLabelOverrides(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): Record<string, string> {
+  return classListOptionLabelOverrides(draft, context)
+}
+
 function tentativeSpellSelections(draft: CharacterBuilderDraft): TentativeSpellSelection[] {
   const out: TentativeSpellSelection[] = []
   for (const [requirementId, refs] of Object.entries(draft.spellSelections)) {
@@ -684,8 +758,15 @@ export function spellRequirementSections(
           choiceSetId: requirement.pool,
           count: requirement.target,
           options: Object.keys(optionLabels),
-          distinct: false,
-          maxPerOption: 1
+          // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. `distinct: true`
+          // (was `false` + `maxPerOption: 1`) renders through CharacterChoiceSetPicker's own
+          // CHECKBOX branch instead of its slot/<select> branch -- behaviorally identical
+          // (repeats were already impossible either way: a plain array of distinct values can
+          // never hold the same ref twice, which is all `maxPerOption: 1` ever bought here), but
+          // the checkbox branch is what carries this phase's own per-option "inspect" trigger
+          // (create-v2.vue's own `optionDetails` wiring) -- a native <select> has no way to host
+          // one per <option>.
+          distinct: true
         },
         optionLabels,
         satisfied: requirement.satisfied
@@ -816,9 +897,14 @@ function summarizeEquipmentGrant(
     return grant.quantity && grant.quantity > 1 ? `${grant.quantity}× ${grant.name}` : grant.name
   }
   if (grant.kind === 'currency') {
-    // `denominationId` is opaque and package-owned (see app/lib/characters/currency.ts's own
-    // header) -- this deliberately never hardcodes "GP"/"gold" or a conversion rate. Infrastructure-
-    // grade only: the amount and the denomination's own identity, nothing invented.
+    // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- EQUIPMENT. `denominationId` is opaque
+    // and package-owned (app/lib/characters/currency.ts's own header) -- never a generic
+    // conversion rate. But the ONE real denomination the active D&D 2024 package ever grants is
+    // known, by name, to THIS file already (DND5E_2024_CURRENCY_DENOMINATION) -- formatted into
+    // the standard gp/sp/cp breakdown a player actually reads (dnd5e-2024.ts's own
+    // `formatDnd5eCopperAmount`). An UNRECOGNIZED denomination (a future package's own currency)
+    // still fails closed to the honest raw form, never a fabricated conversion.
+    if (grant.denominationId === DND5E_2024_CURRENCY_DENOMINATION) return formatDnd5eCopperAmount(grant.amount)
     return `${grant.amount} (currency: ${grant.denominationId})`
   }
   // grant.kind === 'crossReference'
@@ -1011,7 +1097,9 @@ export function isStepComplete(
   step: BuilderStepKey,
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): boolean {
-  if (step === 'identity') return isNameComplete(draft)
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY now ALSO answers Species (see
+  // STEP_KEYS's own header on the merge) -- complete only once both are.
+  if (step === 'identity') return isNameComplete(draft) && isChoiceComplete(draft, 'species')
   if (step === 'proficiencies') return isProficiencyStepComplete(draft, context) && isCreationContentComplete(draft, context)
   if (step === 'spells') return isSpellStepComplete(draft, context)
   if (step === 'equipment') return isEquipmentStepComplete(draft, context)

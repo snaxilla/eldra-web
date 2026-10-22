@@ -39,6 +39,7 @@
 // you use it.
 
 import type { ResolvableChoice } from '~/lib/characters/rules-choices'
+import type { PresentationEntry } from '~/lib/content-presentation'
 import {
   nextSelectionAfterToggle,
   type OfferedOption
@@ -50,6 +51,8 @@ import {
   isNonDistinctMultiSelect,
   isSlotOptionAtCap
 } from '~/components/characters/characterProgressionChoicePresentation'
+import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
+import CreationDetailPanel from '~/components/characters/builder/CreationDetailPanel.vue'
 
 // `offered` -- when given, every option the content offers, each annotated
 // eligible/unavailable with a reason. An unavailable option stays visible,
@@ -65,9 +68,23 @@ const props = defineProps<{
   // What this question belongs to ("Class", "Species") -- rendered so a
   // player with two skill choices open at once can tell them apart.
   slotLabel?: string
+  // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. When given, every option
+  // gains its own "Details" trigger, opening the SAME ContentPresentationPanel the Species/
+  // Class/Background preview already uses, fed by this option's real resolved presentation
+  // (level/school/casting time/range/duration/components/effect text). Absent (every caller
+  // before this phase -- proficiencies, feat-granted content) means no trigger renders at all,
+  // byte-identical old behavior. Inspecting NEVER selects -- the trigger is a separate control,
+  // outside the selection <label>, and never disabled by the option's own selected/at-cap state
+  // (this task's own "selecting must not prevent inspecting or replacing" requirement).
+  optionDetails?: Record<string, PresentationEntry | null | undefined>
 }>()
 
 const emit = defineEmits<{ 'update:selected': [string[]] }>()
+
+const inspectedValue = ref<string | null>(null)
+function toggleInspect(option: string) {
+  inspectedValue.value = inspectedValue.value === option ? null : option
+}
 
 const displayed = computed<readonly OfferedOption[]>(() =>
   props.offered ?? props.choice.options.map((value) => ({ value, eligible: true }))
@@ -218,34 +235,60 @@ function onSlotSelect(slotIndex: number, event: Event) {
       v-else-if="!isSlotMode"
       class="mt-3 grid gap-2 sm:grid-cols-2"
     >
-      <label
+      <div
         v-for="offered in displayed"
         :key="offered.value"
-        class="flex min-h-14 cursor-pointer items-center gap-3 rounded-none border px-3 py-2 transition-colors"
-        :class="[
-          isSelected(offered.value)
-            ? 'border-eldra-accent/65 bg-eldra-accent/12'
-            : 'border-eldra-accent/24 bg-eldra-panel/55',
-          isDisabled(offered.value)
-            ? 'cursor-not-allowed opacity-45'
-            : 'hover:border-eldra-accent/45'
-        ]"
+        class="flex min-h-14 items-stretch gap-1 rounded-none border transition-colors"
+        :class="isSelected(offered.value)
+          ? 'border-eldra-accent/65 bg-eldra-accent/12'
+          : 'border-eldra-accent/24 bg-eldra-panel/55'"
       >
-        <input
-          type="checkbox"
-          class="size-5 shrink-0 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
-          :checked="isSelected(offered.value)"
-          :disabled="isDisabled(offered.value)"
-          @change="toggle(offered.value)"
+        <label
+          class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
+          :class="isDisabled(offered.value) ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-eldra-accent/8'"
         >
-        <span class="min-w-0 text-sm text-eldra-text-soft">
-          {{ labelFor(offered.value) }}
-          <span
-            v-if="reasonFor(offered.value)"
-            class="block text-xs text-eldra-text-faint"
-          >{{ reasonFor(offered.value) }}</span>
-        </span>
-      </label>
+          <input
+            type="checkbox"
+            class="size-5 shrink-0 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
+            :checked="isSelected(offered.value)"
+            :disabled="isDisabled(offered.value)"
+            @change="toggle(offered.value)"
+          >
+          <span class="min-w-0 text-sm text-eldra-text-soft">
+            {{ labelFor(offered.value) }}
+            <span
+              v-if="reasonFor(offered.value)"
+              class="block text-xs text-eldra-text-faint"
+            >{{ reasonFor(offered.value) }}</span>
+          </span>
+        </label>
+
+        <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. A separate
+             control, outside the selection <label>, so inspecting never toggles the checkbox --
+             and never disabled by isDisabled(), so a fully-picked or ineligible option can
+             still be inspected (this task's own explicit requirement). -->
+        <button
+          v-if="optionDetails && offered.value in optionDetails"
+          type="button"
+          class="shrink-0 px-2 text-xs font-semibold uppercase tracking-[0.08em] text-eldra-accent-text underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+          :aria-expanded="inspectedValue === offered.value"
+          @click="toggleInspect(offered.value)"
+        >
+          {{ inspectedValue === offered.value ? 'Hide' : 'Details' }}
+        </button>
+      </div>
+
+      <div
+        v-if="optionDetails && inspectedValue && optionDetails[inspectedValue]"
+        class="sm:col-span-2"
+      >
+        <CreationDetailPanel :title="labelFor(inspectedValue)">
+          <ContentPresentationPanel
+            :entry="optionDetails[inspectedValue]"
+            context="preview"
+          />
+        </CreationDetailPanel>
+      </div>
     </div>
   </fieldset>
 </template>

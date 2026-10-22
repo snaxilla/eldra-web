@@ -99,7 +99,16 @@ export type CreationChoicePresentation = {
 
 // The package's own rule for a ChoiceSet id (`distinct`, `maxPerOption`), or null when the
 // caller has no registry. Null means the pre-P7 defaults.
-export type ChoiceSetRule = { distinct?: boolean; maxPerOption?: number } | null
+//
+// CHARACTER MECHANICS PHASE A5 -- `writesToIfAlreadyActive` carries the SAME presence-only
+// signal as the ChoiceSetDefinition field of the same name (app/lib/rules/types.ts): when a
+// choice declares it, picking an option already held is not a duplicate -- it is the OTHER,
+// conditional output (e.g. Keen Mind: proficiency, or Expertise if the skill is already
+// proficient). The "already acquired" exclusion below exists to stop a REAL duplicate grant;
+// a choice that declares its own conditional output for that exact case does not produce one,
+// so it must not be excluded by it. Scoped to the ChoiceSet being offered, never global --
+// every other choice's cross-slot "already acquired" exclusion is unchanged.
+export type ChoiceSetRule = { distinct?: boolean; maxPerOption?: number; writesToIfAlreadyActive?: string } | null
 
 // Unconditional grants only, the same boolean-Value shape the bridge's own
 // pre-pass seeds (`grant.to === true`). A grant is never a choice.
@@ -139,7 +148,7 @@ export function resolveCreationChoices(
       const offeredValues = choice.from ?? []
 
       const offered: OfferedOption[] = offeredValues.map((value, index) => {
-        if (acquired.has(value)) return { value, eligible: false, reason: ALREADY_ACQUIRED_REASON }
+        if (acquired.has(value) && !rule?.writesToIfAlreadyActive) return { value, eligible: false, reason: ALREADY_ACQUIRED_REASON }
         const prerequisite = choice.requiresActive?.[index]
         if (prerequisite && !acquired.has(prerequisite)) {
           return { value, eligible: false, reason: PREREQUISITE_NOT_MET_REASON }

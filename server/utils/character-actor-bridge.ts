@@ -135,6 +135,7 @@ import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssem
 // through.
 import type { RulesFacet, RulesFacetChoice, RulesFacetLiteral } from '../../app/lib/content-rules'
 import {
+  extractSelectedToken,
   filterEligibleOptions,
   resolveChoiceTarget,
   selectionsFor,
@@ -363,6 +364,10 @@ export type ActorBridgeInput = {
   // module reads selectively, not exhaustively.
   lookupChoiceSet?: (id: string) => {
     writesTo?: string
+    // CHARACTER MECHANICS PHASE A5 -- mirrors `ChoiceSetDefinition.writesToIfAlreadyActive`
+    // (app/lib/rules/types.ts), relayed through for the same reason every other field on this
+    // inline shape already is.
+    writesToIfAlreadyActive?: string
     effect?: 'set-value' | 'activate-source'
     resultCap?: number
     distinct?: boolean
@@ -581,6 +586,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     // ...and what the ChoiceSet says that answer MEANS.
     const choiceSetInfo = input.lookupChoiceSet?.(resolvable.choiceSetId)
     const writesTo = choiceSetInfo?.writesTo
+    const writesToIfAlreadyActive = choiceSetInfo?.writesToIfAlreadyActive
 
     // D&D 2024 Character Rules Phase 2A.1 -- `effect: 'activate-source'`
     // (app/lib/rules/types.ts's own header has the full reasoning). Indexed
@@ -614,16 +620,29 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
 
     // The default, pre-Phase-2A.1 behavior -- sets the same boolean a facet
     // grant sets, unchanged for every choice authored before this phase.
-    for (const selected of validation.selected) {
-      const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
+    //
+    // CHARACTER MECHANICS PHASE A5 -- `writesToIfAlreadyActive`'s own conditional branch
+    // (app/lib/rules/types.ts's own header has the full reasoning: Keen Mind/Observant's real
+    // "proficiency UNLESS already held, then Expertise instead" shape). `wasAlreadyActive` is
+    // read BEFORE this call writes anything, over EVERY selected option first, so a choice with
+    // more than one selection (not Keen Mind's own count: 1, but kept correct for the general
+    // primitive) can never have an earlier iteration's own write change a LATER iteration's own
+    // "was it already active" answer within the SAME call.
+    const primaryTargets = validation.selected.map((selected) => (writesTo ? resolveChoiceTarget(writesTo, selected) : selected))
+    const wasAlreadyActive = primaryTargets.map((target) => isActive(target))
+    validation.selected.forEach((selected, index) => {
+      const primaryTarget = primaryTargets[index]!
+      const target = writesToIfAlreadyActive && wasAlreadyActive[index]
+        ? resolveChoiceTarget(writesToIfAlreadyActive, extractSelectedToken(writesTo, selected))
+        : primaryTarget
 
       if (input.knownDefinition && !input.knownDefinition(target)) {
         unresolvedGrants.push(target)
-        continue
+        return
       }
 
       values[target] = true
-    }
+    })
   }
 
   // CHOICE ELIGIBILITY PHASE 2B -- `values[id] === true` is already the

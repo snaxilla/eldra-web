@@ -256,7 +256,7 @@ function setAbility(key: AbilityKey, value: number | null) {
 // shows nothing to answer -- the Builder stays usable either way.
 const { data: choiceOptions } = await useFetch<{
   available: boolean
-  choiceSets?: Record<string, { prompt: string; label?: string; distinct?: boolean; maxPerOption?: number; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
+  choiceSets?: Record<string, { prompt: string; label?: string; distinct?: boolean; maxPerOption?: number; writesToIfAlreadyActive?: string; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
   optionLabels?: Record<string, string>
   // LANGUAGE CORPUS + POLICY PHASE -- the active package's own package-wide creation facts/
   // choices, relayed verbatim (see server/utils/world-rules-choice-options.ts).
@@ -277,9 +277,11 @@ const creationContext = computed<BuilderCreationContext>(() => {
       return set?.contentCategory ? { category: set.contentCategory, filter: set.contentFilter } : null
     },
     // P7 -- the package's own distinctness and per-option ceiling, the same rule the server applies.
+    // CHARACTER MECHANICS PHASE A5 -- relayed so the Builder judges Keen Mind's/Observant's
+    // own conditional-output choice by the same exemption the server applies.
     choiceSetRule: (choiceSetId) => {
       const set = sets[choiceSetId]
-      return set ? { distinct: set.distinct, maxPerOption: set.maxPerOption } : null
+      return set ? { distinct: set.distinct, maxPerOption: set.maxPerOption, writesToIfAlreadyActive: set.writesToIfAlreadyActive } : null
     },
     feats: catalogue.value?.feats ?? [],
     // D&D 2024 Character Rules P2 -- already fetched (the same /catalogue response), just threaded

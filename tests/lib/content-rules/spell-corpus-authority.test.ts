@@ -173,36 +173,41 @@ describe('P2 spell corpus authority', () => {
   // clause sits in a SECOND sentence the discovery filter never inspects -- correctly
   // represented by storing nothing) and College of Glamour's own Level-6 "innate" Command (a
   // flat, unconditional duplicate of the SAME spell its own "prepared" sibling already grants at
-  // the SAME level, not a second player-facing requirement). Keen Mind and Observant are
-  // re-verified directly against the real corpus PROSE (not just the structured
-  // skillProficiencies field) and confirmed to remain genuinely blocked: both carry a
-  // conditional "gain proficiency UNLESS already held, then Expertise instead" clause -- the
-  // same missing primitive as Gloom Stalker's own Iron Mind -- so neither is authored as a
-  // plain skill-proficiency choice, which would silently drop the real Expertise-on-repeat half
-  // of the rule. Moving the census from 654/601/18/35 to 654/609/10/35.
+  // the SAME level, not a second player-facing requirement). Moving the census from
+  // 654/601/18/35 to 654/609/10/35.
   //
-  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) -- independently
-  // correct for a Phase 3 release WITHOUT the separate, unfinished A5-A (conditional
-  // proficiency/Expertise) work: Warrior of Shadow's own Level-3 Darkness grant is now authored
-  // via the generic FixedSpellGrant.fundedByResource/slotFundingAllowed primitive
-  // (character-cast.ts's own resolveCastFunding), closing BOTH of that subclass's own sibling
-  // decisions at that (owner, level, flag) key (Minor Illusion AND Darkness -- see
+  // CHARACTER MECHANICS PHASE A5 -- +2 reclassify blocked -> implemented: Keen Mind and
+  // Observant, re-verified directly against the real corpus PROSE (not just the structured
+  // skillProficiencies field) -- both carry the identical "gain proficiency UNLESS already
+  // held, then Expertise instead" conditional-output clause, previously a reported STOP.
+  // Closed via the new, generic, class/feat-name-agnostic `choice:feat.skill-or-expertise`
+  // ChoiceSet (`ChoiceSetDefinition.writesToIfAlreadyActive`, app/lib/rules/types.ts's own
+  // header has the full reasoning), which genuinely implements the conditional write at
+  // runtime (character-actor-bridge.ts's own `applyChoice`), never merely a static choice
+  // declaration. Moving the census from 654/609/10/35 to 654/611/8/35.
+  //
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) -- the generic
+  // "spell usable only via a specific finite resource, never a normal slot" primitive
+  // `blk:subclass-spells`'s own reason text named as missing (FixedSpellGrant.fundedByResource/
+  // slotFundingAllowed, character-cast.ts's own resolveCastFunding) now exists. Warrior of
+  // Shadow's own Level-3 Darkness grant is authored with it (Focus-Point-funded, no slot
+  // fallback -- real RAW: Monks have no spell slots at all), closing BOTH of that subclass's own
+  // sibling decisions at that (owner, level, flag) key (Minor Illusion AND Darkness -- see
   // mandatory-decision-coverage.ts's own SIBLING-CARDINALITY GUARD header for why authoring one
-  // without the other would NOT have been enough). Keen Mind/Observant/Gloom Stalker's Iron Mind
-  // are UNCHANGED here (still genuinely blocked, exactly as 654/609/10/35 above states) -- this
-  // is a SEPARATE, independent +2/-2 movement from an entirely different decision pair, verified
-  // directly in an isolated worktree containing only the Phase 3 changes (the release-boundary
-  // audit computed these counts before asserting them, not the reverse). Moving the census from
-  // 654/609/10/35 to 654/611/8/35.
-  it('the Phase-0 decision census after Resource-Funded Spellcasting alone (A5-A conditional proficiency NOT included): 654 total, 611 implemented, 8 blocked, 35 optional', () => {
+  // without the other would NOT have been enough). Moving the census from 654/611/8/35 to
+  // 654/613/6/35. Archfey Patron's own Misty Step grant was already fully authored before this
+  // phase (only gaining the SAME funding metadata, not a new grant), so it does not shift this
+  // count; Psi Warrior's own Telekinetic Master remains blocked, deliberately deferred (see this
+  // phase's own report).
+  it('the Phase-0 decision census after Resource-Funded Spellcasting: 654 total, 613 implemented, 6 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
-    expect(counts.implemented).toBe(611)
-    expect(counts.blocked).toBe(8)
+    expect(counts.implemented).toBe(613)
+    expect(counts.blocked).toBe(6)
     expect(counts.optional).toBe(35)
   })
 

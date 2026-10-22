@@ -1776,6 +1776,20 @@
     "writesTo": "value:save.{selected}.proficient"
   },
   {
+    "id": "choice:feat.skill-or-expertise",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Skill Proficiency or Expertise",
+    "prompt": "Choose a skill. You gain proficiency in it, or Expertise if you already have proficiency.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "writesTo": "value:skill.{selected}.proficient",
+    "writesToIfAlreadyActive": "value:skill.{selected}.expertise"
+  },
+  {
     "id": "progression:class.skill-expertise",
     "kind": "progression",
     "category": "progression",
@@ -7046,6 +7060,26 @@
             "choiceSet": "choice:subclass.feature-option",
             "count": 1,
             "from": ["source:defensive-tactics.escape-the-horde", "source:defensive-tactics.multiattack-defense"]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:subclass.iron-mind",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Iron Mind",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 7,
+        "choices": [
+          {
+            "choiceSet": "choice:save.proficiency",
+            "count": 1,
+            "from": ["value:save.wis.proficient", "value:save.int.proficient", "value:save.cha.proficient"],
+            "requiresActive": [null, "value:save.wis.proficient", "value:save.wis.proficient"]
           }
         ]
       }

@@ -1330,6 +1330,23 @@ export type ChoiceSetDefinition = DefinitionCategorization & {
   // would name. Every existing `from.kind` (explicit/definitionsInCategory/
   // fromContentFacet) still requires `writesTo`, unchanged.
   writesTo?: string
+  // CHARACTER MECHANICS PHASE A5 -- the conditional-output counterpart to `writesTo` above,
+  // for the real XPHB shape neither `excludeIfAlreadyActive` nor a single `writesTo` can
+  // express: "choose one of N skills; if you lack proficiency in the chosen one, you gain
+  // proficiency in it, and if you already have proficiency in it, you gain Expertise in it"
+  // (Keen Mind, Observant). `excludeIfAlreadyActive` only ever NARROWS the offered pool -- it
+  // cannot change what picking an option DOES. This field names a SECOND DefinitionId
+  // TEMPLATE, same `{selected}` token convention as `writesTo`; when present, the bridge
+  // (character-actor-bridge.ts's own `applyChoice`) checks whether `writesTo`'s OWN resolved
+  // target is already active for a given selected option, and if so writes to THIS template's
+  // resolved target instead -- never both, never neither. Omitted (every ChoiceSet declared
+  // before this phase) means byte-identical old behavior: `writesTo`'s own target is always
+  // written, unconditionally. Only meaningful for `effect: 'set-value'` (the default) --
+  // `activate-source` has its own, separate SourceInstance-per-selection semantics this field
+  // does not touch. The condition is re-evaluated fresh on every derivation, exactly like every
+  // other Value in this engine (never a one-time snapshot frozen at acquisition) -- see that
+  // function's own header for why that is the correct, consistent choice here.
+  writesToIfAlreadyActive?: string
   // D&D 2024 Character Rules Phase 2A.1 -- how a validly-answered selection
   // is APPLIED, once `writesTo` (if any) has resolved each selected option
   // to a target DefinitionId. Optional, defaulting to `'set-value'`, which

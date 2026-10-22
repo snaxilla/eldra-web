@@ -35,6 +35,11 @@ export type ChoiceSetPresentation = {
   // answer by the same rule the server does. `distinct` absent means distinct (the pre-P7 rule).
   distinct?: boolean
   maxPerOption?: number
+  // CHARACTER MECHANICS PHASE A5 -- presence-only signal (string carried but never compared),
+  // relayed so the Builder exempts this ChoiceSet's own options from its cross-slot "already
+  // acquired" exclusion exactly as the server does (creation-choice-eligibility.ts's own
+  // `ChoiceSetRule`). Absent means the pre-A5 behavior, unchanged.
+  writesToIfAlreadyActive?: string
   // PHASE 2C.2B -- present ONLY for a CONTENT-backed ChoiceSet (its `from` is
   // `fromContentCatalogue`). Lets the Builder recognize a ContentRef choice from
   // the package's own declaration, never from its id or the answer's shape.
@@ -92,6 +97,7 @@ export async function getWorldRulesChoiceOptions(
         id: definition.id,
         prompt: definition.prompt,
         label: definition.label,
+        writesToIfAlreadyActive: definition.writesToIfAlreadyActive,
         ...(definition.distinct !== undefined ? { distinct: definition.distinct } : {}),
         ...(definition.maxPerOption !== undefined ? { maxPerOption: definition.maxPerOption } : {}),
         ...(definition.from.kind === 'fromContentCatalogue'

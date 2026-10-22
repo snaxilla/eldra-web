@@ -1753,9 +1753,15 @@ export async function confirmProgression(
     // `resolveCreationChoices`'s own key format (`feat:${choiceKey}:${choiceSetId}`) is unique per
     // acquisition, never per ChoiceSet alone.
     const isContentChoiceSetForCompleteness = (choiceSetId: string) => lookupContent(choiceSetId) != null
-    const choiceSetRuleForCompleteness = (choiceSetId: string): { distinct?: boolean, maxPerOption?: number } | null => {
+    // CHARACTER MECHANICS PHASE A5 -- relays `writesToIfAlreadyActive` too, so a feat-owned
+    // conditional-output choice (Keen Mind, Observant) is exempted from the cross-slot
+    // "already acquired" exclusion here exactly as create-v2.post.ts's own `choiceSetRule`
+    // (identical shape, same bug, same fix) exempts it at creation time.
+    const choiceSetRuleForCompleteness = (choiceSetId: string): { distinct?: boolean, maxPerOption?: number, writesToIfAlreadyActive?: string } | null => {
       const definition = lookupChoiceSet(choiceSetId)
-      return definition && definition.kind === 'choiceSet' ? { distinct: definition.distinct, maxPerOption: definition.maxPerOption } : null
+      return definition && definition.kind === 'choiceSet'
+        ? { distinct: definition.distinct, maxPerOption: definition.maxPerOption, writesToIfAlreadyActive: definition.writesToIfAlreadyActive }
+        : null
     }
     const newAcquisitionSlots = resolvedFeatAcquisitions.map((acquisition) => ({
       slot: `feat:${acquisition.choiceKey}`,

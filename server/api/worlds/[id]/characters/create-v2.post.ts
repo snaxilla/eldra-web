@@ -307,7 +307,10 @@ export default defineEventHandler(async (event) => {
     if (!(runtime.configured && runtime.ok)) return null
     const definition = runtime.runtime.registry.getById(choiceSetId)
     if (!definition || definition.kind !== 'choiceSet') return null
-    return { distinct: definition.distinct, maxPerOption: definition.maxPerOption }
+    // CHARACTER MECHANICS PHASE A5 -- relayed so a conditional-output choice (Keen Mind,
+    // Observant) is exempted from the cross-slot "already acquired" exclusion at creation
+    // time too, matching character-progression-plan.ts's own identical fix at progression time.
+    return { distinct: definition.distinct, maxPerOption: definition.maxPerOption, writesToIfAlreadyActive: definition.writesToIfAlreadyActive }
   }
   const contentDeclarations = declaredCreationContentChoices(baseSlots, contentSelectorOf)
   const contentKeys = new Set(contentDeclarations.map((declaration) => declaration.key))

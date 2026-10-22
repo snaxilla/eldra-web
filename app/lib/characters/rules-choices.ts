@@ -378,3 +378,32 @@ export function resolveChoiceTarget(writesTo: string, selected: DefinitionId): D
 
   return alreadyResolved ? selected : `${prefix}${selected}${suffix}`
 }
+
+// CHARACTER MECHANICS PHASE A5 -- the inverse of `resolveChoiceTarget` above, needed only by
+// `ChoiceSetDefinition.writesToIfAlreadyActive` (app/lib/rules/types.ts's own header has the
+// full reasoning: Keen Mind's/Observant's real "proficiency UNLESS already held, then Expertise
+// instead" shape, where the SAME selected option must resolve against TWO DIFFERENT templates).
+// Extracts the bare `{selected}` token FROM a value that may be either the bare token itself
+// ("athletics") or the PRIMARY template's own already-resolved form ("value:skill.athletics.
+// proficient") -- the identical two shapes `resolveChoiceTarget` already tolerates, by the same
+// prefix/suffix check, just run in reverse. Returns `selected` unchanged when `primaryWritesTo`
+// has no `{selected}` token, or when `selected` does not actually carry the primary template's
+// own prefix/suffix (never guesses, never throws) -- the caller's own `resolveChoiceTarget` call
+// against the SECONDARY template then behaves exactly as if a bare token had been authored
+// directly, so an author may keep using the established "from" convention (already-resolved,
+// fully-qualified ids, DefinitionId[]-typed) for a dual-template choice exactly like every other.
+export function extractSelectedToken(primaryWritesTo: string | undefined, selected: DefinitionId): DefinitionId {
+  if (!primaryWritesTo) return selected
+  const marker = primaryWritesTo.indexOf(SELECTED_TOKEN)
+  if (marker < 0) return selected
+
+  const prefix = primaryWritesTo.slice(0, marker)
+  const suffix = primaryWritesTo.slice(marker + SELECTED_TOKEN.length)
+
+  const isResolvedForm =
+    selected.startsWith(prefix)
+    && selected.endsWith(suffix)
+    && selected.length > prefix.length + suffix.length
+
+  return isResolvedForm ? selected.slice(prefix.length, selected.length - suffix.length) : selected
+}

@@ -2008,13 +2008,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           { slug: 'fear-xphb', flag: 'prepared', minLevel: 9 },
           { slug: 'greater-invisibility-xphb', flag: 'prepared', minLevel: 13 },
           { slug: 'seeming-xphb', flag: 'prepared', minLevel: 17 }
-        ]
-        // Gloom Stalker's own Level 7 "Iron Mind" (fixed Wisdom save proficiency, UNLESS
-        // already proficient, in which case a free Intelligence-or-Charisma choice instead)
-        // is a reported STOP, not an omission -- see this phase's own final report. No
-        // existing primitive represents a grant that is FIXED in one branch and a CHOICE in
-        // another, conditioned on the character's own prior state (`excludeIfAlreadyActive`
-        // only ever narrows an existing choice pool, never switches a fixed grant into one).
+        ],
+        // CHARACTER MECHANICS PHASE A5 -- Iron Mind (Level 7): "You gain proficiency in Wisdom
+        // saving throws. If you already have this proficiency, you instead gain proficiency in
+        // Intelligence or Charisma saving throws (your choice)." A prior phase's own comment here
+        // reported this as a STOP needing a new "fixed grant in one branch, choice in another"
+        // primitive -- re-examined: no new primitive is needed for the WIRING (`choice:save.
+        // proficiency`'s own existing `excludeIfAlreadyActive` + per-index `requiresActive`
+        // express it exactly, the same mechanism Resilient's save choice already relies on), and
+        // this row is left live because it is correct for the common case: a Gloom Stalker who
+        // has never separately gained Wisdom save proficiency gets it automatically here (proven
+        // by a real end-to-end acceptance test).
+        //
+        // HOWEVER -- proven by that SAME test, not assumed -- the "already proficient" branch
+        // does not reliably work: the only realistic path to prior Wisdom proficiency is the
+        // Resilient feat, and a feat's own choice-granted value is invisible to this subclass
+        // choice's eligibility check within the same derivation pass (character-actor-bridge.ts's
+        // own SLOT_ORDER runs species/class/subclass/background to completion BEFORE its feats
+        // loop even starts). This is a genuine, scoped, pre-existing ordering limitation, not
+        // something this phase may fix opportunistically (reordering SLOT_ORDER or adding a
+        // second resolution pass are both architectural STOP conditions) -- see mandatory-
+        // decision-coverage.ts's own `blk:subclass-proficiency-damage` for why this decision
+        // stays classified blocked despite this row existing, and this phase's own final report.
+        progression: ['progression:subclass.iron-mind']
       },
       // A4 -- HUNTER (Ranger). Hunter's Prey (Level 3, the SAME level this class selects its
       // subclass): "You gain one of the following feature options of your choice [Colossus
@@ -2912,20 +2928,33 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
-    // A4 -- KEEN MIND. Re-verified directly against the real corpus's own prose (the
-    // structured raw skill-choice field alone UNDER-represents the real rule): "If
-    // you LACK proficiency in the chosen skill, you gain proficiency in it, and if you
-    // ALREADY HAVE proficiency in it, you gain EXPERTISE in it." This is a genuine STOP, NOT a
-    // plain N-of-M skill-proficiency choice: the grant's own OUTPUT (proficiency vs.
-    // Expertise) depends on the character's own prior state for that SAME skill -- the exact
-    // same missing primitive as Gloom Stalker's own Iron Mind (a grant that is FIXED in one
-    // branch and something ELSE in another, conditioned on prior state). `excludeIfAlready
-    // Active` cannot represent this either (it only ever narrows a CHOICE pool, it cannot
-    // switch a grant's own OUTPUT kind). See this phase's own final report for the minimal
-    // proposed extension -- deliberately NOT authored as a plain skill-proficiency choice,
-    // which would silently drop the real Expertise-on-repeat half of the rule.
+    // CHARACTER MECHANICS PHASE A5 -- KEEN MIND. Re-verified directly against the real corpus's
+    // own prose: "Choose Arcana, History, Investigation, Nature, or Religion. If you LACK
+    // proficiency in the chosen skill, you gain proficiency in it, and if you ALREADY HAVE
+    // proficiency in it, you gain EXPERTISE in it." Previously a reported STOP (A4): neither a
+    // plain N-of-M skill-proficiency choice nor `excludeIfAlreadyActive` (which only ever
+    // narrows a CHOICE pool, never switches a grant's own OUTPUT kind) could represent a grant
+    // whose OUTPUT depends on the character's own prior state for the SAME chosen skill. Closed
+    // this phase via the new, generic, class/feat-name-agnostic `choice:feat.skill-or-expertise`
+    // ChoiceSet (`ChoiceSetDefinition.writesToIfAlreadyActive`, app/lib/rules/types.ts's own
+    // header has the full reasoning) -- the SAME primitive Observant's own identical shape below
+    // reuses. The condition is re-checked fresh on every derivation (never a one-time snapshot
+    // frozen at acquisition), consistent with every other Value in this engine.
     'keen-mind-xphb': { // Keen Mind
-      sources: ['source:asi.increase.int']
+      sources: ['source:asi.increase.int'],
+      choices: [
+        {
+          choiceSet: 'choice:feat.skill-or-expertise',
+          count: 1,
+          from: [
+            'value:skill.arcana.proficient',
+            'value:skill.history.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.religion.proficient'
+          ]
+        }
+      ]
     },
     'lightly-armored-xphb': { // Lightly Armored
       grants: [
@@ -3011,16 +3040,26 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
-    // A4 -- OBSERVANT. Re-verified directly: the IDENTICAL proficiency-OR-Expertise
-    // conditional shape Keen Mind's own header above describes ("If you lack proficiency...
-    // you gain proficiency... if you already have proficiency... you gain Expertise") --
-    // the SAME genuine STOP, never authored as a plain skill-proficiency choice.
+    // CHARACTER MECHANICS PHASE A5 -- OBSERVANT. Re-verified directly: the IDENTICAL
+    // proficiency-OR-Expertise conditional shape Keen Mind's own header above describes
+    // ("Choose Insight, Investigation, or Perception. If you lack proficiency... you gain
+    // proficiency... if you already have proficiency... you gain Expertise"), closed via the
+    // SAME `choice:feat.skill-or-expertise` ChoiceSet.
     'observant-xphb': { // Observant
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis']
+        },
+        {
+          choiceSet: 'choice:feat.skill-or-expertise',
+          count: 1,
+          from: [
+            'value:skill.insight.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.perception.proficient'
+          ]
         }
       ]
     },

@@ -685,6 +685,38 @@ function subclassFeatureOptionCovered(d: DecisionRecord): boolean {
   return ref !== undefined && subclassProgression(d.owner.slug).includes(ref)
 }
 
+// CHARACTER MECHANICS PHASE A5 -- Gloom Stalker's own Iron Mind (Level 7): "You gain
+// proficiency in Wisdom saving throws. If you already have this proficiency, you instead gain
+// proficiency in Intelligence or Charisma saving throws (your choice)." Re-examined in full, with
+// a real end-to-end acceptance test (tests/server/utils/character-progression-conditional-grant-
+// acceptance.test.ts) proving BOTH branches directly -- NOT a bare classification change.
+//
+// RESULT: half-correct, deliberately NOT reclassified as implemented. The "never proficient"
+// branch genuinely works, with no new primitive: `choice:save.proficiency`'s own existing
+// `excludeIfAlreadyActive` drops Wisdom's option once already proficient, and its existing
+// per-index `requiresActive` gates Intelligence/Charisma on Wisdom's own proficiency already
+// being active -- wired via a real, dedicated Progression row (`progression:subclass.iron-mind`,
+// referenced from gloom-stalker-xphb's own facet) and left live, since it is correct and harmless
+// for the common case (a Gloom Stalker who never separately gained Wisdom proficiency).
+//
+// The "already proficient" branch -- the entire POINT of this rule's complexity -- does NOT
+// reliably work, discovered by the acceptance test, not assumed: the only realistic real-corpus
+// path to "already proficient in Wisdom saves before Level 7" is the Resilient feat (taken via
+// ASI). `character-actor-bridge.ts`'s own `deriveWithProgression` resolves ALL FOUR SLOT_ORDER
+// slots (species/class/subclass/background) to completion BEFORE looping over `blueprint.feats`
+// at all (see SLOT_ORDER + the feats loop immediately after it) -- a single forward pass, no
+// interleaving by acquisition level. A feat's own CHOICE-granted value (as opposed to a direct
+// `grants` entry, which IS pre-passed) is therefore invisible to `isActive` for ANY earlier-in-
+// SLOT_ORDER choice's own eligibility check, including subclass's, regardless of which level the
+// feat was actually taken at. This is a genuine, pre-existing, scoped ordering limitation of the
+// bridge's single-pass architecture -- not introduced by this phase, not unique to Iron Mind, and
+// not safe to fix opportunistically here: making a feat's choice-output visible to an earlier
+// slot would need either reordering SLOT_ORDER relative to feats (risking silently changing
+// `isActive` results for other, already-correct existing choices never characterized against
+// that reordering) or a second, topologically-aware resolution pass (a new generic evaluator) --
+// both are architectural STOP conditions per this phase's own brief, reported here rather than
+// guessed at. See this phase's own final report for the proposed acceptance criteria.
+
 export const COVERAGE_RULES: readonly CoverageRule[] = [
   // ------------------------------------------------------------------ implemented
   {
@@ -899,10 +931,40 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'spell-choice') && d.source === 'Spellcasting' && d.detail === 'spellbook-growth' && spellbookGrowthCovered(d)
   },
+  // CHARACTER MECHANICS PHASE A5 COMPLETION -- re-verified directly against the real XPHB class
+  // feature text (not just the Phase-0 discovery's own structural guess) for all three named
+  // residuals, to confirm the blocker is a genuine missing primitive and not merely imprecise
+  // wording:
+  //   - Magical Secrets (Bard L10, class-bard.json): NOT a separate +N spell pool as the
+  //     discovery layer's shape ("broad-list prepared increase") might suggest. The real text is
+  //     "whenever you reach a Bard level... and the Prepared Spells number... increases, you can
+  //     choose any of your new prepared spells from the Bard/Cleric/Druid/Wizard lists" -- a
+  //     LEVEL-CONDITIONAL WIDENING of the EXISTING main prepared-spell SpellRequirement's own
+  //     classList filter (unrestricted below Level 10, four-class from Level 10 on), never a
+  //     second, additional requirement with its own count. SpellRequirement.filter is fixed per
+  //     requirement for its whole lifetime; no existing primitive lets one requirement's own
+  //     filter vary by character level. A second, independent requirement cannot substitute for
+  //     this without either double-counting against the main pool's own totalByLevel or needing
+  //     the two requirements to subtract against each other, which target-state planning does
+  //     not support. Genuinely blocked on a new primitive (a level-keyed filter override), not a
+  //     missing authoring.
+  //   - Spell Mastery (Wizard L18) / Signature Spells (Wizard L20), class-wizard.json: both read
+  //     "choose a spell... in your spellbook" -- the candidate pool is THIS CHARACTER'S OWN
+  //     already-learned spells, not a static content filter (class/level/school). Every existing
+  //     selector (SpellRequirement.filter, ChoiceSetDefinition's from/fromContentFacet/
+  //     fromContentCatalogue) resolves against authored CONTENT, never against a character's own
+  //     prior acquisition state -- there is no "choose from what I already know" selector kind at
+  //     all. Confirmed: genuinely blocked on a new selector primitive, not a new acquisition
+  //     (the features grant no new spell -- they flag an existing one as always-prepared/
+  //     limited-free-cast, a presentation/mechanics fact these two features' own real text never
+  //     asks Phase 0 to track as an acquisition anyway).
+  // None of the three is implemented here -- per this task's own "do not create a one-off
+  // class-specific mechanic, do not force the census to 100%" instruction, inventing either
+  // missing primitive for exactly one class's own feature would be exactly that.
   {
     id: 'blk:class-spell-choice-other',
     status: 'blocked',
-    reason: 'Spell choices the generic acquisition pipeline does not model: Magical Secrets (choosing from ANY class\'s spell list, not the owning class\'s own classList filter), Spell Mastery / Signature Spells (flagging an ALREADY-KNOWN spellbook spell as always-prepared/free-cast, not a new acquisition at all). Confirmed residual by P3.5\'s own audit, not reclassified.',
+    reason: 'Spell choices the generic acquisition pipeline does not model, re-verified directly against the real XPHB text: Magical Secrets (Bard L10 -- a LEVEL-CONDITIONAL WIDENING of the existing main prepared-spell requirement\'s own classList filter, which no requirement can vary by character level today, never a separate +N pool), Spell Mastery / Signature Spells (Wizard L18/20 -- choosing FROM this character\'s own already-known spellbook, a "pick from what I already have" selector kind that does not exist; neither feature grants a new spell at all, each only flags an existing one as always-prepared/limited-free-cast). Confirmed residual, not reclassified.',
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'spell-choice')
       && !(d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic'))
@@ -1044,7 +1106,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'blk:subclass-proficiency-damage',
     status: 'blocked',
-    reason: 'Gloom Stalker\'s own Iron Mind (Level 7): proficiency in Wisdom saving throws, UNLESS already proficient, in which case a free choice between Intelligence or Charisma instead. No vocabulary for a grant that is FIXED in one branch and a CHOICE in another, conditioned on prior state.',
+    // CHARACTER MECHANICS PHASE A5 -- NARROWED, not removed: Draconic Sorcery's own Elemental
+    // Affinity is reclassified onto `impl:subclass-damage-type-choice` above (A4), but Gloom
+    // Stalker's own Iron Mind is deliberately NOT reclassified, despite a real, working, tested
+    // Progression row now existing for it -- see this file's own long comment above
+    // SUBCLASS_SAVE_PROFICIENCY_CHOICE_PROGRESSION for the full re-examination and the real
+    // acceptance test that found this. Short version: the "never proficient" branch works; the
+    // "already proficient" branch -- the entire point of the rule -- does not, because a feat's
+    // own choice-granted value is invisible to an earlier-in-SLOT_ORDER subclass choice within
+    // the SAME derivation pass (character-actor-bridge.ts's own SLOT_ORDER-then-feats ordering).
+    // Marking this `implemented` would overclaim a feature whose defining behavior does not work.
+    reason: 'Gloom Stalker\'s own Iron Mind (Level 7): proficiency in Wisdom saving throws, UNLESS already proficient, in which case a free choice between Intelligence or Charisma instead. A real Progression row exists and correctly handles the "never proficient" branch (tested), but the "already proficient" branch cannot be proven correct: the only realistic trigger is the Resilient feat, and a feat\'s own choice output is invisible to subclass-slot eligibility within the same single-pass derivation (character-actor-bridge.ts\'s SLOT_ORDER runs to completion before the feats loop starts) -- a confirmed, scoped, pre-existing ordering limitation, not a vocabulary gap.',
     ledgerIds: [],
     matches: (d) => is(d, 'subclass', 'proficiency-choice') || (is(d, 'subclass', 'damage-type-choice') && !subclassDamageTypeChoiceCovered(d)) || is(d, 'class', 'damage-type-choice')
   },
@@ -1154,20 +1226,18 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // rule would match zero -- a permanently-empty blocked rule is dead code, not a real fail-closed
   // guard (established precedent elsewhere in this file). A future feat with an unrepresentable
   // spell shape still fails closed via `classifyDecision`'s own zero-match default.
-  // A4 -- REMAINING MANDATORY DECISION CLOSURE re-verified Keen Mind and Observant directly
-  // against the real corpus prose (not just the structured `skillProficiencies.choose` field
-  // discovery reads): BOTH carry the identical "gain proficiency UNLESS you already have it,
-  // in which case gain Expertise instead" conditional-output clause -- a genuine STOP (the
-  // same missing primitive as Gloom Stalker's own Iron Mind below), never authored as a plain
-  // skill-proficiency choice, which would silently drop the real Expertise-on-repeat half of
-  // the rule. This rule therefore still matches real decisions and stays exactly as it was.
-  {
-    id: 'blk:feat-nested-proficiency',
-    status: 'blocked',
-    reason: 'Feat proficiency that no facet grants or offers: Keen Mind/Observant\'s own conditional "proficiency UNLESS already held, then Expertise instead" clause (no vocabulary for an output that depends on prior state), Resilient saving throws, and unrecognized shapes. Fail closed.',
-    ledgerIds: [],
-    matches: (d) => d.owner.kind === 'feat' && (d.family === 'proficiency-choice' || d.family === 'proficiency-grant') && !proficiencyCovered(d)
-  },
+  // CHARACTER MECHANICS PHASE A5 -- `blk:feat-nested-proficiency` is REMOVED, not merely
+  // narrowed: Keen Mind and Observant (its real last two matches) are now authored via the new,
+  // generic, class/feat-name-agnostic `choice:feat.skill-or-expertise` ChoiceSet
+  // (`ChoiceSetDefinition.writesToIfAlreadyActive`, app/lib/rules/types.ts), which genuinely
+  // implements the real "gain proficiency UNLESS already held, then Expertise instead"
+  // conditional-output clause at runtime (character-actor-bridge.ts's own `applyChoice`), not
+  // merely a static choice declaration -- `impl:proficiency-facet`'s own existing
+  // `proficiencyCovered` check already recognized a feat-owned facet, so this needed no
+  // coverage-rule change at all. The rule would now match zero real decisions permanently -- a
+  // `blocked` rule may never carry `allowZero` (this file's own established contract), so it is
+  // deleted rather than kept alive artificially. A future feat with an unrecognized proficiency
+  // shape still fails closed via `classifyDecision`'s own zero-match default.
   // A3 WORKSTREAM 5 -- `blk:subclass-casting-class` ("a third-caster slot table is not
   // defined") is REMOVED, not merely narrowed: `table:spellcasting.slots_third` exists (A2
   // WORKSTREAM 4) and is now wired to BOTH real owning subclasses (Eldritch Knight, Arcane

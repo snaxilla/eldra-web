@@ -146,14 +146,21 @@ describe('P1 coverage bite tests (the real facets decide; a mismatch never cover
   })
 
   // D&D 2024 Character Rules A1 -- Resilient's own saving-throw choice is now authored (choice:
-  // save.proficiency on its own facet) and implemented; Keen Mind's real "proficiency-OR-
-  // Expertise" dual-output shape still needs a genuinely new primitive this phase does not invent
-  // (see mandatory-decisions.ts's own `skill-from` detail fix), so it remains correctly blocked.
-  it('a feat choice with no facet offering it stays blocked (Keen Mind skills); Resilient is now implemented', () => {
+  // save.proficiency on its own facet) and implemented. CHARACTER MECHANICS PHASE A5 -- Keen
+  // Mind's own real "proficiency-OR-Expertise" dual-output shape (this test's own prior example
+  // of a genuinely unrepresentable feat choice) is now closed via the new, generic
+  // `choice:feat.skill-or-expertise` ChoiceSet (`ChoiceSetDefinition.writesToIfAlreadyActive`),
+  // so this demonstration moves to a synthetic feat choice no real facet offers (mirroring this
+  // file's own fictionalFeat precedent above) to keep proving the fail-closed default.
+  it('a feat choice with no facet offering it stays blocked; Resilient and Keen Mind are now implemented', () => {
     const resilient = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'resilient-xphb' && d.family === 'proficiency-choice')
     const keenMind = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'keen-mind-xphb' && d.family === 'proficiency-choice')
     expect(resilient && classifyDecision(resilient).status).toBe('implemented')
-    expect(keenMind && classifyDecision(keenMind).status).toBe('blocked')
+    expect(keenMind && classifyDecision(keenMind).status).toBe('implemented')
+
+    const fictionalFeat = { kind: 'feat' as const, slug: 'no-such-feat-xphb', name: 'No Such Feat' }
+    const unoffered = decision({ owner: fictionalFeat, family: 'proficiency-choice', detail: 'skill-from:arcana|history', cardinality: 1 })
+    expect(classifyDecision(unoffered).status).toBe('blocked')
   })
 })
 

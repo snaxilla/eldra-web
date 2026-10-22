@@ -133,21 +133,26 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   // longer brings an UNRESOLVABLE decision at this structural layer -- the real spell answer is
   // still required, just by the MECHANICAL authority (planSpellAcquisition), not by Phase 0. D&D
   // 2024 Character Rules A1 -- Ritual Caster (this test's own former example) is now implemented
-  // too (`impl:feat-spell-ritual-caster`); Keen Mind remains genuinely blocked -- re-verified
-  // directly against the real corpus prose this phase (A4), its own "gain proficiency UNLESS you
-  // already have it, in which case gain Expertise instead" clause needs a genuinely new primitive
-  // (a grant whose OUTPUT depends on prior state) this phase does not invent, the SAME gap as
-  // Gloom Stalker's own Iron Mind -- so it proves the SAME "a feat acquired in the transition
-  // brings its own nested decisions" mechanism this test originally existed to prove.
-  it('a feat acquired in the transition brings its own nested decisions (Keen Mind)', () => {
-    expect(prog('fighter-xphb', 3, 4, null, ['keen-mind-xphb']).some((u) => u.owner.slug === 'keen-mind-xphb')).toBe(true)
+  // too (`impl:feat-spell-ritual-caster`). CHARACTER MECHANICS PHASE A5 -- Keen Mind's own
+  // "gain proficiency UNLESS already held, then Expertise instead" clause is now implemented too,
+  // via the new, generic `choice:feat.skill-or-expertise` ChoiceSet -- there is no longer any
+  // feat-owned decision left blocked anywhere in the real corpus (re-verified live), so this test
+  // moves to the SAME positive-path demonstration the Fey-Touched test below already uses.
+  it('a feat acquired in the transition brings its own nested decisions, now resolved (Keen Mind)', () => {
+    expect(prog('fighter-xphb', 3, 4, null, ['keen-mind-xphb']).some((u) => u.owner.slug === 'keen-mind-xphb')).toBe(false)
   })
   it('a feat whose own nested spell decisions are now implemented owns nothing unrecordable (Fey-Touched)', () => {
     expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(false)
   })
-  // CHARACTER MECHANICS PHASE A5, Phase 3 -- Warrior of Shadow's own Level-3 resource-gated
-  // Darkness grant is now authored via the generic FixedSpellGrant.fundedByResource/
-  // slotFundingAllowed primitive, so this subclass owns nothing unrecordable here either.
+  // A4 -- Battle Master (this test's own prior example) was fully representable at this
+  // structural layer (Combat Superiority), so this moved to Warrior of Shadow (Monk): its own
+  // Level-3 resource-gated Darkness grant was a genuine STOP (no generic primitive for a spell
+  // usable only via a specific finite resource pool, never a normal slot). CHARACTER MECHANICS
+  // PHASE A5, Phase 3 -- that primitive now exists (FixedSpellGrant.fundedByResource/
+  // slotFundingAllowed, character-cast.ts's own resolveCastFunding), and Warrior of Shadow's own
+  // Darkness grant is authored with it (Focus-Point-funded, no slot fallback -- Monks have no
+  // spell slots at all), so this subclass now owns nothing unrecordable here either, mirroring
+  // Battle Master's own precedent exactly.
   it('a subclass chosen in this transition is the one whose decisions apply', () => {
     expect(prog('monk-xphb', 2, 3, null)).toEqual([])
     expect(prog('monk-xphb', 2, 3, 'warrior-of-shadow-xphb')).toEqual([])

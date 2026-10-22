@@ -132,6 +132,20 @@ export type CharacterAction = ContentAction & {
   // multiclass-aware `getCharacterActions` could populate differently
   // without changing the pure scaling resolver itself at all.
   characterLevel?: number
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+  // present ONLY for spell actions, `[]` when this spell has no resource-
+  // funding option at all (every spell before this phase, and the vast
+  // majority of the corpus after it). Built by intersecting
+  // `getDerivedCharacter`'s own `spellFunding` (keyed by slug, scanned from
+  // every ACTIVE facet's `fixedSpellGrants[].fundedByResource` --
+  // character-actor-bridge.ts's own doc comment) against THIS spell's own
+  // resolved `ref.slug` -- so a resource-funding fact only ever reaches a
+  // spell this character actually, authoritatively has prepared/known,
+  // never merely "some facet somewhere names this slug." `undefined` for a
+  // custom/homebrew spell (no `ref.slug` to match against at all) --
+  // distinct from `[]` ("resolved, but no funding option"), mirroring this
+  // type's own existing `undefined`-vs-`null` convention for `spellMechanics`.
+  fundingOptions?: { resourceId: string; slotFundingAllowed: boolean }[]
 }
 
 export type CharacterActionsResult =
@@ -254,6 +268,9 @@ export async function getCharacterActions(
   const meleeBonus = findNumber(byCategory, MELEE_ATTACK_BONUS_ID)
   const rangedBonus = findNumber(byCategory, RANGED_ATTACK_BONUS_ID)
   const spellAttackBonus = findNumber(byCategory, SPELL_ATTACK_BONUS_ID)
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- see CharacterAction's own
+  // `fundingOptions` doc comment.
+  const spellFunding = derived.available ? derived.derived.spellFunding : {}
   const spellSaveDc = findNumber(byCategory, SPELL_SAVE_DC_ID)
   const spellcastingAbilityMod = findNumber(byCategory, SPELLCASTING_ABILITY_MOD_ID)
   const characterLevel = findNumber(byCategory, CHARACTER_LEVEL_ID) ?? 1
@@ -312,6 +329,8 @@ export async function getCharacterActions(
       ? resolved
       : [{ name: spell.title, category: 'spell' as const, actionType: 'Spell' }]
 
+    const fundingOptions = spell.ref?.slug ? (spellFunding[spell.ref.slug] ?? []) : undefined
+
     for (const action of spellActions) {
       actions.push({
         ...action,
@@ -320,7 +339,8 @@ export async function getCharacterActions(
         saveDc: spellSaveDc,
         spellMechanics,
         healingAbilityModifier: spellcastingAbilityMod,
-        characterLevel
+        characterLevel,
+        fundingOptions
       })
     }
   }

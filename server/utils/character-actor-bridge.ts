@@ -308,6 +308,19 @@ export type ActorBridgeResult = {
   // mirroring how a duplicate `facet.sources` entry already behaves
   // (two identical SourceInstances, not an error).
   acquiredResourceIds: DefinitionId[]
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- RESOURCE-FUNDED CASTING.
+  // Keyed by spell SLUG (a FixedSpellGrant's own `slug`, never a
+  // DefinitionId -- spells are content, not Rules Definitions). Each entry
+  // names a resource that can pay for Casting that spell instead of a
+  // spell slot, collected from every active facet's own
+  // `fixedSpellGrants[].fundedByResource` exactly like `acquiredResourceIds`
+  // is collected from `facet.resources` -- PURE, re-derived fresh every
+  // read, never persisted. Says nothing about whether this character
+  // actually KNOWS/PREPARES this spell at all (that remains
+  // `resolveFixedSpellGrants`'s own job) -- a caller with registry access
+  // (character-derived.ts) is expected to intersect this against the
+  // character's own actually-resolved spell list before trusting it.
+  spellResourceFunding: Record<string, { resourceId: DefinitionId; slotFundingAllowed: boolean }[]>
 }
 
 export type ActorBridgeInput = {
@@ -491,6 +504,14 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   // declared by two different facets/rows (unusual, but not forbidden)
   // still produces one entry, not a duplicate.
   const acquiredResourceIds = new Set<DefinitionId>()
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- see ActorBridgeResult's own
+  // `spellResourceFunding` doc comment. Keyed by spell SLUG (not
+  // DefinitionId -- a FixedSpellGrant names a content slug, the same
+  // vocabulary `resolveFixedSpellGrants` already uses, never a Rules
+  // Definition id), each entry an array because a future spell could in
+  // principle be funded by more than one resource across different active
+  // facets -- today's corpus only ever has one.
+  const spellResourceFunding = new Map<string, { resourceId: DefinitionId; slotFundingAllowed: boolean }[]>()
 
   // --- Ability scores: the player's own data, copied verbatim ------------
   // Absent scores are left absent rather than defaulted to 10 here. The
@@ -658,6 +679,28 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
         continue
       }
       acquiredResourceIds.add(resourceId)
+    }
+
+    // CHARACTER MECHANICS PHASE A5, Phase 3 -- RESOURCE-FUNDED CASTING.
+    // Re-derived fresh from whichever facets are active THIS read, exactly
+    // like `acquiredResourceIds` immediately above -- never persisted, so a
+    // repin/subclass change takes effect with nothing to migrate. Does NOT
+    // validate `requiresActive`/`minLevel` gating here -- this file's own
+    // established split (design decision: "structural read here, registry-
+    // aware resolution downstream") leaves windowed/gated resolution to the
+    // SAME place every other FixedSpellGrant fact is resolved
+    // (resolveFixedSpellGrants); this loop only answers "if this character
+    // ends up knowing/preparing this spell at all, what funds it," mirroring
+    // `facet.resources`' own unconditional-per-active-facet posture.
+    for (const grant of facet.fixedSpellGrants ?? []) {
+      if (!grant.fundedByResource) continue
+      if (input.knownDefinition && !input.knownDefinition(grant.fundedByResource)) {
+        unresolvedGrants.push(grant.fundedByResource)
+        continue
+      }
+      const existing = spellResourceFunding.get(grant.slug) ?? []
+      existing.push({ resourceId: grant.fundedByResource, slotFundingAllowed: grant.slotFundingAllowed !== false })
+      spellResourceFunding.set(grant.slug, existing)
     }
 
     for (const choice of facet.choices ?? []) {
@@ -912,6 +955,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     pendingChoices,
     unresolvedGrants,
     contentChoices,
-    acquiredResourceIds: [...acquiredResourceIds]
+    acquiredResourceIds: [...acquiredResourceIds],
+    spellResourceFunding: Object.fromEntries(spellResourceFunding)
   }
 }

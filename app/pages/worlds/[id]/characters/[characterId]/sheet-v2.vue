@@ -557,6 +557,10 @@ type CastResponse = {
   roll?: RollEventRecord
   saveContext?: CastSaveContext
   spellcasting?: { spells: unknown[]; expendedSlots: Record<string, number> }
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- present ONLY for a
+  // RESOURCE-funded Cast, mutually exclusive with `spellcasting` above
+  // (server/utils/character-cast.ts's own `CastResourceContext`).
+  resourceContext?: { resourceId: string; max: number; expended: number; remaining: number }
 }
 
 const SAVE_ABILITY_LABELS: Record<string, string> = {
@@ -575,7 +579,13 @@ function describeSaveContext(actionName: string, saveContext: CastSaveContext): 
 // independently re-derives and re-verifies both against this character's
 // own authoritative state; the page is a pass-through, exactly like it
 // already is for `actionId`/`intent`.
-async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?: number, choices?: Record<string, string>) {
+async function postCast(
+  actionId: string,
+  intent: 'cast' | 'damage',
+  castLevel?: number,
+  choices?: Record<string, string>,
+  fundingResourceId?: string
+) {
   if (castPending.value) return
   castPending.value = true
   castError.value = ''
@@ -586,7 +596,7 @@ async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?:
   try {
     const response = await $fetch<CastResponse>(
       `/api/worlds/${worldId.value}/characters/${characterId.value}/cast`,
-      { method: 'POST', body: { actionId, intent, castLevel, choices, visibility: rollVisibility.value } }
+      { method: 'POST', body: { actionId, intent, castLevel, choices, fundingResourceId, visibility: rollVisibility.value } }
     )
     // Feeds the SAME animation-queue-then-history pipeline `requestRoll`
     // uses for its own POST .../rolls response -- the Roll Tray needs no
@@ -613,6 +623,15 @@ async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?:
     if (response.spellcasting) {
       sheet.spellcastingExpendedSlots.value = response.spellcasting.expendedSlots
     }
+
+    // CHARACTER MECHANICS PHASE A5, Phase 3 -- a RESOURCE-funded Cast's
+    // authoritative post-expenditure state, applied through the SAME
+    // generic override machinery the Resource Orbs' own expend/restore
+    // mutations already use (`sheet.setResourceOverride`) -- never a
+    // second, drifting resource-presentation path.
+    if (response.resourceContext) {
+      sheet.setResourceOverride(response.resourceContext.resourceId, response.resourceContext.expended)
+    }
   } catch (caught: any) {
     castError.value = caught?.data?.statusMessage || caught?.statusMessage || 'Failed to cast this spell'
   } finally {
@@ -620,12 +639,12 @@ async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?:
   }
 }
 
-function castSpell({ actionId, castLevel, choices }: { actionId: string; castLevel?: number; choices?: Record<string, string> }) {
-  postCast(actionId, 'cast', castLevel, choices)
+function castSpell({ actionId, castLevel, choices, fundingResourceId }: { actionId: string; castLevel?: number; choices?: Record<string, string>; fundingResourceId?: string }) {
+  postCast(actionId, 'cast', castLevel, choices, fundingResourceId)
 }
 
-function rollSpellDamage({ actionId, castLevel, choices }: { actionId: string; castLevel?: number; choices?: Record<string, string> }) {
-  postCast(actionId, 'damage', castLevel, choices)
+function rollSpellDamage({ actionId, castLevel, choices, fundingResourceId }: { actionId: string; castLevel?: number; choices?: Record<string, string>; fundingResourceId?: string }) {
+  postCast(actionId, 'damage', castLevel, choices, fundingResourceId)
 }
 
 // Phase 4B.7 -- the Roll Tray's manual dice rack. Same visibility, same
@@ -677,6 +696,23 @@ const {
   encounter,
   conditions
 } = sheet
+
+// CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+// `characterResources` is `DerivedResource[]` (server/utils/character-derived.ts),
+// whose `label` is OPTIONAL; CharacterActionsPanel.vue's own funding picker
+// needs a required `label` to render a pill (cast-funding.ts's own
+// `CharacterResourceView`). Normalized at this boundary, matching the
+// project's own established "Directus returns a looser shape than the UI
+// needs; normalize at the call site" convention (see normalizeMap/normalizeUser).
+const actionsCharacterResources = computed(() =>
+  characterResources.value.map((resource) => ({
+    id: resource.id,
+    label: resource.label ?? resource.id,
+    max: resource.max,
+    expended: resource.expended,
+    remaining: resource.remaining
+  }))
+)
 
 // ---------------------------------------------------------------------------
 // Notes -- state and saving only; the pure module owns the shape. The one
@@ -1328,6 +1364,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
                 :rolling="rollPending"
                 :casting="castPending"
                 :slot-levels="slotLevels"
+                :character-resources="actionsCharacterResources"
                 @resolve="mutations.combat.resolve"
                 @attack="rollActionAttack"
                 @damage="rollActionDamage"

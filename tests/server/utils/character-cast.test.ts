@@ -36,7 +36,8 @@ const {
   assembleCharacterMock, getWorldRuntimeMock,
   loadSpellcastingMock, saveSpellcastingMock,
   createSpellAttackRollEventMock, createSpellDamageRollEventMock, createSpellHealingRollEventMock,
-  broadcastRollEventMock, getDerivedCharacterOverrideMock
+  broadcastRollEventMock, getDerivedCharacterOverrideMock,
+  expendResourceAuthoritativelyMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -54,7 +55,14 @@ const {
   // through the normal blueprint/real-engine pipeline every OTHER test in
   // this file uses. `undefined` (the default) means "defer to the real
   // getDerivedCharacter" -- only that one describe block ever sets it.
-  getDerivedCharacterOverrideMock: vi.fn(() => undefined as unknown)
+  getDerivedCharacterOverrideMock: vi.fn(() => undefined as unknown),
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- the resource-funded utility-
+  // cast counterpart of `saveSpellcastingMock`, standing in for the real
+  // atomic resource writer (character-resource-atomic.ts, which needs a
+  // real/disposable Postgres instance -- see
+  // tests/integration/character-cast-resource-funding.integration.test.ts
+  // for the real-Postgres counterpart of these same scenarios).
+  expendResourceAuthoritativelyMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -81,6 +89,10 @@ vi.mock('../../../server/utils/character-spellcasting', () => ({
   saveCharacterSpellcasting: saveSpellcastingMock
 }))
 
+vi.mock('../../../server/utils/character-resources', () => ({
+  expendResourceAuthoritatively: expendResourceAuthoritativelyMock
+}))
+
 vi.mock('../../../server/utils/roll-events', () => ({
   createSpellAttackRollEvent: createSpellAttackRollEventMock,
   createSpellDamageRollEvent: createSpellDamageRollEventMock,
@@ -102,6 +114,7 @@ import {
   castSpellAutomaticDamage,
   castSpellSave,
   castSpellHeal,
+  castSpellUtility,
   rollIndependentSpellDamage
 } from '../../../server/utils/character-cast'
 import rows from '../../lib/content-presentation/fixtures/5etools-real-rows.json'
@@ -179,6 +192,10 @@ const CHROMATIC_ORB_MECHANICS = resolveDnd5eSpellMechanics(spells['Chromatic Orb
 const SHIELD_MECHANICS = resolveDnd5eSpellMechanics(spells.Shield)
 const ACID_SPLASH_MECHANICS = resolveDnd5eSpellMechanics(spells['Acid Splash'])
 const HOLD_PERSON_MECHANICS = resolveDnd5eSpellMechanics(spells['Hold Person'])
+// CHARACTER MECHANICS PHASE A5 -- real corpus rows (5etools-real-rows.json), resolveDnd5eSpellMechanics's
+// own explicit UTILITY_CAST_SUPPORTED_SPELLS allowlist, never a hand-built fixture.
+const MISTY_STEP_MECHANICS = resolveDnd5eSpellMechanics(spells['Misty Step'])
+const DARKNESS_MECHANICS = resolveDnd5eSpellMechanics(spells.Darkness)
 
 beforeEach(() => {
   assembleCharacterMock.mockReset()
@@ -191,6 +208,7 @@ beforeEach(() => {
   broadcastRollEventMock.mockReset()
   getDerivedCharacterOverrideMock.mockReset()
   getDerivedCharacterOverrideMock.mockResolvedValue(undefined)
+  expendResourceAuthoritativelyMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -373,6 +391,349 @@ describe('castSpell -- the single dispatching entry point', () => {
     await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-2' })
     expect(createSpellDamageRollEventMock).toHaveBeenCalled()
     expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+// CHARACTER MECHANICS PHASE A5 -- Misty Step/Darkness's own archetype (`supported-utility-cast`):
+// nothing to roll at all. This describe block exercises the SLOT-funded path specifically (this
+// fixture's own spell carries no `ref.slug`, so `character-actions.ts` attaches no
+// `fundingOptions` at all -- `resolveCastFunding` then takes its "no funding options declared"
+// branch, the exact same, already-accepted slot-availability/expenditure authority every other
+// leveled Cast uses). See the "resource-funded" describe block below (Phase 3) for the generic
+// resource-payment modes. Misty Step is a REAL Level-2 spell, so `fakeLevel3Derived` supplies a
+// real Level-2 slot pool.
+describe('castSpellUtility -- Misty Step (CHARACTER MECHANICS PHASE A5, slot-funded)', () => {
+  function fakeLevel3Derived() {
+    return {
+      available: true as const,
+      derived: {
+        byCategory: {
+          spellcasting: [
+            { id: 'value:spellcasting.caster_type.full', value: true },
+            { id: 'value:spellcasting.attack_bonus', value: 6 },
+            { id: 'value:spellcasting.save_dc', value: 14 }
+          ],
+          progression: [{ id: 'value:level', value: 3 }]
+        },
+        tables: [{
+          id: 'table:spellcasting.slots_full',
+          rows: [{ key: 3, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0, slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0 }]
+        }],
+        choices: []
+      }
+    }
+  }
+
+  beforeEach(() => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        spells: [
+          preparedSpell('spell-1', 'Fire Bolt', FIRE_BOLT_MECHANICS),
+          preparedSpell('spell-2', 'Magic Missile', MAGIC_MISSILE_MECHANICS),
+          preparedSpell('spell-3', 'Misty Step', MISTY_STEP_MECHANICS)
+        ]
+      })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(fakeLevel3Derived())
+  })
+
+  it('a successful cast creates NO roll event and broadcasts nothing -- an honest, rollless acknowledgment', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3' })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.utilityContext).toEqual({ spellLevel: 2, castLevel: 2 })
+    expect(result.roll).toBeUndefined()
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellHealingRollEventMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('expends exactly one level-2 slot on a successful cast', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3' })
+
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledTimes(1)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
+    if (result.ok) expect(result.spellcasting).toEqual({ spells: [], expendedSlots: { '2': 1 } })
+  })
+
+  it('REJECTS when the level-2 slot pool is already exhausted, and persists nothing', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '2': 2 } }) // both L2 slots already spent
+
+    const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3' })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('resource-unavailable')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('REJECTS a crafted capability -- calling castSpellUtility on a non-utility spell (Fire Bolt) directly', async () => {
+    const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-castable')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('castSpell -- the single dispatching entry point routes Misty Step through the utility path automatically', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-3' })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.utilityContext).toEqual({ spellLevel: 2, castLevel: 2 })
+      expect(result.saveContext).toBeUndefined()
+    }
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  // `castLevel` must not be able to select a slot level this character does not actually have a
+  // Level-2+ pool for -- re-validated server-side exactly like every other leveled Cast, never
+  // trusted merely because the client's own picker offered it.
+  it('REJECTS an explicit castLevel below the spell\'s own base level', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', castLevel: 1 })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+// CHARACTER MECHANICS PHASE A5, Phase 3 -- RESOURCE-FUNDED SPELLCASTING. The generic
+// expenditure-mode authority (`resolveCastFunding`/`checkResourceCastAvailability` in
+// character-cast.ts), proven against the real Archfey Warlock (Misty Step: slot OR resource,
+// `fundedByResource` + `slotFundingAllowed` omitted/true) and the real Warrior of Shadow Monk
+// (Darkness: resource ONLY, `slotFundingAllowed: false`) corpus facets -- never a hand-invented
+// capability, the exact `findRulesFacet('dnd5e.2024', ...)` lookups the real content authors.
+// `expendResourceAuthoritatively` is mocked here (the atomic writer itself needs a real/disposable
+// Postgres instance -- see the sibling integration test file for that proof); these tests prove
+// the DECISION logic: which mode is chosen, what gets validated, what gets rejected, and that the
+// correct resourceId/amount reaches the authoritative writer.
+describe('castSpellUtility -- resource-funded (CHARACTER MECHANICS PHASE A5, Phase 3)', () => {
+  function fakeArchfeyDerived(overrides: { stepsExpended?: number; stepsMax?: number } = {}) {
+    const max = overrides.stepsMax ?? 3
+    const expended = overrides.stepsExpended ?? 0
+    return {
+      available: true as const,
+      derived: {
+        byCategory: {
+          spellcasting: [
+            { id: 'value:spellcasting.caster_type.pact', value: true },
+            { id: 'value:spellcasting.attack_bonus', value: 6 },
+            { id: 'value:spellcasting.save_dc', value: 14 }
+          ],
+          progression: [{ id: 'value:level', value: 3 }]
+        },
+        tables: [{
+          id: 'table:spellcasting.slots_pact',
+          rows: [{ key: 3, slot_level: 2, slots: 2 }]
+        }],
+        choices: [],
+        resources: [{
+          id: 'resource:steps_of_the_fey', label: 'Steps of the Fey', category: 'combat',
+          max, expended, remaining: max - expended, recovery: [], presentation: { style: 'pool' as const }
+        }],
+        spellFunding: {
+          'misty-step-xphb': [{ resourceId: 'resource:steps_of_the_fey', slotFundingAllowed: true }]
+        }
+      }
+    }
+  }
+
+  function fakeWarriorOfShadowDerived(overrides: { focusExpended?: number; focusMax?: number } = {}) {
+    const max = overrides.focusMax ?? 3
+    const expended = overrides.focusExpended ?? 0
+    return {
+      available: true as const,
+      derived: {
+        // Monks have NO `value:spellcasting.caster_type.*` fact at all -- no spell-slot table,
+        // matching the real corpus exactly (never fabricated for this test).
+        byCategory: { progression: [{ id: 'value:level', value: 3 }] },
+        tables: [],
+        choices: [],
+        resources: [{
+          id: 'resource:focus_points', label: 'Focus Points', category: 'combat',
+          max, expended, remaining: max - expended, recovery: [], presentation: { style: 'pool' as const }
+        }],
+        spellFunding: {
+          'darkness-xphb': [{ resourceId: 'resource:focus_points', slotFundingAllowed: false }]
+        }
+      }
+    }
+  }
+
+  const MISTY_STEP_WITH_REF = {
+    ...preparedSpell('spell-3', 'Misty Step', MISTY_STEP_MECHANICS),
+    ref: { packageId: 'eldra.content.xphb', slug: 'misty-step-xphb' }
+  }
+  const DARKNESS_WITH_REF = {
+    ...preparedSpell('spell-4', 'Darkness', DARKNESS_MECHANICS),
+    ref: { packageId: 'eldra.content.xphb', slug: 'darkness-xphb' }
+  }
+
+  describe('Misty Step (Archfey) -- BOTH slot and resource funding declared', () => {
+    beforeEach(() => {
+      assembleCharacterMock.mockResolvedValue({
+        available: true,
+        blueprint: wizardBlueprint({ spells: [MISTY_STEP_WITH_REF] })
+      })
+      getDerivedCharacterOverrideMock.mockResolvedValue(fakeArchfeyDerived())
+    })
+
+    it('a valid resource-funded cast expends exactly one unit of the declared resource, never a spell slot', async () => {
+      expendResourceAuthoritativelyMock.mockResolvedValue({ ok: true, expended: { 'resource:steps_of_the_fey': 1 } })
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', fundingResourceId: 'resource:steps_of_the_fey' })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.resourceContext).toEqual({ resourceId: 'resource:steps_of_the_fey', max: 3, expended: 1, remaining: 2 })
+      expect(result.spellcasting).toBeUndefined()
+      expect(expendResourceAuthoritativelyMock).toHaveBeenCalledWith('5', '42', 'resource:steps_of_the_fey', 3, 1)
+      expect(saveSpellcastingMock).not.toHaveBeenCalled()
+      expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    })
+
+    it('REJECTS when the resource is exhausted, and never calls the atomic writer at all', async () => {
+      getDerivedCharacterOverrideMock.mockResolvedValue(fakeArchfeyDerived({ stepsExpended: 3, stepsMax: 3 }))
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', fundingResourceId: 'resource:steps_of_the_fey' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('resource-unavailable')
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('REJECTS a concurrent last-use race honestly -- the atomic writer\'s own re-check found none remaining', async () => {
+      // The pre-check (checkResourceCastAvailability) passed -- another
+      // concurrent Cast won the real atomic race first. Never a 502: this
+      // is an honest business-outcome rejection, not an infrastructure
+      // failure.
+      expendResourceAuthoritativelyMock.mockResolvedValue({
+        ok: false, reason: 'insufficient-resource', message: 'One or more resources in this batch lack sufficient remaining capacity'
+      })
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', fundingResourceId: 'resource:steps_of_the_fey' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('resource-unavailable')
+    })
+
+    it('REJECTS a forged resourceId -- a real resource this character does not have access to', async () => {
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', fundingResourceId: 'resource:rage' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('invalid-choice')
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('REJECTS a forged resourceId that does not exist in the Rules Package at all', async () => {
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3', fundingResourceId: 'resource:totally-made-up' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('invalid-choice')
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('an ORDINARY slot-funded cast remains available when fundingResourceId is omitted -- "also castable with a slot"', async () => {
+      loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-3' })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.spellcasting).toEqual({ spells: [], expendedSlots: { '2': 1 } })
+      expect(result.resourceContext).toBeUndefined()
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('missing spell ownership -- an actionId this character does not have is rejected before any funding decision', async () => {
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:does-not-exist', fundingResourceId: 'resource:steps_of_the_fey' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('action-not-found')
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Darkness (Warrior of Shadow) -- RESOURCE ONLY, no slot-casting fabricated', () => {
+    beforeEach(() => {
+      assembleCharacterMock.mockResolvedValue({
+        available: true,
+        blueprint: wizardBlueprint({ spells: [DARKNESS_WITH_REF] })
+      })
+      getDerivedCharacterOverrideMock.mockResolvedValue(fakeWarriorOfShadowDerived())
+    })
+
+    it('a valid resource-funded cast costs exactly one Focus Point', async () => {
+      expendResourceAuthoritativelyMock.mockResolvedValue({ ok: true, expended: { 'resource:focus_points': 1 } })
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-4', fundingResourceId: 'resource:focus_points' })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.resourceContext).toEqual({ resourceId: 'resource:focus_points', max: 3, expended: 1, remaining: 2 })
+      expect(expendResourceAuthoritativelyMock).toHaveBeenCalledWith('5', '42', 'resource:focus_points', 3, 1)
+    })
+
+    it('REJECTS insufficient Focus Points', async () => {
+      getDerivedCharacterOverrideMock.mockResolvedValue(fakeWarriorOfShadowDerived({ focusExpended: 3, focusMax: 3 }))
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-4', fundingResourceId: 'resource:focus_points' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('resource-unavailable')
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('REJECTS a slot-funded request outright -- NO fabricated normal slot-casting permission', async () => {
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-4' })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('invalid-choice')
+      expect(loadSpellcastingMock).not.toHaveBeenCalled()
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
+
+    it('does not require spell components and does not consume a spell slot in this mode', async () => {
+      expendResourceAuthoritativelyMock.mockResolvedValue({ ok: true, expended: { 'resource:focus_points': 1 } })
+
+      const result = await castSpellUtility({ ...CAST_INPUT, actionId: 'spell:spell-4', fundingResourceId: 'resource:focus_points' })
+
+      expect(result.ok).toBe(true)
+      expect(loadSpellcastingMock).not.toHaveBeenCalled()
+      expect(saveSpellcastingMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('existing archetypes are unaffected -- fundingResourceId ignored outside supported-utility-cast', () => {
+    it('castSpellAttack (Fire Bolt) ignores a fundingResourceId entirely -- no fundingOptions field exists on this archetype\'s authority', async () => {
+      const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-1', fundingResourceId: 'resource:steps_of_the_fey' } as any)
+      expect(result.ok).toBe(true)
+      expect(expendResourceAuthoritativelyMock).not.toHaveBeenCalled()
+    })
   })
 })
 

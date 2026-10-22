@@ -470,9 +470,13 @@ export function proficiencyCovered(d: DecisionRecord): boolean {
 // for 'known' and unconditional 'innate' -- see this phase's own authoring header in
 // dnd5e-2024.ts for why a flat 'innate' grant is modeled as 'known'; 'prepared' for
 // 'prepared'). Covered when the subclass facet's own `fixedSpellGrants` carries EXACTLY the
-// discovered count at the discovered level (never more, never fewer) -- a resource-gated
-// 'innate' grant (Archfey Patron, Psi Warrior, Warrior of Shadow) is deliberately never
-// authored (see that same header), so its own decision stays correctly unmatched here.
+// discovered count at the discovered level (never more, never fewer). CHARACTER MECHANICS
+// PHASE A5, Phase 3 -- a resource-gated 'innate' grant is now a real, generic primitive
+// (`FixedSpellGrant.fundedByResource`/`slotFundingAllowed`, character-cast.ts's own
+// `resolveCastFunding`): Warrior of Shadow's own Darkness is authored with it, so its decision
+// is correctly matched here too. Psi Warrior's own Telekinetic Master remains deliberately
+// unauthored (a DIFFERENT, cross-resource restoration mechanism this phase explicitly deferred
+// -- see that phase's own report), so its decision stays correctly unmatched.
 const SUBCLASS_SPELL_GRANT_FLAG_BY_KIND: Readonly<Record<string, 'known' | 'prepared'>> = {
   prepared: 'prepared', known: 'known', innate: 'known'
 }
@@ -481,18 +485,19 @@ const SUBCLASS_SPELL_GRANT_FLAG_BY_KIND: Readonly<Record<string, 'known' | 'prep
 // the SAME (owner, level): Warrior of Shadow's own 'known' Minor Illusion AND 'innate' Darkness
 // are BOTH Level 3, BOTH cardinality 1, BOTH -> flag 'known'. Comparing a single decision's own
 // cardinality against the facet's raw grant count (as a naive per-decision check would) lets ONE
-// real, correctly-authored grant (Minor Illusion) falsely satisfy BOTH decisions at once --
-// Darkness (deliberately never authored, a resource-gated grant with no generic primitive, see
-// dnd5e-2024.ts's own header) would wrongly read as covered too, a genuine false positive caught
-// only by writing the real acceptance/census tests, not assumed. `DecisionRecord` carries no
-// spell-identity field (discovery is shape-only, by design -- see mandatory-decisions.ts's own
-// header), so there is no way to tell WHICH decision a given grant belongs to; the only fail
-// -closed answer is to require the authored count to match the FULL SIBLING TOTAL (every
-// decision sharing this exact owner+level+flag key), never just one decision's own slice. This
-// is strictly conservative, never a false positive: it can turn a genuinely-authored decision
-// blocked (if a sibling is deliberately withheld, as here), but it can never claim an
-// under-authored decision is covered. Precomputed once from the real discovered corpus, never
-// re-derived per call.
+// real, correctly-authored grant (Minor Illusion) falsely satisfy BOTH decisions at once, even
+// while the OTHER sibling (Darkness) was still unauthored -- a genuine false positive this guard
+// exists to catch, proven by writing the real acceptance/census tests, not assumed.
+// `DecisionRecord` carries no spell-identity field (discovery is shape-only, by design -- see
+// mandatory-decisions.ts's own header), so there is no way to tell WHICH decision a given grant
+// belongs to; the only fail-closed answer is to require the authored count to match the FULL
+// SIBLING TOTAL (every decision sharing this exact owner+level+flag key), never just one
+// decision's own slice. This is strictly conservative, never a false positive: it can turn a
+// genuinely-authored decision blocked (if a sibling is deliberately withheld), but it can never
+// claim an under-authored decision is covered. CHARACTER MECHANICS PHASE A5, Phase 3 -- now that
+// Darkness is authored too (via `fundedByResource`/`slotFundingAllowed`), both Warrior of
+// Shadow siblings' authored count matches their full total, and this guard correctly reports
+// both covered. Precomputed once from the real discovered corpus, never re-derived per call.
 const SUBCLASS_FIXED_GRANT_SIBLING_TOTAL = new Map<string, number>()
 for (const decision of (mandatoryDecisionsArtifact as { decisions: DecisionRecord[] }).decisions) {
   if (decision.owner.kind !== 'subclass' || decision.family !== 'spell-grant') continue
@@ -992,7 +997,7 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'blk:subclass-spells',
     status: 'blocked',
-    reason: 'Subclass spell grants/choices/variants the A3 rules above do not cover: resource-gated "innate" grants (Archfey Patron, Psi Warrior, Warrior of Shadow -- no generic primitive for a spell usable only via a specific finite resource, never a normal slot). College of Glamour\'s own discovery-model-duplicate "innate" Command is reclassified onto impl:subclass-fixed-spell-grant above, never counted here.',
+    reason: 'Subclass spell grants/choices/variants the A3 rules above do not cover. CHARACTER MECHANICS PHASE A5, Phase 3 -- resource-gated "innate" grants now have a real generic primitive (FixedSpellGrant.fundedByResource/slotFundingAllowed) and Warrior of Shadow\'s own Darkness is authored with it, so it is reclassified onto impl:subclass-fixed-spell-grant above, never counted here. Psi Warrior\'s own Telekinetic Master remains genuinely blocked -- its own mechanism (a free cast restored by spending a DIFFERENT resource, Psionic Energy Dice) is a cross-resource restoration action this phase explicitly deferred as a separate architectural STOP, not merely a missing funding link. College of Glamour\'s own discovery-model-duplicate "innate" Command is likewise reclassified onto impl:subclass-fixed-spell-grant above, never counted here.',
     ledgerIds: [],
     matches: (d) =>
       (is(d, 'subclass', 'spell-grant') && !subclassFixedSpellGrantCovered(d)) ||

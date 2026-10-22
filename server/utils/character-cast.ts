@@ -138,6 +138,7 @@ import { createError } from 'h3'
 import type { CharacterAction } from './character-actions'
 import { getCharacterActions } from './character-actions'
 import { getDerivedCharacter } from './character-derived'
+import { expendResourceAuthoritatively, type ResourceMutationResult } from './character-resources'
 import {
   loadCharacterSpellcasting,
   saveCharacterSpellcasting,
@@ -243,7 +244,7 @@ export function statusForCastFailure(reason: CastFailureReason): number {
 }
 
 type CastableCapability = Extract<SpellCastCapability, {
-  kind: 'supported-spell-attack' | 'supported-automatic-damage' | 'supported-save-damage' | 'supported-save-context' | 'supported-healing'
+  kind: 'supported-spell-attack' | 'supported-automatic-damage' | 'supported-save-damage' | 'supported-save-context' | 'supported-healing' | 'supported-utility-cast'
 }>
 
 export type CastableSpell = {
@@ -300,6 +301,8 @@ async function resolveCastableSpell(
     || capability?.kind === 'supported-save-damage'
     || capability?.kind === 'supported-save-context'
     || capability?.kind === 'supported-healing'
+    // CHARACTER MECHANICS PHASE A5
+    || capability?.kind === 'supported-utility-cast'
 
   if (!isCastableKind) {
     return {
@@ -534,6 +537,19 @@ export type CastSpellInput = {
   // `damageType: 'lightning'` directly.
   castLevel?: number
   choices?: Record<string, string>
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+  // absent means "pay with a spell slot," preserving every existing
+  // caller's behavior byte-for-byte (including castSpellUtility's own
+  // pre-Phase-3 slot-only callers). Present means "pay with this Resource
+  // Definition instead" -- never trusted merely because the client sent
+  // it: `resolveCastFunding` (below) independently re-verifies it is one
+  // of THIS spell's own currently-active funding options
+  // (`action.fundingOptions`, itself re-derived fresh from this
+  // character's own active facets) before anything is expended. Only
+  // meaningful for `supported-utility-cast` today -- every other
+  // archetype ignores this field entirely, exactly like `castLevel` is
+  // ignored by a cantrip.
+  fundingResourceId?: string
 }
 
 // 5etools' own damage-type strings are lowercase -- restated here (not
@@ -586,6 +602,35 @@ export type CastSaveContext = {
   choices?: Record<string, string>
 }
 
+// CHARACTER MECHANICS PHASE A5 -- the authoritative, caster-side acknowledgment a
+// `supported-utility-cast` Cast (Misty Step/Darkness-shaped: nothing to roll at all) returns IN
+// PLACE OF a dice roll, mirroring `CastSaveContext`'s own established "no RollEvent, a dedicated
+// context instead" shape exactly. Deliberately the THINNEST possible honest record: it states
+// ONLY that the cast succeeded and at what level, NEVER an attack roll, a damage roll, or a
+// saving-throw roll that did not happen -- see `castSpellUtility`'s own header for the full
+// "what a successful utility cast means, and does not mean" contract.
+export type CastUtilityContext = {
+  spellLevel: number
+  // `null` for a cantrip -- mirrors `CastSaveContext.castLevel`'s own contract exactly (not part
+  // of the real target corpus today -- Misty Step/Darkness are both leveled -- but handled
+  // honestly rather than assumed impossible, matching every other archetype's own cantrip branch).
+  castLevel: number | null
+}
+
+// CHARACTER MECHANICS PHASE A5, Phase 3 -- the authoritative post-expenditure state of whichever
+// generic Resource actually paid for a RESOURCE-funded utility Cast, mirroring `spellcasting`'s own
+// "hand back the exact record the atomic write just persisted, never make the client re-derive or
+// PUT its own guess" contract exactly, generalized from spell slots to any Resource Definition.
+// Present ONLY when `castSpellUtility` chose the resource-funding branch (`fundingResourceId` was
+// supplied and validated); a slot-funded utility Cast still returns `spellcasting` instead, exactly
+// as before this phase.
+export type CastResourceContext = {
+  resourceId: string
+  max: number
+  expended: number
+  remaining: number
+}
+
 export type CastSpellResult =
   | {
       ok: true
@@ -599,6 +644,9 @@ export type CastSpellResult =
       // Present ONLY for a saving-throw Cast -- see `CastSaveContext`'s own
       // header. Absent for every other archetype.
       saveContext?: CastSaveContext
+      // CHARACTER MECHANICS PHASE A5 -- present ONLY for a `supported-utility-cast` Cast; absent
+      // for every other archetype. See `CastUtilityContext`'s own header.
+      utilityContext?: CastUtilityContext
       // Present only when this Cast actually expended a slot -- the
       // client's own "resource presentation must update from authoritative
       // state, no reload" requirement, satisfied by handing back the exact
@@ -607,8 +655,15 @@ export type CastSpellResult =
       // (which risks exactly the drift/double-decrement this task's own
       // "do not duplicate slot-bound arithmetic" instruction warns about).
       // Absent for a free cantrip Cast and for `rollIndependentSpellDamage`
-      // -- neither ever touches spellcasting state.
+      // -- neither ever touches spellcasting state. Also absent for a
+      // RESOURCE-funded utility Cast, which populates `resourceContext`
+      // instead -- the two are mutually exclusive, mirroring how a Cast
+      // is paid for by a slot XOR a resource, never both.
       spellcasting?: StoredCharacterSpellcasting
+      // CHARACTER MECHANICS PHASE A5, Phase 3 -- present ONLY for a
+      // RESOURCE-funded `supported-utility-cast` Cast. See
+      // `CastResourceContext`'s own header.
+      resourceContext?: CastResourceContext
     }
   | { ok: false; reason: CastFailureReason; message: string }
 
@@ -929,6 +984,224 @@ export async function castSpellSave(input: CastSpellInput): Promise<CastSpellRes
   return { ok: true, saveContext, spellcasting }
 }
 
+// ---------------------------------------------------------------------------
+// Resource-funded Cast authority -- CHARACTER MECHANICS PHASE A5, Phase 3.
+// ---------------------------------------------------------------------------
+// Two narrow, generic decisions, factored out of `castSpellUtility` so
+// neither grows any spell/class-specific branching: WHICH mode pays for
+// this Cast (`resolveCastFunding`), and, if a resource was chosen, whether
+// enough of it remains (`checkResourceCastAvailability`, the resource
+// counterpart of `checkSpellSlotAvailability` immediately above it).
+
+type CastFundingResolution =
+  | { ok: true; mode: 'slot' }
+  | { ok: true; mode: 'resource'; resourceId: string }
+  | { ok: false; reason: 'invalid-choice'; message: string }
+
+// `action.fundingOptions` is the SAME list `character-actions.ts` already built by intersecting
+// `getDerivedCharacter`'s own `spellFunding` (scanned from every ACTIVE facet's `fixedSpellGrants`)
+// against this specific resolved spell -- never re-derived a second time here, so this function
+// never has to know a single fact about WHICH facet, class, or subclass granted anything.
+function resolveCastFunding(action: CharacterAction, fundingResourceId: string | undefined): CastFundingResolution {
+  const options = action.fundingOptions ?? []
+
+  if (fundingResourceId !== undefined) {
+    const match = options.find((option) => option.resourceId === fundingResourceId)
+    if (!match) {
+      return {
+        ok: false,
+        reason: 'invalid-choice',
+        message: options.length
+          ? `'${fundingResourceId}' is not one of the resources that can fund '${action.name}' -- expected one of: ${options.map((o) => o.resourceId).join(', ')}`
+          : `'${action.name}' has no resource-funding option -- it may only be Cast with a spell slot`
+      }
+    }
+    return { ok: true, mode: 'resource', resourceId: fundingResourceId }
+  }
+
+  // No resource explicitly requested. Ordinary slot funding is the default
+  // for every spell (preserving every pre-Phase-3 caller's behavior
+  // byte-for-byte) -- UNLESS this spell's own funding options are
+  // declared resource-ONLY (every option's `slotFundingAllowed` is
+  // `false`, e.g. Warrior of Shadow's own Focus-Point-funded Darkness),
+  // in which case a request that omits `fundingResourceId` is rejected
+  // explicitly here, honestly, rather than left to fail incidentally for
+  // an unrelated reason (e.g. "this character has no spell slots") a few
+  // lines later.
+  if (options.length > 0 && options.every((option) => !option.slotFundingAllowed)) {
+    return {
+      ok: false,
+      reason: 'invalid-choice',
+      message: `'${action.name}' cannot be Cast with a spell slot -- it is funded only by: ${options.map((o) => o.resourceId).join(', ')}`
+    }
+  }
+
+  return { ok: true, mode: 'slot' }
+}
+
+type ResourceCastAvailability =
+  | { ok: true; max: number; expended: number }
+  | { ok: false; reason: 'resource-unavailable' | 'rules-unavailable'; message: string }
+
+// Mirrors `checkSpellSlotAvailability`'s own shape exactly, generalized from the Spell Slot
+// progression table to `getDerivedCharacter`'s own `resources` array -- the SAME Rules-Engine-
+// derived max/expended/remaining every resource orb on the Sheet already reads, never a second,
+// parallel resource-evaluation path. The actual EXPENDITURE re-reads the row's LIVE value a second
+// time, at write time, inside the atomic SQL statement itself (character-resource-atomic.ts) --
+// exactly like `checkSpellSlotAvailability`'s own header explains for spell slots, this read is a
+// cheap, honest PRE-check for a precise error message, never the authority a concurrent race relies
+// on.
+async function checkResourceCastAvailability(
+  worldId: string | number,
+  characterId: string | number,
+  resourceId: string
+): Promise<ResourceCastAvailability> {
+  const derived = await getDerivedCharacter(worldId, characterId)
+  if (!derived.available) {
+    return {
+      ok: false,
+      reason: 'rules-unavailable',
+      message: derived.reason === 'character-not-found' ? 'Character not found in this world' : derived.message
+    }
+  }
+
+  const resource = derived.derived.resources.find((candidate) => candidate.id === resourceId)
+  if (!resource) {
+    return {
+      ok: false,
+      reason: 'resource-unavailable',
+      message: `This character does not currently have access to '${resourceId}'`
+    }
+  }
+
+  if (resource.remaining <= 0) {
+    return {
+      ok: false,
+      reason: 'resource-unavailable',
+      message: `'${resource.label}' has no remaining uses (${resource.expended}/${resource.max} expended)`
+    }
+  }
+
+  return { ok: true, max: resource.max, expended: resource.expended }
+}
+
+// ---------------------------------------------------------------------------
+// castSpellUtility -- Misty Step/Darkness's archetype (CHARACTER MECHANICS
+// PHASE A5, `supported-utility-cast`).
+// ---------------------------------------------------------------------------
+// WHAT A SUCCESSFUL UTILITY CAST MEANS, AND DOES NOT MEAN. It means: this
+// character genuinely owns/can cast this spell right now, its cost (today:
+// only ever a spell slot -- see below) was authoritatively validated and
+// persisted, and an honest acknowledgment was returned. It does NOT mean
+// the teleport happened, a Darkness zone was created, a condition was
+// applied, or concentration is now being tracked -- none of those are
+// modeled anywhere in this codebase's combat/token/scene systems, and this
+// function fabricates none of them. Exactly like `castSpellSave`'s own "no
+// target HP mutation" boundary, the real-world EFFECT of a successful
+// utility cast stays entirely a DM/player manual action.
+//
+// WHY NO ROLLEVENT. There is nothing to roll -- no attack, no damage, no
+// save, no healing -- so, mirroring `castSpellSave`'s own established
+// precedent exactly, this function creates no RollEvent and broadcasts
+// nothing; the authoritative acknowledgment (`CastUtilityContext`) IS the
+// result, read privately by the caster alone. A future phase that wants
+// other players at the table to see "X cast Misty Step" would need its own,
+// separately-approved broadcast mechanism -- not invented here.
+//
+// EXPENDITURE -- SLOT, OR A GENERIC RESOURCE, NEVER BOTH. CHARACTER MECHANICS PHASE A5's own
+// architectural review originally held resource-funded expenditure back pending a separate
+// concurrency-safety design checkpoint (the native PostgreSQL atomic resource writer,
+// character-resource-atomic.ts) -- that checkpoint is now deployed and verified, closing the gap
+// this function's own earlier header documented. `resolveCastFunding` below decides WHICH payment
+// mode a specific Cast uses, from the SAME two generic, content-authored facts every other grant
+// already exposes: `action.fundingOptions` (character-actor-bridge.ts's own `fixedSpellGrants[].
+// fundedByResource`/`slotFundingAllowed` scan, re-derived fresh every read, never persisted) and
+// the client's own `fundingResourceId` (never trusted alone -- always re-verified against
+// `fundingOptions` before anything is expended). No spell/class/subclass name is ever compared
+// anywhere in this function; it only ever asks "does THIS action's own funding options permit the
+// payment mode being requested."
+export async function castSpellUtility(input: CastSpellInput): Promise<CastSpellResult> {
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
+  if (!resolved.ok) return resolved
+
+  const { action, mechanics, capability } = resolved.castable
+  if (capability.kind !== 'supported-utility-cast') {
+    return {
+      ok: false,
+      reason: 'not-castable',
+      message: `'${action.name}' does not resolve as a utility cast -- use one of Cast's other paths instead`
+    }
+  }
+
+  const funding = resolveCastFunding(action, input.fundingResourceId)
+  if (!funding.ok) return funding
+
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
+
+  const utilityContext: CastUtilityContext = {
+    spellLevel: mechanics.level,
+    castLevel: levelResolution.level
+  }
+
+  if (levelResolution.level === null) {
+    // Not part of the real target corpus (every spell this archetype supports today is leveled),
+    // but handled honestly rather than assumed impossible -- the same posture every other
+    // archetype's own cantrip branch already takes. A resource-funded cantrip would have nothing
+    // to expend either way, so funding mode is irrelevant here.
+    return { ok: true, utilityContext }
+  }
+
+  if (funding.mode === 'resource') {
+    const availability = await checkResourceCastAvailability(input.worldId, input.characterId, funding.resourceId)
+    if (!availability.ok) return availability
+
+    // Reuses the EXISTING atomic resource authority (character-resources.ts's own
+    // `expendResourceAuthoritatively`, backed by character-resource-atomic.ts) -- the SAME
+    // database-level conditional mutation every manual Sheet-button expend and every
+    // consumeActionResourceCosts batch already uses, never a second, parallel resource-write path.
+    const saved = await expendResourceAuthoritatively(input.worldId, input.characterId, funding.resourceId, availability.max, 1)
+    if (!saved.ok) {
+      if (saved.reason === 'insufficient-resource') {
+        // A genuine last-moment race (two simultaneous Casts against this resource's last use) --
+        // the atomic write's own WHERE-clause re-checked sufficiency against the row's LIVE value
+        // and correctly found none remaining for THIS caller. No roll was ever created for this
+        // path, so nothing is orphaned; the Cast honestly reports it did not complete.
+        return { ok: false, reason: 'resource-unavailable', message: saved.message }
+      }
+      throw createError({
+        statusCode: 502,
+        statusMessage: 'The spell could not be recorded as cast -- its resource could not be recorded as spent'
+      })
+    }
+
+    const expended = saved.expended[funding.resourceId] ?? 0
+    return {
+      ok: true,
+      utilityContext,
+      resourceContext: { resourceId: funding.resourceId, max: availability.max, expended, remaining: availability.max - expended }
+    }
+  }
+
+  const availability = await checkSpellSlotAvailability(input.worldId, input.characterId, levelResolution.level)
+  if (!availability.ok) return availability
+
+  let spellcasting: StoredCharacterSpellcasting
+  try {
+    spellcasting = await expendSpellSlotAuthoritatively(input.characterId, levelResolution.level, availability.max)
+  } catch {
+    // No roll was ever created for this path -- nothing to have persisted
+    // unbroadcast, nothing orphaned. The resource mutation simply did not
+    // happen, and the Cast honestly reports that it did not complete.
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'The spell could not be recorded as cast -- its spell slot could not be recorded as spent'
+    })
+  }
+
+  return { ok: true, utilityContext, spellcasting }
+}
+
 // castSpell -- the single entry point cast.post.ts's "Cast" intent calls.
 // The client asks to Cast an actionId; it never states (and the route never
 // asks it to state) which supported archetype that action is -- this
@@ -943,6 +1216,7 @@ export async function castSpell(input: CastSpellInput): Promise<CastSpellResult>
   if (kind === 'supported-spell-attack') return castSpellAttack(input)
   if (kind === 'supported-automatic-damage') return castSpellAutomaticDamage(input)
   if (kind === 'supported-healing') return castSpellHeal(input)
+  if (kind === 'supported-utility-cast') return castSpellUtility(input)
   return castSpellSave(input)
 }
 

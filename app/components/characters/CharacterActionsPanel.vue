@@ -126,8 +126,17 @@ import { CHARACTER_SHEET_INTERACTION_KEY, emptyActionsState } from './characterS
 
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
 import type { ActionCategory, ActionResolution as ContentActionResolution } from '~/lib/content-actions'
-import { classifySpellCastCapability, resolveCastConfiguration } from '~/lib/spell-mechanics'
-import type { CanonicalSpellMechanics, CastConfigurationViewModel } from '~/lib/spell-mechanics'
+import {
+  classifySpellCastCapability,
+  resolveCastConfiguration,
+  resolveCastFundingConfiguration,
+  defaultFundingMethod,
+  isFundingMethodAvailable,
+  resolveSelectedFundingMethod,
+  resolveOverallCastAvailability,
+  resolveOverallRequiresConfiguration
+} from '~/lib/spell-mechanics'
+import type { CanonicalSpellMechanics, CastConfigurationViewModel, CharacterResourceView } from '~/lib/spell-mechanics'
 import type { SpellSlotLevel } from '~/lib/characters/spellcasting'
 
 export type CharacterActionCategory = ActionCategory
@@ -182,6 +191,15 @@ export type CharacterAction = {
   // `CanonicalSpellMechanics` already lives in app/lib/ (app/lib/spell-mechanics),
   // so this is a direct import, not a second hand-copied type.
   spellMechanics?: CanonicalSpellMechanics | null
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+  // restated verbatim from server/utils/character-actions.ts's own
+  // identical field. Read ONLY by `resolveCastFundingConfiguration`
+  // (app/lib/spell-mechanics/cast-funding.ts) to decide what the Cast
+  // Configuration panel shows for payment method -- never trusted as
+  // authority itself; `character-cast.ts`'s own `resolveCastFunding`
+  // independently re-verifies any selection against THIS character's own
+  // currently-active facets on every real Cast.
+  fundingOptions?: { resourceId: string; slotFundingAllowed: boolean }[]
 }
 
 // Restated client-side from server/utils/character-combat.ts's own
@@ -236,6 +254,16 @@ const props = withDefaults(defineProps<{
   // this prop only drives what the PICKER shows, never what the server
   // accepts.
   slotLevels?: readonly SpellSlotLevel[]
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+  // this character's own already-derived generic resources (the page's
+  // own `useCharacterSheet().characterResources`), read-only here, mirroring
+  // `slotLevels`' exact same "pure presentation input, never re-derived,
+  // never authoritative" posture. `resolveCastFundingConfiguration`
+  // (app/lib/spell-mechanics/cast-funding.ts) reads only `id`/`label`/
+  // `max`/`expended`/`remaining` -- any richer shape the Sheet already
+  // passes around (presentation style, recovery rules, ...) is simply
+  // ignored, never required.
+  characterResources?: readonly CharacterResourceView[]
   // Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) --
   // lightweight, transient feedback for a Cast that produced no dice roll
   // (Fireball/Acid Splash's own Cast, `castSpellSave` server-side): the
@@ -256,7 +284,8 @@ const props = withDefaults(defineProps<{
   resolving: false,
   rolling: false,
   casting: false,
-  slotLevels: () => []
+  slotLevels: () => [],
+  characterResources: () => []
 })
 
 const emit = defineEmits<{
@@ -279,7 +308,12 @@ const emit = defineEmits<{
   // `castLevel`/`choices`, populated ONLY when this spell's own Cast
   // Configuration actually has one to send (a cantrip with no choices sends
   // neither, exactly Fire Bolt's original Phase 1B.2 payload, unchanged).
-  cast: [{ actionId: string; castLevel?: number; choices?: Record<string, string> }]
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- `fundingResourceId` populated
+  // ONLY when the player selected a resource payment method (absent means
+  // "pay with a spell slot," preserving every pre-Phase-3 payload
+  // unchanged). Never trusted as authority by the server -- see
+  // `CharacterAction.fundingOptions`'s own doc comment.
+  cast: [{ actionId: string; castLevel?: number; choices?: Record<string, string>; fundingResourceId?: string }]
   spellDamage: [{ actionId: string; castLevel?: number; choices?: Record<string, string> }]
 }>()
 
@@ -421,6 +455,10 @@ function isCastableSpell(action: CharacterAction): boolean {
     || kind === 'supported-save-damage'
     || kind === 'supported-save-context'
     || kind === 'supported-healing'
+    // CHARACTER MECHANICS PHASE A5 -- a utility cast (Misty Step/Darkness-shaped: nothing to
+    // roll) gets the same Cast affordance as every other supported kind; see
+    // classifySpellCastCapability's own header for what a successful one means.
+    || kind === 'supported-utility-cast'
 }
 
 // Damage stays an independent control ONLY for a spell with structured
@@ -455,6 +493,52 @@ function castConfigurationOf(action: CharacterAction): CastConfigurationViewMode
   return resolveCastConfiguration({ mechanics: action.spellMechanics as CanonicalSpellMechanics, slotLevels: props.slotLevels })
 }
 
+// ---------------------------------------------------------------------------
+// Cast Funding -- CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded
+// Spellcasting).
+// ---------------------------------------------------------------------------
+// A spell with NO `fundingOptions` resolves `requiresFundingChoice: false`
+// below -- every function in this section then degrades to exactly the
+// pre-Phase-3 slot-only behavior, so an ordinary spell's Cast flow is
+// untouched byte-for-byte. `resolveCastFundingConfiguration` is pure and
+// reads only `action.fundingOptions`/`props.characterResources`; it never
+// decides whether a real Cast succeeds -- character-cast.ts's own
+// `resolveCastFunding` is the sole authority, re-verified on every request.
+function castFundingConfigurationOf(action: CharacterAction) {
+  return resolveCastFundingConfiguration({ fundingOptions: action.fundingOptions ?? [], resources: props.characterResources })
+}
+
+// Whether an ordinary spell slot is CURRENTLY available for this spell --
+// the existing, unmodified slot-availability fact (`castConfigurationOf`'s
+// own `canCast`), read separately so funding-mode logic never duplicates
+// the slot-level arithmetic.
+function slotCurrentlyAvailable(action: CharacterAction): boolean {
+  return castConfigurationOf(action).canCast
+}
+
+// A5 PHASE 3 FINAL ACCEPTANCE -- the actual DECISION for each of these three
+// now lives in cast-funding.ts (`resolveSelectedFundingMethod`/
+// `resolveOverallCastAvailability`/`resolveOverallRequiresConfiguration`),
+// directly unit-tested there; this component only supplies the Vue-specific
+// facts (the stored selection, the slot-availability facts already computed
+// above) -- the same "component is presentation/wiring, logic lives in
+// app/lib" split this file already follows for cast LEVEL/choice selection.
+function selectedFundingMethodFor(action: CharacterAction): string | null {
+  return resolveSelectedFundingMethod(interaction.castFunding[action.id], castFundingConfigurationOf(action), slotCurrentlyAvailable(action))
+}
+
+function selectFundingMethod(action: CharacterAction, method: string) {
+  interaction.castFunding[action.id] = method
+}
+
+function overallCanCast(action: CharacterAction): boolean {
+  return resolveOverallCastAvailability(castFundingConfigurationOf(action), castConfigurationOf(action).canCast)
+}
+
+function overallRequiresConfiguration(action: CharacterAction): boolean {
+  return resolveOverallRequiresConfiguration(castFundingConfigurationOf(action), castConfigurationOf(action).requiresConfiguration)
+}
+
 // Which spell's Cast Configuration panel is currently open -- at most one
 // at a time (matching `targetCharacterId`'s own single-shared-state
 // precedent above). Selections persist keyed by actionId even after the
@@ -469,12 +553,16 @@ function selectedCastLevelFor(action: CharacterAction): number | null {
   return interaction.castLevels[action.id] ?? castConfigurationOf(action).defaultCastLevel
 }
 
-// Only a spell-defined CHOICE ever blocks confirmation -- a castLevel
-// selection always has a sane fallback (`selectedCastLevelFor`'s own
-// default), matching this task's own "does not fabricate a default type"
-// rule applying to choices specifically, never to level selection.
+// Only a spell-defined CHOICE (or, as of Phase 3, an unavailable/missing
+// funding selection) ever blocks confirmation -- a castLevel selection
+// always has a sane fallback (`selectedCastLevelFor`'s own default),
+// matching this task's own "does not fabricate a default type" rule
+// applying to choices (and funding) specifically, never to level selection.
 function hasCompleteSelection(action: CharacterAction, config: CastConfigurationViewModel): boolean {
-  return config.choices.every((choice) => interaction.castChoices[action.id]?.[choice.id] !== undefined)
+  if (!config.choices.every((choice) => interaction.castChoices[action.id]?.[choice.id] !== undefined)) return false
+  const funding = castFundingConfigurationOf(action)
+  if (!funding.requiresFundingChoice) return true
+  return isFundingMethodAvailable(selectedFundingMethodFor(action), funding, slotCurrentlyAvailable(action))
 }
 
 function openConfiguration(action: CharacterAction, config: CastConfigurationViewModel) {
@@ -485,6 +573,10 @@ function openConfiguration(action: CharacterAction, config: CastConfigurationVie
   openConfigActionId.value = action.id
   if (config.defaultCastLevel !== null && interaction.castLevels[action.id] === undefined) {
     interaction.castLevels[action.id] = config.defaultCastLevel
+  }
+  if (interaction.castFunding[action.id] === undefined) {
+    const defaultMethod = defaultFundingMethod(castFundingConfigurationOf(action), slotCurrentlyAvailable(action))
+    if (defaultMethod !== null) interaction.castFunding[action.id] = defaultMethod
   }
 }
 
@@ -498,31 +590,39 @@ function selectChoiceOption(action: CharacterAction, choiceId: string, optionId:
 
 function castPayload(action: CharacterAction, config: CastConfigurationViewModel) {
   const level = config.castLevels.length ? selectedCastLevelFor(action) : null
+  const fundingMethod = selectedFundingMethodFor(action)
   return {
     actionId: action.id,
     ...(level !== null ? { castLevel: level } : {}),
-    ...(config.choices.length ? { choices: { ...interaction.castChoices[action.id] } } : {})
+    ...(config.choices.length ? { choices: { ...interaction.castChoices[action.id] } } : {}),
+    // `fundingResourceId` is a REQUESTED method only -- character-cast.ts's
+    // own `resolveCastFunding` independently re-derives ownership, legal
+    // funding methods and availability server-side on every Cast. Omitted
+    // entirely for 'slot' (preserving every existing caller's payload shape
+    // byte-for-byte) and for an unfunded spell, where `fundingMethod` is
+    // always 'slot'.
+    ...(fundingMethod !== null && fundingMethod !== 'slot' ? { fundingResourceId: fundingMethod } : {})
   }
 }
 
-// SIMPLE CASTS MUST REMAIN SIMPLE: no required choice and no meaningful
-// casting-level selection means the primary surface Casts immediately --
-// Fire Bolt, and a Magic Missile with only one legal slot level, never see
-// a configuration panel at all, byte-identical to Phase 1B.2's own
-// accepted one-click behavior. A spell requiring configuration opens (or
-// closes) the panel instead; the confirm button INSIDE it is the only
+// SIMPLE CASTS MUST REMAIN SIMPLE: no required choice, no funding choice,
+// and no meaningful casting-level selection means the primary surface
+// Casts immediately -- Fire Bolt, and a Magic Missile with only one legal
+// slot level, never see a configuration panel at all, byte-identical to
+// Phase 1B.2's own accepted one-click behavior. A spell requiring
+// configuration (including any funded spell -- see `overallRequiresConfiguration`
+// above) opens the panel instead; the confirm button INSIDE it is the only
 // thing that ever actually Casts, matching "the user must still confirm
 // Cast from the configuration surface."
 function onCastPrimaryClick(action: CharacterAction) {
   if (props.casting) return
-  const config = castConfigurationOf(action)
-  if (!config.canCast) return
-  if (!config.requiresConfiguration) {
+  if (!overallCanCast(action)) return
+  if (!overallRequiresConfiguration(action)) {
     busyKey.value = `cast:${action.id}`
     emit('cast', { actionId: action.id })
     return
   }
-  openConfiguration(action, config)
+  openConfiguration(action, castConfigurationOf(action))
 }
 
 function confirmCast(action: CharacterAction) {
@@ -808,7 +908,7 @@ function resolvedDamageText(action: CharacterAction): string {
             <button
               type="button"
               class="eldra-rollable block w-full min-w-0 rounded-none px-1 py-1 text-left focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-1 @[38rem]:grid @[38rem]:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] @[38rem]:items-center @[38rem]:gap-3"
-              :disabled="casting || !castConfigurationOf(action).canCast"
+              :disabled="casting || !overallCanCast(action)"
               :aria-busy="busyKey === `cast:${action.id}` && casting ? 'true' : undefined"
               :aria-label="`Cast ${action.name}`"
               @click="onCastPrimaryClick(action)"
@@ -917,6 +1017,54 @@ function resolvedDamageText(action: CharacterAction): string {
                     @click="selectChoiceOption(action, choice.id, option.id)"
                   >
                     {{ option.label }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Funding method -- CHARACTER MECHANICS PHASE A5, Phase 3
+                   (Resource-Funded Spellcasting). Only renders when this
+                   spell actually declares a funding option at all
+                   (`requiresFundingChoice`); a resource-only spell
+                   (Darkness) still shows exactly one pill so its real cost
+                   is never hidden, and an exhausted resource/unavailable
+                   slot renders its own pill disabled rather than omitted,
+                   satisfying "display unavailable funding method" without
+                   fabricating a default. Selecting a pill here is a
+                   REQUEST only -- character-cast.ts's own
+                   `resolveCastFunding` independently re-derives the real
+                   funding authority on every Cast. -->
+              <div
+                v-if="castFundingConfigurationOf(action).requiresFundingChoice"
+                class="mb-2"
+              >
+                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">Pay With</span>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-if="castFundingConfigurationOf(action).slotFundingAllowed"
+                    type="button"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="selectedFundingMethodFor(action) === 'slot'
+                      ? 'border-eldra-accent/55 text-eldra-text-strong'
+                      : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
+                    :disabled="!slotCurrentlyAvailable(action)"
+                    :aria-pressed="selectedFundingMethodFor(action) === 'slot'"
+                    @click="selectFundingMethod(action, 'slot')"
+                  >
+                    Spell Slot
+                  </button>
+                  <button
+                    v-for="option in castFundingConfigurationOf(action).resourceOptions"
+                    :key="option.resourceId"
+                    type="button"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="selectedFundingMethodFor(action) === option.resourceId
+                      ? 'border-eldra-accent/55 text-eldra-text-strong'
+                      : 'border-eldra-accent/20 text-eldra-text-faint hover:text-eldra-text-soft'"
+                    :disabled="option.remaining <= 0"
+                    :aria-pressed="selectedFundingMethodFor(action) === option.resourceId"
+                    @click="selectFundingMethod(action, option.resourceId)"
+                  >
+                    {{ option.label }} ({{ option.remaining }}/{{ option.max }})
                   </button>
                 </div>
               </div>

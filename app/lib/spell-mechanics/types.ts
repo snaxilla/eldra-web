@@ -305,6 +305,21 @@ export type CanonicalSpellMechanics = {
   // Knight's bonus spells, an always-prepared addition, not a class-list pick) are a different
   // mechanic and are not merged in here; that remains P4's scope.
   classLists?: readonly string[]
+
+  // CHARACTER MECHANICS PHASE A5 -- a narrow, explicitly hand-reviewed fact, never inferred from
+  // `resolution`/`damage`/`healing` being absent (that alone describes every ordinary utility
+  // spell -- Comprehend Languages, Detect Magic, Alter Self -- which must stay exactly as
+  // uncastable through Cast as they are today). `true` only for a small, named set of spells
+  // whose entire mechanical effect is something other than a roll (self-teleport, an
+  // environmental zone, ...) which this project has explicitly reviewed and decided is safe to
+  // expose through Cast as "the cast succeeded and its cost was paid" and NOTHING MORE -- no
+  // automatic token movement, zone creation, concentration tracking, or condition application,
+  // all of which stay exactly as manual/DM-adjudicated as every other spell's non-roll effect
+  // already is. See resolveDnd5eSpellMechanics's own UTILITY_CAST_SUPPORTED_SPELLS for the
+  // reviewed set and classifySpellCastCapability's own `supported-utility-cast` branch for the
+  // one place this is consumed. Absent/false is byte-identical to every spell's behavior before
+  // this field existed.
+  utilityCastSupported?: boolean
 }
 
 // One game system's translation of raw Content Pack `data` into this

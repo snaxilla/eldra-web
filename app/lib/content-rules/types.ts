@@ -405,6 +405,34 @@ export type FixedSpellGrant = {
   // character's own level actually reaches it, never fabricated early and never duplicated once
   // resolved (see that function's own header for the exact windowing contract).
   minLevel?: number
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- RESOURCE-FUNDED CASTING. When
+  // present, this spell can ALSO be Cast by spending one unit of the named
+  // generic Resource Definition, instead of (or in addition to) a spell
+  // slot (Archfey's own Steps of the Fey: "cast Misty Step... without
+  // expending a spell slot... a number of times equal to your Charisma
+  // modifier... You can also cast Misty Step using any spell slots you
+  // have"). Re-derived fresh at Cast time from whichever facets are
+  // CURRENTLY active (server/utils/character-actor-bridge.ts), exactly
+  // like `resources` above -- never persisted as a fact about the spell
+  // itself, so a repin/subclass change is reflected immediately with
+  // nothing to migrate. The resource named here must already be granted
+  // to the character by SOME active facet's own `resources`/progression
+  // row (this field only states WHICH resource pays for THIS spell, never
+  // grants the resource itself) -- Warrior of Shadow's own Focus Points
+  // grant already exists on the base Monk class, for example.
+  fundedByResource?: DefinitionId
+  // Whether this spell may STILL be paid for with an ordinary spell slot
+  // in addition to `fundedByResource` (Archfey's own "You can also cast
+  // Misty Step using any spell slots you have" -- omitted/true, the
+  // default, preserves every existing grant's behavior byte-for-byte).
+  // `false` for a grant whose real text names NO slot-casting alternative
+  // at all (Warrior of Shadow's Shadow Arts: Focus-Point-funded only) --
+  // character-cast.ts's own cast authority rejects a slot-funded request
+  // for a spell whose ONLY funding option declares this explicitly, rather
+  // than relying on an incidental "this character has no spell slots"
+  // failure to produce the same effect by accident. Meaningless without
+  // `fundedByResource` and ignored when it is absent.
+  slotFundingAllowed?: boolean
 }
 
 export type RulesFacetFeatureRequirement = {

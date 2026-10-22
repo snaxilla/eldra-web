@@ -44,6 +44,18 @@ export {
 } from './cast-configuration'
 
 export {
+  resolveCastFundingConfiguration,
+  defaultFundingMethod,
+  isFundingMethodAvailable,
+  resolveSelectedFundingMethod,
+  resolveOverallCastAvailability,
+  resolveOverallRequiresConfiguration,
+  type CastFundingConfigurationViewModel,
+  type CastFundingResourceOption,
+  type CharacterResourceView
+} from './cast-funding'
+
+export {
   resolveEffectiveSpellRoll,
   resolveEffectiveDamage,
   resolveEffectiveHealing,

@@ -145,12 +145,11 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   it('a feat whose own nested spell decisions are now implemented owns nothing unrecordable (Fey-Touched)', () => {
     expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(false)
   })
-  // A4 -- Battle Master (this test's own prior example) is now fully representable at this
-  // structural layer (Combat Superiority), so it moves to Warrior of Shadow (Monk): its own
-  // Level-3 resource-gated Darkness grant remains a genuine STOP (no generic primitive for a
-  // spell usable only via a specific finite resource pool), re-verified live.
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- Warrior of Shadow's own Level-3 resource-gated
+  // Darkness grant is now authored via the generic FixedSpellGrant.fundedByResource/
+  // slotFundingAllowed primitive, so this subclass owns nothing unrecordable here either.
   it('a subclass chosen in this transition is the one whose decisions apply', () => {
     expect(prog('monk-xphb', 2, 3, null)).toEqual([])
-    expect(prog('monk-xphb', 2, 3, 'warrior-of-shadow-xphb')).not.toEqual([])
+    expect(prog('monk-xphb', 2, 3, 'warrior-of-shadow-xphb')).toEqual([])
   })
 })

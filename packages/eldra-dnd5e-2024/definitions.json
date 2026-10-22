@@ -4366,6 +4366,21 @@
     ]
   },
   {
+    "id": "resource:steps_of_the_fey",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Steps of the Fey",
+    "max": {
+      "text": "if(@value:ability.cha.mod>=1,@value:ability.cha.mod,1)"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
     "id": "resource:superiority_dice",
     "kind": "resource",
     "category": "combat",
@@ -4526,6 +4541,21 @@
         "at": 2,
         "resources": [
           "resource:focus_points"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:subclass.resources-steps-of-the-fey",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Steps of the Fey Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 3,
+        "resources": [
+          "resource:steps_of_the_fey"
         ]
       }
     ]

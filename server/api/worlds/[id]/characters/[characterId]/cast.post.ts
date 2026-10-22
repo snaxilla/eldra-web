@@ -138,6 +138,21 @@ export default defineEventHandler(async (event): Promise<CastSpellResult> => {
     choices = Object.fromEntries(entries as [string, string][])
   }
 
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) --
+  // structural parsing only, mirroring `castLevel`/`choices` above: WHICH
+  // resource the player wants to pay with is caller intent, never a
+  // mechanics fact -- character-cast.ts's own `resolveCastFunding`
+  // independently re-verifies it against this spell's own currently-active
+  // funding options before anything is expended. Absent means "pay with a
+  // spell slot," preserving every existing caller's behavior unchanged.
+  let fundingResourceId: string | undefined
+  if (body?.fundingResourceId !== undefined) {
+    if (typeof body.fundingResourceId !== 'string' || !body.fundingResourceId.trim()) {
+      throw createError({ statusCode: 400, statusMessage: 'fundingResourceId must be a non-empty string' })
+    }
+    fundingResourceId = body.fundingResourceId.trim()
+  }
+
   // Fail closed, matching rolls/index.post.ts's own identical default.
   let visibility: RollVisibility = 'private'
   if (body?.visibility !== undefined) {
@@ -152,7 +167,7 @@ export default defineEventHandler(async (event): Promise<CastSpellResult> => {
 
   const rollerUserId = principal.accountId
 
-  const input = { worldId, characterId, rollerUserId, actionId, visibility, castLevel, choices }
+  const input = { worldId, characterId, rollerUserId, actionId, visibility, castLevel, choices, fundingResourceId }
   const result = intent === 'damage'
     ? await rollIndependentSpellDamage(input)
     : await castSpell(input)

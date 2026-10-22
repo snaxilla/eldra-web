@@ -180,15 +180,29 @@ describe('P2 spell corpus authority', () => {
   // same missing primitive as Gloom Stalker's own Iron Mind -- so neither is authored as a
   // plain skill-proficiency choice, which would silently drop the real Expertise-on-repeat half
   // of the rule. Moving the census from 654/601/18/35 to 654/609/10/35.
-  it('the Phase-0 decision census after the Remaining Mandatory Decision Closure workstream: 654 total, 609 implemented, 10 blocked, 35 optional', () => {
+  //
+  // CHARACTER MECHANICS PHASE A5, Phase 3 (Resource-Funded Spellcasting) -- independently
+  // correct for a Phase 3 release WITHOUT the separate, unfinished A5-A (conditional
+  // proficiency/Expertise) work: Warrior of Shadow's own Level-3 Darkness grant is now authored
+  // via the generic FixedSpellGrant.fundedByResource/slotFundingAllowed primitive
+  // (character-cast.ts's own resolveCastFunding), closing BOTH of that subclass's own sibling
+  // decisions at that (owner, level, flag) key (Minor Illusion AND Darkness -- see
+  // mandatory-decision-coverage.ts's own SIBLING-CARDINALITY GUARD header for why authoring one
+  // without the other would NOT have been enough). Keen Mind/Observant/Gloom Stalker's Iron Mind
+  // are UNCHANGED here (still genuinely blocked, exactly as 654/609/10/35 above states) -- this
+  // is a SEPARATE, independent +2/-2 movement from an entirely different decision pair, verified
+  // directly in an isolated worktree containing only the Phase 3 changes (the release-boundary
+  // audit computed these counts before asserting them, not the reverse). Moving the census from
+  // 654/609/10/35 to 654/611/8/35.
+  it('the Phase-0 decision census after Resource-Funded Spellcasting alone (A5-A conditional proficiency NOT included): 654 total, 611 implemented, 8 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
-    expect(counts.implemented).toBe(609)
-    expect(counts.blocked).toBe(10)
+    expect(counts.implemented).toBe(611)
+    expect(counts.blocked).toBe(8)
     expect(counts.optional).toBe(35)
   })
 

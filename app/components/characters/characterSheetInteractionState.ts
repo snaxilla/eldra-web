@@ -38,6 +38,13 @@ export type ActionsInteractionState = {
   openConfigActionId: string | null
   castLevels: Record<string, number>
   castChoices: Record<string, Record<string, string>>
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- the player's own selected
+  // payment method per actionId: `'slot'`, or a resourceId. Mirrors
+  // `castLevels`/`castChoices` exactly (a pending, UI-only selection the
+  // server independently re-verifies on every real Cast -- see
+  // character-cast.ts's own `resolveCastFunding`). Absent means "not yet
+  // chosen," distinct from an explicit `'slot'` pick.
+  castFunding: Record<string, string>
 }
 
 export type NotesInteractionState = {
@@ -64,7 +71,7 @@ export function emptyInventoryAddState(): InventoryAddInteractionState {
 }
 
 export function emptyActionsState(): ActionsInteractionState {
-  return { targetCharacterId: '', filter: null, openConfigActionId: null, castLevels: {}, castChoices: {} }
+  return { targetCharacterId: '', filter: null, openConfigActionId: null, castLevels: {}, castChoices: {}, castFunding: {} }
 }
 
 export function emptyNotesState(): NotesInteractionState {

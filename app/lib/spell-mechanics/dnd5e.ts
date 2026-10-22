@@ -644,6 +644,22 @@ function extractSlotLevelDiceScaling(
   return { trigger: 'cast-level', perLevelDiceCount: perLevel.count }
 }
 
+// CHARACTER MECHANICS PHASE A5 -- a small, explicitly named exception, mirroring this project's
+// own established precedent for "these specific spells, never a structural inference"
+// (mandatory-decision-coverage.ts's own SUBCLASS_FLAT_INNATE_DUPLICATE/SUBCLASS_DAMAGE_TYPE_
+// PROGRESSION). Each entry here was individually reviewed: its entire mechanical effect is
+// something other than a roll, and exposing it through Cast means only "the cast succeeded and
+// its cost was paid" -- never automatic teleportation, zone creation, concentration tracking, or
+// condition application, all of which stay exactly as manual/DM-adjudicated as every other
+// spell's non-roll effect already is. Keyed by `name|source` (the real corpus's own identity
+// pair, matching how a Progression/FixedSpellGrant already names a spell by slug derived from
+// this same pair) -- never a slug lookup, and never referenced from character-cast.ts or any
+// other generic engine module, only from this content-translation layer.
+const UTILITY_CAST_SUPPORTED_SPELLS: ReadonlySet<string> = new Set([
+  'Misty Step|XPHB',
+  'Darkness|XPHB'
+])
+
 export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechanics | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null
 
@@ -729,6 +745,11 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     ? raw.classLists.filter((entry): entry is string => typeof entry === 'string')
     : undefined
 
+  // CHARACTER MECHANICS PHASE A5 -- see UTILITY_CAST_SUPPORTED_SPELLS's own header above. Keyed
+  // by the real corpus's own `name|source` identity pair, exactly the pair every real spell in
+  // this dataset carries.
+  const utilityCastSupported = UTILITY_CAST_SUPPORTED_SPELLS.has(`${raw.name}|${String(raw.source ?? '')}`)
+
   return {
     level,
     school,
@@ -745,6 +766,7 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     scaling: resolveScaling(raw.entriesHigherLevel),
     ...(choices.length ? { choices } : {}),
     ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {}),
-    ...(classLists && classLists.length > 0 ? { classLists } : {})
+    ...(classLists && classLists.length > 0 ? { classLists } : {}),
+    ...(utilityCastSupported ? { utilityCastSupported: true } : {})
   }
 }

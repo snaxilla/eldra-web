@@ -48,12 +48,26 @@ import type { CanonicalSpellMechanics } from './types'
 // known is honestly Cast-capable, exactly the same "resource + roll,
 // never a fabricated target effect" posture every other supported kind
 // already has.
+// CHARACTER MECHANICS PHASE A5 -- `supported-utility-cast` is the narrowest kind here: a spell
+// with NOTHING to roll (no attack, no save, no automatic damage, no healing) whose entire effect
+// is something else (self-teleport, an environmental zone, ...). Classification is deliberately
+// NOT "resolution/damage/healing are all absent" alone -- that describes every ordinary utility
+// spell in the corpus (Comprehend Languages, Detect Magic, Alter Self, ...), which must stay
+// exactly as uncastable as they are today. The actual gate is `mechanics.utilityCastSupported`,
+// a narrow, explicitly hand-reviewed, content-authored fact (see app/lib/spell-mechanics/dnd5e.ts's
+// own UTILITY_CAST_SUPPORTED_SPELLS) -- deliberately NOT derived from, or coupled to, any
+// expenditure fact (a slot-funded utility spell and a resource-funded one are equally
+// `supported-utility-cast`; HOW it is paid for is server/utils/character-cast.ts's own separate
+// concern). A successful utility Cast is an authoritative acknowledgment ONLY -- "the cast
+// succeeded and its cost was paid" -- never automatic token movement, zone creation,
+// concentration tracking, or condition application.
 export type SpellCastCapability =
   | { kind: 'supported-spell-attack' }
   | { kind: 'supported-automatic-damage' }
   | { kind: 'supported-save-damage' }
   | { kind: 'supported-save-context' }
   | { kind: 'supported-healing' }
+  | { kind: 'supported-utility-cast' }
   | { kind: 'unsupported-effect' }
   | { kind: 'unsupported-choice' }
   | { kind: 'unsupported-mechanic' }
@@ -124,5 +138,13 @@ export function classifySpellCastCapability(
   // separately-normalized `healing` roll, never miscoded as 'automatic'
   // just because they resolve something).
   if (mechanics.healing) return { kind: 'supported-healing' }
+
+  // CHARACTER MECHANICS PHASE A5 -- see this file's own header on
+  // `supported-utility-cast` above. Checked LAST, only once every rolling
+  // archetype has been ruled out, and gated on the narrow, explicit
+  // `utilityCastSupported` fact -- every other spell with nothing to roll
+  // (the entire rest of the corpus) still falls through to
+  // `unsupported-effect`, byte-identical to before this phase.
+  if (mechanics.utilityCastSupported) return { kind: 'supported-utility-cast' }
   return { kind: 'unsupported-effect' }
 }

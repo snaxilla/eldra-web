@@ -175,6 +175,48 @@ describe('classifySpellCastCapability -- synthetic edge cases the real corpus do
   })
 })
 
+describe('classifySpellCastCapability -- CHARACTER MECHANICS PHASE A5 (supported-utility-cast)', () => {
+  it('Misty Step (real corpus: resolution null, no damage, no healing, explicitly reviewed) classifies as supported-utility-cast', () => {
+    expect(classifySpellCastCapability(actionOf('Misty Step'))).toEqual({ kind: 'supported-utility-cast' })
+  })
+
+  it('Darkness (real corpus: resolution null, no damage, no healing, explicitly reviewed) classifies as supported-utility-cast', () => {
+    expect(classifySpellCastCapability(actionOf('Darkness'))).toEqual({ kind: 'supported-utility-cast' })
+  })
+
+  // THE NARROWNESS PROOF: Shield/Bless/False Life/Revivify above are ALL `resolution: null`, no
+  // damage, no healing -- structurally IDENTICAL in shape to Misty Step/Darkness -- yet they stay
+  // `unsupported-effect`, proving classification is gated on the explicit, hand-reviewed
+  // `utilityCastSupported` fact, never inferred from "nothing to roll" alone.
+  it('an ordinary utility spell with the IDENTICAL structural shape (resolution null, no damage, no healing) stays unsupported-effect', () => {
+    expect(classifySpellCastCapability(actionOf('Shield'))?.kind).toBe('unsupported-effect')
+    expect(classifySpellCastCapability(actionOf('Bless'))?.kind).toBe('unsupported-effect')
+    expect(classifySpellCastCapability(actionOf('False Life'))?.kind).toBe('unsupported-effect')
+    expect(classifySpellCastCapability(actionOf('Revivify'))?.kind).toBe('unsupported-effect')
+  })
+
+  it('utilityCastSupported is decoupled from any expenditure fact -- a synthetic mechanics value carrying it, with no other field set, still classifies as supported-utility-cast', () => {
+    expect(classifySpellCastCapability({
+      category: 'spell',
+      spellMechanics: { level: 2, concentration: false, ritual: false, resolution: null, utilityCastSupported: true }
+    })).toEqual({ kind: 'supported-utility-cast' })
+  })
+
+  it('an unresolved choice overrides an otherwise-supported utility resolution, same as every other kind', () => {
+    expect(classifySpellCastCapability({
+      category: 'spell',
+      spellMechanics: { level: 2, concentration: false, ritual: false, resolution: null, utilityCastSupported: true, hasUnresolvedChoice: true }
+    })).toEqual({ kind: 'unsupported-choice' })
+  })
+
+  it('utilityCastSupported never overrides a rolling resolution kind (checked last, after every rolling archetype)', () => {
+    expect(classifySpellCastCapability({
+      category: 'spell',
+      spellMechanics: { level: 1, concentration: false, ritual: false, resolution: { kind: 'attack-roll' }, utilityCastSupported: true }
+    })).toEqual({ kind: 'supported-spell-attack' })
+  })
+})
+
 // Test 6 (task's own list): capability logic does not inspect spell names --
 // proven structurally by every test above passing using only `category`/
 // `spellMechanics`, never a `name` field, and reinforced here explicitly.

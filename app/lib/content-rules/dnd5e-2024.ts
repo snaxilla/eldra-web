@@ -1915,7 +1915,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       },
       'warrior-of-shadow-xphb': { // Warrior of Shadow (Monk)
         fixedSpellGrants: [
-          { slug: 'minor-illusion-xphb', flag: 'known', minLevel: 3 }
+          { slug: 'minor-illusion-xphb', flag: 'known', minLevel: 3 },
+          // CHARACTER MECHANICS PHASE A5, Phase 3 -- Shadow Arts (XPHB,
+          // Level 3): "you can spend Focus Points to cast... Darkness...
+          // without material components." Monks have no spell-slot
+          // progression at all (no `caster_type.*` value is ever true for
+          // this class), so there is no RAW slot-casting alternative to
+          // preserve -- `slotFundingAllowed: false` states that explicitly
+          // rather than relying on the incidental "this character has no
+          // spell slots" failure to produce the same rejection by
+          // accident. Funded by the base Monk class's own pre-existing
+          // Focus Points (`resource:focus_points`, already granted at
+          // Level 2 by `progression:class.resources-focus-points`) -- no
+          // new resource grant needed here.
+          { slug: 'darkness-xphb', flag: 'known', minLevel: 3, fundedByResource: 'resource:focus_points', slotFundingAllowed: false }
         ]
       },
       'warrior-of-the-elements-xphb': { // Warrior of the Elements (Monk)
@@ -2082,7 +2095,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         fixedSpellGrants: [
           { slug: 'calm-emotions-xphb', flag: 'prepared', minLevel: 3 },
           { slug: 'faerie-fire-xphb', flag: 'prepared', minLevel: 3 },
-          { slug: 'misty-step-xphb', flag: 'prepared', minLevel: 3 },
+          // CHARACTER MECHANICS PHASE A5, Phase 3 -- Steps of the Fey
+          // (XPHB, Level 3): "you can cast Misty Step... without expending
+          // a spell slot... a number of times equal to your Charisma
+          // modifier (minimum of once)... You regain all expended uses
+          // when you finish a Long Rest. You can also cast Misty Step
+          // using any spell slots you have." The SAME grant the pre-
+          // existing Expanded Spell List already names (never a second,
+          // duplicate grant for this slug) now ALSO carries the funding
+          // link -- `slotFundingAllowed` omitted/true preserves the RAW
+          // "also castable with a slot" alternative exactly.
+          { slug: 'misty-step-xphb', flag: 'prepared', minLevel: 3, fundedByResource: 'resource:steps_of_the_fey' },
           { slug: 'phantasmal-force-xphb', flag: 'prepared', minLevel: 3 },
           { slug: 'sleep-xphb', flag: 'prepared', minLevel: 3 },
           { slug: 'blink-xphb', flag: 'prepared', minLevel: 5 },
@@ -2091,7 +2114,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           { slug: 'greater-invisibility-xphb', flag: 'prepared', minLevel: 7 },
           { slug: 'dominate-person-xphb', flag: 'prepared', minLevel: 9 },
           { slug: 'seeming-xphb', flag: 'prepared', minLevel: 9 }
-        ]
+        ],
+        // Steps of the Fey's own free-use pool -- a Level-3 SUBCLASS
+        // feature, not available the moment Warlock's own Patron choice is
+        // made at Level 1, hence the level-gated progression row rather
+        // than an unconditional facet-level `resources` grant (contrast
+        // Battle Master's own immediate `resources: [...]`, whose subclass
+        // IS chosen at the level its resource starts).
+        progression: ['progression:subclass.resources-steps-of-the-fey']
       },
       'celestial-patron-xphb': { // Celestial Patron (Warlock)
         fixedSpellGrants: [

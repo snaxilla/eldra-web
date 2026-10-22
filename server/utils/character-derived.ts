@@ -233,6 +233,14 @@ export type DerivedCharacter = {
   // real `kind: 'resource'` Definition (package repin/removal) is silently
   // omitted, never a crash -- UNRESOLVED RESOURCE IDS requirement.
   resources: DerivedResource[]
+  // CHARACTER MECHANICS PHASE A5, Phase 3 -- relayed verbatim from
+  // `bridged.spellResourceFunding` (character-actor-bridge.ts's own doc
+  // comment has the full reasoning). Keyed by spell slug, never a
+  // Definition id. `character-actions.ts` intersects this against the
+  // character's own actually-resolved spell list (never trusted alone --
+  // this says "a resource COULD fund this slug," not "this character has
+  // this spell").
+  spellFunding: Record<string, { resourceId: DefinitionId; slotFundingAllowed: boolean }[]>
 }
 
 export type DerivedCharacterResult =
@@ -694,7 +702,8 @@ async function getDerivedCharacterInternal(
       choices,
       pendingChoices: bridged.pendingChoices,
       unresolvedGrants: bridged.unresolvedGrants,
-      resources
+      resources,
+      spellFunding: bridged.spellResourceFunding
     }
   }
 }

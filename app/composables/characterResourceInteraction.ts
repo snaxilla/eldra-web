@@ -202,6 +202,19 @@ export type ResourceWriteSequencer = {
   // superseded success is still a fact a later failure may need). Never
   // called on failure: a failed write confirms nothing.
   recordConfirmed: (resourceId: string, expended: number) => void
+  // CROSS-CHARACTER LEAK -- this sequencer is created ONCE per Sheet
+  // page MOUNT (useCharacterMutations.ts), not once per character: there
+  // is no `:key` on `<NuxtPage/>` forcing a remount when only the
+  // `:characterId` route param changes, so navigating from one
+  // character's Sheet to another's (same route component) reuses the
+  // SAME sequencer instance. Resource ids are GENERIC, package-authored
+  // strings ('resource:rage', ...), shared by every character who has
+  // that resource -- so without a reset, a value confirmed for character
+  // A is still sitting in `lastConfirmed` when character B's own later
+  // failure looks it up, reconciling to A's leftover number instead of
+  // B's own, correct base. The caller resets this on every characterId
+  // change (`watch(characterId, ...)` in useCharacterMutations.ts).
+  reset: () => void
   // The most recently CONFIRMED (successfully persisted) value for this
   // resourceId in this session, or `undefined` if nothing ever succeeded
   // -- the fallback a failure handler reconciles to, never the original
@@ -211,13 +224,31 @@ export type ResourceWriteSequencer = {
 }
 
 export function createResourceWriteSequencer(): ResourceWriteSequencer {
-  const latestTicket: Record<string, number> = {}
-  const lastConfirmed: Record<string, number> = {}
+  // ONE counter shared across every resourceId, and NEVER reset -- see
+  // `reset()` below for why. A per-resourceId counter that restarted at 1
+  // on every reset could let a stale PRE-reset ticket numerically collide
+  // with a fresh POST-reset one for the same resourceId; a single
+  // never-rewound counter makes every ticket this sequencer has ever
+  // issued globally unique, so a reset can never produce a collision.
+  let counter = 0
+  let latestTicket: Record<string, number> = {}
+  let lastConfirmed: Record<string, number> = {}
 
   function next(resourceId: string): number {
-    const ticket = (latestTicket[resourceId] ?? 0) + 1
+    const ticket = ++counter
     latestTicket[resourceId] = ticket
     return ticket
+  }
+
+  function reset(): void {
+    // Fresh objects, not `delete`-each-key -- a write issued before the
+    // reset (e.g. a slow request from the PREVIOUS character, still in
+    // flight) that resolves afterward looks up a resourceId that no
+    // longer exists in the NEW map at all, so `isLatest` correctly reads
+    // false (superseded). `counter` is deliberately NOT reset here (see
+    // its own comment) -- only the per-resourceId records are cleared.
+    latestTicket = {}
+    lastConfirmed = {}
   }
 
   function isLatest(resourceId: string, ticket: number): boolean {
@@ -232,5 +263,5 @@ export function createResourceWriteSequencer(): ResourceWriteSequencer {
     return lastConfirmed[resourceId]
   }
 
-  return { next, isLatest, recordConfirmed, getLastConfirmed }
+  return { next, isLatest, recordConfirmed, getLastConfirmed, reset }
 }

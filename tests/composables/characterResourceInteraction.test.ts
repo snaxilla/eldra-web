@@ -221,6 +221,40 @@ describe('createResourceWriteSequencer -- real browser defect, rapid double-clic
     expect(sequencer.isLatest('resource:rage', rageTicket)).toBe(true)
   })
 
+  it('CROSS-CHARACTER LEAK FIX -- reset() clears confirmed values and tickets, so a later lookup never sees a PREVIOUS character\'s leftover number', () => {
+    // useCharacterMutations.ts is invoked once per Sheet page mount, not
+    // once per character (no `:key` forces a remount when only the
+    // `:characterId` route param changes) -- without `reset()`, a value
+    // confirmed while viewing one character would still answer
+    // `getLastConfirmed` for the NEXT character's own, unrelated failure,
+    // for any resourceId both characters happen to share (every generic
+    // class resource id is shared across every character who has it).
+    const sequencer = createResourceWriteSequencer()
+
+    // "Bob" confirms Rage at 0.
+    sequencer.next('resource:rage')
+    sequencer.recordConfirmed('resource:rage', 0)
+    expect(sequencer.getLastConfirmed('resource:rage')).toBe(0)
+
+    // A slow write for Bob is still in flight (ticket already issued,
+    // not yet resolved) when the user navigates to "Borc" (same
+    // resourceId, different character) -- useCharacterMutations.ts's own
+    // watch(characterId, ...) fires reset() at that point.
+    const staleBobTicket = sequencer.next('resource:rage')
+    sequencer.reset()
+
+    expect(sequencer.getLastConfirmed('resource:rage')).toBeUndefined()
+
+    // Borc issues her own ticket post-reset -- it must be numerically
+    // DIFFERENT from Bob's stale, still-in-flight one, so Bob's slow
+    // response (arriving after Borc's own click) can never be mistaken
+    // for "latest" in Borc's context.
+    const borcTicket = sequencer.next('resource:rage')
+    expect(borcTicket).not.toBe(staleBobTicket)
+    expect(sequencer.isLatest('resource:rage', staleBobTicket)).toBe(false)
+    expect(sequencer.isLatest('resource:rage', borcTicket)).toBe(true)
+  })
+
   it('REGRESSION -- a rapid double-click no longer lets the earlier PUT response revert the later optimistic value', async () => {
     // Reproduces useCharacterMutations.ts's adjustResource/
     // performResourceWrite orchestration verbatim (that module is

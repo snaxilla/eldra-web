@@ -533,6 +533,15 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   // so an earlier write's own response can never visibly revert a newer
   // optimistic guess once a click has already superseded it.
   const resourceWriteSequencer = createResourceWriteSequencer()
+  // CROSS-CHARACTER LEAK FIX -- see createResourceWriteSequencer's own
+  // `reset` doc comment. `useCharacterMutations` is invoked once per
+  // Sheet page MOUNT, not once per character (no `:key` forces a remount
+  // when only `:characterId` changes), so without this the sequencer's
+  // `lastConfirmed`/ticket state from a PREVIOUS character silently
+  // bleeds into the next one viewed in the same browser tab, for any
+  // resourceId both characters happen to share (every generic class
+  // resource id is shared across every character who has it).
+  watch(characterId, () => { resourceWriteSequencer.reset() })
 
   function markResourcePending(resourceId: string, pending: boolean) {
     const next = new Set(resourcesPendingIds.value)

@@ -855,11 +855,21 @@ async function createCharacter() {
                 </div>
 
                 <!-- ============ CLASS: hero over art | medallion strip along the bottom ============ -->
+                <!-- `min-h-0` on this step and the hero wrapper below (Character Creator V3
+                     scroll/navigation repair): both are flex-COLUMN children with `flex-1` but no
+                     declared height floor, so without it their default `min-height: auto` refuses
+                     to shrink below the hero's own intrinsic content size -- the same flexbox
+                     behaviour already guarded against one level up, at this step's own ancestor
+                     (the `min-h-0` on the `flex flex-col` column a few lines above). The outer
+                     stage-content region (`overflow-y-auto`, a few lines above that) already makes
+                     any overflow here reachable by scrolling regardless, but leaving these two
+                     items without `min-h-0` is the one place in this file that pattern wasn't
+                     applied -- fixed defensively, not because a specific overflow was proven. -->
                 <div
                   v-else-if="activeStep === 'class'"
-                  class="flex min-w-0 flex-1 flex-col"
+                  class="flex min-h-0 min-w-0 flex-1 flex-col"
                 >
-                  <div class="flex flex-1 items-center py-4">
+                  <div class="flex min-h-0 flex-1 items-center py-4">
                     <CreationHero
                       kicker="Class"
                       :entry="draft.class?.presentation"
@@ -868,7 +878,7 @@ async function createCharacter() {
                       :figure-url="heroFigureUrl"
                     />
                   </div>
-                  <div class="mt-4 border-t border-eldra-accent/25 bg-eldra-ink/60 px-2 pt-3 backdrop-blur-md">
+                  <div class="mt-4 shrink-0 border-t border-eldra-accent/25 bg-eldra-ink/60 px-2 pt-3 backdrop-blur-md">
                     <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
                       Class
                     </h2>
@@ -1058,9 +1068,16 @@ async function createCharacter() {
               </div>
 
               <!-- ======= "Your Character" side panel (wide screens) ======= -->
+              <!-- Character Creator V3 scroll/navigation repair: `xl:max-h-screen xl:overflow-y-auto`
+                   added alongside the existing `xl:sticky xl:top-0` so this panel is reachable on
+                   its OWN terms -- the surrounding flex row already grows tall enough to keep the
+                   panel from clipping (its row height is the max of its children, this panel
+                   included), but that guarantee was incidental to the current content, not
+                   declared. A panel this tall at a short viewport now scrolls within itself once
+                   stuck, rather than depending on the sibling column staying at least as tall. -->
               <aside
                 v-if="!compact"
-                class="hidden w-72 shrink-0 self-start xl:sticky xl:top-0 xl:block"
+                class="hidden w-72 shrink-0 self-start xl:sticky xl:top-0 xl:block xl:max-h-screen xl:overflow-y-auto"
               >
                 <CharacterPreviewPanel
                   :name="draft.name"

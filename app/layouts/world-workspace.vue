@@ -19,35 +19,42 @@ watch(showPins, (value) => {
   showPinsCookie.value = value ? 'true' : 'false'
 })
 
-// Character sheet routes default the workspace navigation to its compact
-// icon rail (still expandable) so the sheet gets the width. Covers the
-// legacy sheet (`entities/:id/sheet`) and the V2 sheet, including the
-// canonical `characters/:id/sheet` resolver route (Phase 4B-0).
+// Character sheet routes, and (Character Creator V3 scroll/navigation
+// repair) the cinematic Character Creator, default the workspace navigation
+// to its compact icon rail (still expandable) so the content gets the
+// width. Covers the legacy sheet (`entities/:id/sheet`), the V2 sheet
+// (including the canonical `characters/:id/sheet` resolver route, Phase
+// 4B-0), and `characters/create-v2` -- the same reasoning as the sheet:
+// both are full-bleed, content-dense surfaces where the expanded 280px rail
+// is the first thing pushing their own content below the fold at short
+// viewport heights.
 function shouldCollapseWorkspaceSidebar(path: any) {
   const value = String(path || '')
   return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(value)
     || /^\/worlds\/[^/]+\/characters\/[^/]+\/sheet(?:-v2)?(?:\/|$)/.test(value)
+    || /^\/worlds\/[^/]+\/characters\/create-v2(?:\/|$)/.test(value)
 }
 
 const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => shouldCollapseWorkspaceSidebar(route.path))
 
-// The rail state the user had before a sheet auto-collapsed it, restored on
-// leaving the sheet so other pages keep their own default. Cleared if the
-// user toggles the rail while on the sheet (their latest choice wins).
-// `null` = nothing to restore.
+// The rail state the user had before this auto-collapsed it, restored on
+// leaving so other pages keep their own default. Cleared if the user
+// toggles the rail while on one of these routes (their latest choice wins).
+// `null` = nothing to restore. Named for the sheet (its original caller);
+// the Creator reuses the identical mechanism rather than a second state key.
 const preSheetCollapsed = useState<boolean | null>('world-workspace-pre-sheet-collapsed', () => null)
 
 watch(
   () => route.path,
   (path, previousPath) => {
-    const onSheet = shouldCollapseWorkspaceSidebar(path)
-    const wasOnSheet = previousPath !== undefined && shouldCollapseWorkspaceSidebar(previousPath)
+    const onCollapsingRoute = shouldCollapseWorkspaceSidebar(path)
+    const wasOnCollapsingRoute = previousPath !== undefined && shouldCollapseWorkspaceSidebar(previousPath)
 
-    if (onSheet && !wasOnSheet) {
-      // A direct load of a sheet has no prior page: restore to expanded.
+    if (onCollapsingRoute && !wasOnCollapsingRoute) {
+      // A direct load has no prior page: restore to expanded.
       preSheetCollapsed.value = previousPath === undefined ? false : leftCollapsed.value
       leftCollapsed.value = true
-    } else if (!onSheet && wasOnSheet && preSheetCollapsed.value !== null) {
+    } else if (!onCollapsingRoute && wasOnCollapsingRoute && preSheetCollapsed.value !== null) {
       leftCollapsed.value = preSheetCollapsed.value
       preSheetCollapsed.value = null
     }

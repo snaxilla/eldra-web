@@ -917,6 +917,9 @@ export type EquipmentBundleSummary = {
   id: string
   label: string
   summary: string
+  // CHARACTER CREATOR V3 -- the SAME per-grant strings `summary` joins, kept separate so the
+  // creator can list one item (with its quantity) per line without re-splitting prose.
+  items: string[]
 }
 
 export type EquipmentChoiceSection = {
@@ -934,11 +937,10 @@ export function equipmentChoiceSections(
   return equipmentChoiceOwners(draft).map((owner) => ({
     slot: owner.slot,
     choiceId: owner.choice.id,
-    bundles: owner.choice.bundles.map((bundle) => ({
-      id: bundle.id,
-      label: bundle.label,
-      summary: bundle.grants.map((grant) => summarizeEquipmentGrant(grant, draft, context, owner.slot)).join(', ')
-    })),
+    bundles: owner.choice.bundles.map((bundle) => {
+      const items = bundle.grants.map((grant) => summarizeEquipmentGrant(grant, draft, context, owner.slot))
+      return { id: bundle.id, label: bundle.label, summary: items.join(', '), items }
+    }),
     selectedBundleId: draft.equipmentSelections[owner.choice.id] ?? null,
     satisfied: equipmentChoiceSatisfied(draft, context, owner)
   }))

@@ -50,9 +50,17 @@ const props = withDefaults(defineProps<{
   name: string
   emptyMessage?: string
   compact?: boolean
+  // CHARACTER CREATOR V3 -- presentation of the SAME native radio group:
+  //   cards (default, original) -- roomy cards with an emblem
+  //   list  -- a slim vertical roster of portrait rows (Species, Background)
+  //   strip -- a horizontal row of portrait medallions (Class)
+  // Selection, search, disabled/unavailable handling, keyboard behaviour and
+  // accessibility are identical in every variant.
+  variant?: 'cards' | 'list' | 'strip'
 }>(), {
   emptyMessage: 'No options are available from this World\'s bound Content Packs.',
-  compact: false
+  compact: false,
+  variant: 'cards'
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -130,18 +138,23 @@ function select(entry: BuilderCatalogueEntry) {
          why that accessibility shape is never replaced by a styled div. -->
     <div
       v-else
-      class="grid gap-3"
-      :class="compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'"
+      :class="variant === 'strip'
+        ? 'creator-strip flex snap-x gap-2 overflow-x-auto pb-2'
+        : variant === 'list'
+          ? 'grid gap-1.5'
+          : ['grid gap-3', compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2']"
     >
       <label
         v-for="entry in visibleOptions"
         :key="optionKey(entry)"
-        class="eldra-card-glyph group relative flex min-h-20 items-center gap-4 rounded-none border px-4 py-3 transition"
         :class="[
           creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+          variant === 'cards' && 'eldra-card-glyph group relative flex min-h-20 items-center gap-4 rounded-none border px-4 py-3 transition',
+          variant === 'list' && 'group relative flex min-h-14 items-center gap-3 rounded-none border py-1.5 pl-1.5 pr-3 backdrop-blur-sm transition',
+          variant === 'strip' && 'group relative flex w-[4.75rem] shrink-0 snap-start flex-col items-center gap-1 rounded-none border px-1 pb-1.5 pt-1.5 backdrop-blur-sm transition',
           modelValue === optionKey(entry)
-            ? 'eldra-ornate-card border-eldra-accent/62'
-            : 'border-eldra-accent/26 bg-eldra-panel/68 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'
+            ? (variant === 'cards' ? 'eldra-ornate-card border-eldra-accent/62' : 'border-eldra-accent-bright/80 bg-eldra-accent/22 shadow-[0_0_22px_rgb(var(--eldra-accent-rgb)/0.35)]')
+            : (variant === 'cards' ? 'border-eldra-accent/26 bg-eldra-panel/68 hover:border-eldra-accent/42 hover:bg-eldra-accent/8' : 'border-eldra-accent/20 bg-eldra-ink/62 hover:border-eldra-accent/45 hover:bg-eldra-ink/80')
         ]"
       >
         <input
@@ -154,17 +167,43 @@ function select(entry: BuilderCatalogueEntry) {
           @change="select(entry)"
         >
 
-        <CreationEntityEmblem :title="entry.title" />
+        <CreationEntityEmblem
+          :title="entry.title"
+          :image-url="entry.presentation?.image?.url"
+          :size="variant === 'strip' ? 'md' : variant === 'list' ? 'md' : 'sm'"
+        />
 
-        <span class="min-w-0 flex-1">
-          <span class="block truncate font-serif text-lg font-semibold text-eldra-text-strong">
+        <span
+          v-if="variant === 'strip'"
+          class="w-full min-w-0 text-center"
+        >
+          <span class="block truncate text-[0.7rem] font-semibold text-eldra-text-strong">{{ entry.title }}</span>
+          <span
+            v-if="ambiguous && entry.sourceBook"
+            class="block truncate text-[0.6rem] text-eldra-text-faint"
+          >{{ entry.sourceBook }}</span>
+          <span
+            v-if="creationUnavailableReason(entry)"
+            class="sr-only"
+          >Not available yet. {{ creationUnavailableReason(entry) }}</span>
+        </span>
+
+        <span
+          v-else
+          class="min-w-0 flex-1"
+        >
+          <span
+            class="block truncate font-serif font-semibold text-eldra-text-strong"
+            :class="variant === 'list' ? 'text-base' : 'text-lg'"
+          >
             {{ entry.title }}
           </span>
           <span
+            v-if="variant === 'cards' || (ambiguous && entry.sourceBook)"
             class="mt-0.5 block truncate text-xs"
             :class="ambiguous ? 'text-eldra-text-soft' : 'text-eldra-text-faint'"
           >
-            <template v-if="entry.sourceBook">{{ entry.sourceBook }} · </template>{{ entry.packageId }}
+            <template v-if="entry.sourceBook">{{ entry.sourceBook }}</template><template v-if="variant === 'cards'"> · {{ entry.packageId }}</template>
           </span>
           <span
             v-if="creationUnavailableReason(entry)"
@@ -174,8 +213,20 @@ function select(entry: BuilderCatalogueEntry) {
           </span>
         </span>
 
-        <!-- Selection indicator: shape + fill, never colour alone. -->
+        <!-- Selection indicator: shape + fill, never colour alone. The strip
+             shows selection as a ring + check badge instead of a radio dot. -->
         <span
+          v-if="variant === 'strip' && modelValue === optionKey(entry)"
+          aria-hidden="true"
+          class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-eldra-accent-bright text-eldra-ink"
+        >
+          <UIcon
+            name="i-lucide-check"
+            class="size-3"
+          />
+        </span>
+        <span
+          v-if="variant !== 'strip'"
           aria-hidden="true"
           class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
           :class="modelValue === optionKey(entry)
@@ -197,7 +248,7 @@ function select(entry: BuilderCatalogueEntry) {
     </div>
 
     <p
-      v-if="options.length"
+      v-if="options.length && (variant === 'cards' || query)"
       class="mt-2 text-xs text-eldra-text-faint"
     >
       {{ visibleOptions.length }} of {{ options.length }} shown

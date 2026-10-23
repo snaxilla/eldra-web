@@ -65,11 +65,16 @@ const props = withDefaults(defineProps<{
   // open text before a real decision is even made." Every section is still ONE CLICK away either
   // way; nothing here removes information, only its default visibility.
   collapseFirstSection?: boolean
+  // CHARACTER CREATOR V3 -- the cinematic hero already shows this entry's artwork as the stage
+  // itself, so its details drawer omits the framed artwork block. Default false: every other
+  // caller (Sheet, spell inspection) is unchanged.
+  hideArtwork?: boolean
 }>(), {
   entry: null,
   emptyMessage: 'This Content Pack publishes no further details for this entry.',
   context: 'detail',
-  collapseFirstSection: false
+  collapseFirstSection: false,
+  hideArtwork: false
 })
 
 // CONTENT PRESENTATION REPAIR (B1) -- artwork. Species/Class/Background are
@@ -78,7 +83,7 @@ const props = withDefaults(defineProps<{
 // set `entry.image`, so this framed block is scoped to the other three kinds
 // on purpose: a Spell's detail panel must render exactly as it did before
 // this task, never gain an empty artwork frame no fluff join could ever fill.
-const showsArtworkFrame = computed(() => !!props.entry && props.entry.kind !== 'spell')
+const showsArtworkFrame = computed(() => !!props.entry && props.entry.kind !== 'spell' && !props.hideArtwork)
 
 // A `url` that 404s (a pack's fluff join pointed at a path the running
 // deployment's /api/5etools-img route can't read) must fall back to the

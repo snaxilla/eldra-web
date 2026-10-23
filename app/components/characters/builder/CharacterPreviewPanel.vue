@@ -33,9 +33,23 @@ const props = withDefaults(defineProps<{
   // row with a value, by convention Species, so the preview reads "a
   // specific someone" the moment the very first real choice is made.
   compact?: boolean
+  // CHARACTER CREATOR V3 -- the species' published artwork, when it has one;
+  // absent means the monogram emblem (see CreationEntityEmblem.vue).
+  imageUrl?: string | null
 }>(), {
-  compact: false
+  compact: false,
+  imageUrl: null
 })
+
+const portraitFailed = ref<string | null>(null)
+// See CreationEntityEmblem.vue: an SSR-parsed image can fail before hydration attaches `@error`.
+const portraitRef = ref<HTMLImageElement | null>(null)
+onMounted(() => {
+  const el = portraitRef.value
+  if (el && el.complete && el.naturalWidth === 0) portraitFailed.value = props.imageUrl
+})
+
+const showPortrait = computed(() => !!props.imageUrl && portraitFailed.value !== props.imageUrl)
 
 const emblemSource = computed(() => props.rows.find((row) => row.title)?.title ?? null)
 const displayName = computed(() => props.name.trim() || 'Your Character')
@@ -44,8 +58,8 @@ const hasAnyChoice = computed(() => props.rows.some((row) => row.title))
 
 <template>
   <div
-    class="eldra-ornate-panel eldra-frame-corners relative overflow-hidden rounded-none border border-eldra-accent/30 backdrop-blur"
-    :class="compact ? 'flex items-center gap-3 px-4 py-3' : 'flex flex-col items-center gap-4 px-6 py-8 text-center'"
+    class="eldra-frame-corners relative overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-ink/72 backdrop-blur-md"
+    :class="compact ? 'flex items-center gap-3 px-3 py-2.5' : 'flex flex-col items-center gap-4 px-5 py-6 text-center'"
   >
     <!-- Atmospheric backdrop glow -- restrained, never a competing animation. -->
     <div
@@ -53,9 +67,28 @@ const hasAnyChoice = computed(() => props.rows.some((row) => row.title))
       class="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgb(var(--eldra-accent-rgb)/0.14),transparent_70%)]"
     />
 
+    <!-- Portrait: the species' real artwork in a tall gilded frame on desktop,
+         a small thumbnail on phones; the monogram only when there is none. -->
+    <div
+      v-if="showPortrait && !compact"
+      aria-hidden="true"
+      class="relative aspect-[4/5] w-full max-w-[13rem] overflow-hidden border border-eldra-accent/45 shadow-[0_0_30px_rgb(var(--eldra-accent-rgb)/0.2)]"
+    >
+      <img
+        ref="portraitRef"
+        :src="imageUrl!"
+        alt=""
+        decoding="async"
+        class="size-full object-cover object-top transition-opacity duration-500 motion-reduce:transition-none"
+        @error="portraitFailed = imageUrl"
+      >
+      <div class="absolute inset-0 bg-[linear-gradient(0deg,rgb(var(--eldra-ink-rgb)/0.55),transparent_45%)]" />
+    </div>
     <CreationEntityEmblem
+      v-else
       :title="emblemSource ?? displayName"
-      :size="compact ? 'sm' : 'lg'"
+      :image-url="compact ? imageUrl : null"
+      :size="compact ? 'md' : 'lg'"
       class="relative transition-all duration-500 motion-reduce:transition-none"
     />
 

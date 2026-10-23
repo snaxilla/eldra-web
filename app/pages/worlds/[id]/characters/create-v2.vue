@@ -13,6 +13,16 @@
 // never trusts what this page sends beyond those two fields.
 //
 // ---------------------------------------------------------------------------
+// CHARACTER CREATOR V3 -- CINEMATIC PRESENTATION
+// ---------------------------------------------------------------------------
+// V3 re-composes this page as a full-bleed stage: a dynamic backdrop
+// (CreatorBackdrop, fed by creator-presentation.ts's documented precedence),
+// a collapsed icon rail for stage navigation, a hero for the selected content,
+// and compact portrait rosters for the choices. It is PRESENTATION ONLY -- the
+// draft, every characterBuilderSelection.ts function, every API call and the
+// create payload below are unchanged, and no rule is evaluated here.
+//
+// ---------------------------------------------------------------------------
 // ADAPTIVE, NOT RESPONSIVE-AS-AN-AFTERTHOUGHT
 // ---------------------------------------------------------------------------
 // This is one feature-complete application with two LAYOUTS, not a desktop
@@ -20,6 +30,9 @@
 // same search, the same validation, the same submit -- is shared verbatim
 // between them; only arrangement differs, and only because desktop has room
 // to show simultaneously what a phone shows sequentially:
+//
+//   (V3: `compact` is now width-only -- see the `compact` computed below -- so a
+//   landscape tablet gets the cinematic composition with touch-sized controls.)
 //
 //   compact (phone / small tablet / any coarse pointer under 1366px)
 //     one step at a time, full-bleed cards, progress rail at the top,
@@ -34,12 +47,12 @@
 // scroll to any section -- "Next" is a convenience, never a lock. No feature,
 // field, or control exists on one layout and not the other.
 //
-// The breakpoint heuristic (width < 768, or a coarse pointer at <= 1366)
-// deliberately matches the one app/pages/worlds/[id]/entities/[entityId]/sheet.vue
-// already uses, so the two character surfaces agree about what "compact"
-// means. It is intentionally pointer-aware rather than width-only: an iPad
-// in landscape is 1024px wide but is still a touch device and still wants
-// large targets.
+// V3 NOTE ON THE BREAKPOINT: the Character Sheet's heuristic (width < 768, or a
+// coarse pointer at <= 1366) would put every tablet, landscape included, on the
+// stacked phone layout and hide the cinematic composition from the devices this
+// milestone targets first. The creator therefore switches on width alone
+// (< 900px) and keeps every control at touch size (>= 44px) at ALL widths, so a
+// touch tablet still gets large targets without losing the composition.
 //
 // ---------------------------------------------------------------------------
 // TEACHING, NOT JUST CHOOSING (Phase 2)
@@ -143,6 +156,15 @@ import CreationStageRail from '~/components/characters/builder/CreationStageRail
 import CharacterPreviewPanel from '~/components/characters/builder/CharacterPreviewPanel.vue'
 import CreationDetailPanel from '~/components/characters/builder/CreationDetailPanel.vue'
 import CreationValidationBanner from '~/components/characters/builder/CreationValidationBanner.vue'
+import CreatorBackdrop from '~/components/characters/builder/CreatorBackdrop.vue'
+import CreationHero from '~/components/characters/builder/CreationHero.vue'
+import CreationEquipmentChoices from '~/components/characters/builder/CreationEquipmentChoices.vue'
+import {
+  resolveCreatorBackdrop,
+  resolveCreatorTransition,
+  stageHeroKind,
+  type CreatorSelection
+} from '~/lib/characters/creator-presentation'
 import type { AbilityKey, AbilityScoreMethod } from '~/lib/characters/ability-scores'
 import { serializeContentRef } from '~/lib/characters/progression-plan'
 import type { PresentationEntry } from '~/lib/content-presentation'
@@ -191,12 +213,10 @@ const catalogueIsEmpty = computed(
 // ---------------------------------------------------------------------------
 
 const viewportWidth = ref(0)
-const pointerCoarse = ref(false)
 
 function updateViewport() {
   if (!import.meta.client) return
   viewportWidth.value = window.innerWidth || 0
-  pointerCoarse.value = window.matchMedia?.('(pointer: coarse)').matches || false
 }
 
 onMounted(() => {
@@ -217,7 +237,7 @@ onBeforeUnmount(() => {
 const compact = computed(() => {
   const width = viewportWidth.value
   if (!width) return false
-  return width < 768 || (pointerCoarse.value && width <= 1366)
+  return width < 900
 })
 
 // ---------------------------------------------------------------------------
@@ -466,6 +486,68 @@ const previewRows = computed(() =>
   }))
 )
 
+// ---------------------------------------------------------------------------
+// V3 presentation state -- backdrop resolution and stage furniture. Reads the
+// draft; writes nothing to it.
+// ---------------------------------------------------------------------------
+
+const { config: presentationConfig } = useCreatorPresentation()
+
+function artOf(entry: BuilderCatalogueEntry | null | undefined) {
+  return entry ? { slug: entry.slug, imageUrl: entry.presentation?.image?.url ?? null } : null
+}
+const selectionArt = computed<CreatorSelection>(() => ({
+  species: artOf(draft.species),
+  class: artOf(draft.class),
+  background: artOf(draft.background)
+}))
+
+// An artwork URL the browser could not load is remembered, so the resolver
+// degrades to the next tier instead of leaving a blank stage.
+const failedBackdropUrls = ref<ReadonlySet<string>>(new Set())
+function onBackdropFailed(url: string) {
+  failedBackdropUrls.value = new Set([...failedBackdropUrls.value, url])
+}
+
+const backdrop = computed(() =>
+  resolveCreatorBackdrop(presentationConfig.value, activeStep.value, selectionArt.value, {
+    failedUrls: failedBackdropUrls.value
+  })
+)
+const transition = computed(() => resolveCreatorTransition(presentationConfig.value))
+
+// The hero's content for the current stage, and whether its art is already the
+// backdrop (then the hero shows no second copy of it).
+const heroKind = computed(() => stageHeroKind(activeStep.value))
+const heroEntry = computed(() => draft[heroKind.value])
+const heroFigureUrl = computed(() => {
+  const url = heroEntry.value?.presentation?.image?.url ?? null
+  return url && url !== backdrop.value.image ? url : null
+})
+// The species' art is the character's portrait on every stage.
+const portraitUrl = computed(() => draft.species?.presentation?.image?.url ?? null)
+
+const STAGE_ICONS: Record<BuilderStepKey, string> = {
+  identity: 'i-lucide-user',
+  species: 'i-lucide-user',
+  class: 'i-lucide-swords',
+  background: 'i-lucide-scroll-text',
+  proficiencies: 'i-lucide-graduation-cap',
+  spells: 'i-lucide-wand-sparkles',
+  equipment: 'i-lucide-backpack',
+  abilities: 'i-lucide-dices',
+  review: 'i-lucide-clipboard-check'
+}
+const STAGE_BLURBS: Partial<Record<BuilderStepKey, string>> = {
+  proficiencies: 'The skills and training your choices grant. Pick what you want to be good at.',
+  spells: 'The magic you begin with. Read any spell without choosing it; tick the ones you want.',
+  equipment: 'What you carry as you set out. Choose one package for each source.',
+  abilities: 'The six scores that shape everything your character attempts.',
+  review: 'Everything you chose, one last time, before your story begins.'
+}
+
+const stageNav = computed(() => steps.value.map((step) => ({ ...step, icon: STAGE_ICONS[step.key] })))
+
 function goTo(step: BuilderStepKey) {
   activeStep.value = step
 }
@@ -515,465 +597,506 @@ async function createCharacter() {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
-    <!-- Atmospheric backdrop -- restrained, fixed, never competing with the
-         choices themselves (this task's own "restrained transitions and
-         motion" direction). -->
-    <div
-      aria-hidden="true"
-      class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(120%_60%_at_50%_-10%,rgb(var(--eldra-accent-rgb)/0.10),transparent_60%)]"
+  <!-- CHARACTER CREATOR V3 -- one full-bleed stage. The backdrop sits behind
+       everything; the rail, toolbar and stage content float over it as dark
+       glass so the artwork is never covered by an opaque slab. -->
+  <!-- `absolute inset-0` (the layout's slot wrapper is `relative`) rather than `h-full`: the
+       layout is a grid whose auto row would otherwise grow to this page's content height and
+       push the whole workspace taller than the viewport. -->
+  <div class="absolute inset-0 overflow-hidden bg-eldra-ink">
+    <CreatorBackdrop
+      :backdrop="backdrop"
+      :stage="activeStep"
+      :transition-ms="transition.durationMs"
+      @failed="onBackdropFailed"
     />
 
-    <div
-      class="mx-auto px-4 pb-32 pt-8 sm:px-6"
-      :class="compact ? 'max-w-2xl' : 'max-w-7xl pb-16'"
-    >
-      <div class="eldra-kicker text-xs">
-        Character Builder
-      </div>
-      <h1 class="eldra-title mt-2 font-serif text-2xl font-semibold sm:text-3xl">
-        Create Character
-      </h1>
-      <p class="mt-2 max-w-2xl text-sm leading-6 text-eldra-text-soft">
-        Choose a Species, Class, and Background from this World's bound Content Packs.
-      </p>
+    <div class="relative z-10 flex h-full min-w-0">
+      <!-- Collapsed-by-default stage rail (desktop / tablet landscape). -->
+      <CreationStageRail
+        v-if="!compact && !catalogueLoading && !catalogueError && !catalogueIsEmpty"
+        :stages="stageNav"
+        :active-key="activeStep"
+        variant="rail"
+        @select="(key: string) => goTo(key as BuilderStepKey)"
+      />
 
-      <!-- States ---------------------------------------------------------- -->
-      <div
-        v-if="catalogueLoading"
-        class="mt-8 text-sm text-eldra-text-faint"
-      >
-        Loading the World's Content Catalogue…
-      </div>
-
-      <div
-        v-else-if="catalogueError"
-        class="mt-8 rounded-none border border-red-900 bg-red-950/40 p-4 text-sm text-red-300"
-      >
-        Could not load this World's Content Catalogue. Try again shortly.
-      </div>
-
-      <div
-        v-else-if="catalogueIsEmpty"
-        class="mt-8 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 p-4 text-sm text-eldra-text-soft"
-      >
-        <template v-if="!hasAnyBoundPack">
-          This World has no Content Packs bound yet. Bind one from Game Admin before creating a character.
-        </template>
-        <template v-else>
-          This World's bound Content Packs contain no Species, Classes, or Backgrounds yet.
-        </template>
-      </div>
-
-      <!-- ================================================================ -->
-      <!-- CINEMATIC COMPOSITION -- three regions, one shared stage content.
-           `compact` (see this file's own header for the exact heuristic)
-           changes ONLY arrangement: a vertical Region A rail beside a
-           sticky Region B preview on desktop/tablet becomes a horizontal
-           rail above a compact preview strip on a phone, and the inline
-           Back/Next buttons become a thumb-reach sticky bar -- never a
-           change in which stage, choice, or control exists. See this
-           file's own header on why nothing is ever gated by layout. -->
-      <!-- ================================================================ -->
-      <template v-else>
-        <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- NAVIGATION. A PERSISTENT top
-             toolbar, sticky to this page's own scroll container -- Back/Next/Create are
-             reachable the instant a stage opens, never after scrolling past a long
-             description first (the real reported problem with the previous bottom-only
-             placement on desktop/tablet). Replaces both the old inline desktop buttons and
-             the old phone-only fixed bottom bar -- one control, one place, every viewport. -->
-        <div class="sticky top-0 z-30 -mx-4 mb-6 flex items-center justify-between gap-3 border-b border-eldra-accent/24 bg-eldra-ink/92 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6">
-          <button
-            type="button"
-            class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-4 text-sm font-semibold text-eldra-text-soft disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-            :disabled="!previousStep(activeStep)"
-            @click="goBack"
-          >
-            Back
-          </button>
-
-          <p class="min-w-0 truncate text-center text-xs uppercase tracking-[0.14em] text-eldra-text-faint">
-            Stage {{ activeStepPosition }} of {{ steps.length }} · <span class="text-eldra-text-soft">{{ STEP_LABELS[activeStep] }}</span>
-          </p>
-
-          <button
-            v-if="activeStep !== 'review'"
-            type="button"
-            class="eldra-button min-h-11 shrink-0 rounded-none px-5 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-            @click="goNext"
-          >
-            Next
-          </button>
-          <button
-            v-else
-            type="button"
-            class="eldra-button min-h-11 shrink-0 rounded-none px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
-            :disabled="!complete || creating"
-            @click="createCharacter"
-          >
-            {{ creating ? 'Creating…' : 'Create Character' }}
-          </button>
-        </div>
-
-        <div
-          class="mt-6"
-          :class="compact ? 'flex flex-col gap-4' : 'grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)_21rem] lg:items-start'"
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <!-- ================= toolbar: title / progress / Back-Next ================ -->
+        <header
+          class="relative z-30 shrink-0 px-3 pb-2 pt-3 max-md:pl-14 sm:px-6"
         >
-          <!-- Region A: Navigation / Progress ---------------------------- -->
-          <aside :class="compact ? '' : 'lg:order-1'">
+          <div class="flex items-center gap-3">
+            <div class="hidden min-w-0 flex-1 xl:block">
+              <h1 class="eldra-title font-serif text-2xl font-semibold leading-none text-eldra-text-strong [text-shadow:0_2px_18px_rgb(0_0_0/0.9)]">
+                Create Your Character
+              </h1>
+              <p class="mt-1 truncate text-xs text-eldra-text-soft">
+                Step into a world of adventure. Who are you?
+              </p>
+            </div>
+
+            <template v-if="!catalogueLoading && !catalogueError && !catalogueIsEmpty">
+              <div class="flex min-w-0 flex-1 items-center justify-between gap-2 xl:flex-none xl:justify-center xl:gap-3">
+                <button
+                  type="button"
+                  class="inline-flex min-h-11 shrink-0 items-center gap-2 border border-eldra-accent/45 bg-eldra-ink/70 px-4 text-sm font-semibold text-eldra-text-soft backdrop-blur transition hover:border-eldra-accent-bright/70 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                  :disabled="!previousStep(activeStep)"
+                  @click="goBack"
+                >
+                  <UIcon
+                    name="i-lucide-arrow-left"
+                    class="size-4"
+                  />
+                  Back
+                </button>
+
+                <!-- Progress: gilded track + node per stage, with the numbers in words. -->
+                <div
+                  v-if="!compact"
+                  class="hidden min-w-0 flex-1 flex-col items-center gap-1.5 sm:flex xl:w-96 xl:flex-none"
+                >
+                  <p class="max-w-full truncate text-xs uppercase tracking-[0.16em] text-eldra-text-soft">
+                    Step {{ activeStepPosition }} of {{ steps.length }}
+                    <span class="text-eldra-text-faint">·</span>
+                    <span class="font-semibold text-eldra-text-strong">{{ STEP_LABELS[activeStep] }}</span>
+                  </p>
+                  <div
+                    aria-hidden="true"
+                    class="flex w-full items-center"
+                  >
+                    <template
+                      v-for="(step, index) in steps"
+                      :key="step.key"
+                    >
+                      <span
+                        v-if="index > 0"
+                        class="h-px flex-1"
+                        :class="index <= STEP_KEYS.indexOf(activeStep) ? 'bg-eldra-accent/70' : 'bg-eldra-accent/20'"
+                      />
+                      <span
+                        class="size-2 shrink-0 rotate-45 border transition-colors"
+                        :class="step.key === activeStep
+                          ? 'scale-125 border-eldra-accent-bright bg-eldra-accent-bright'
+                          : step.complete ? 'border-eldra-accent bg-eldra-accent/80' : 'border-eldra-accent/40 bg-transparent'"
+                      />
+                    </template>
+                  </div>
+                </div>
+
+                <button
+                  v-if="activeStep !== 'review'"
+                  type="button"
+                  class="eldra-button inline-flex min-h-11 shrink-0 items-center gap-2 rounded-none px-5 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                  @click="goNext"
+                >
+                  Next
+                  <UIcon
+                    name="i-lucide-arrow-right"
+                    class="size-4"
+                  />
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="eldra-button inline-flex min-h-11 shrink-0 items-center gap-2 rounded-none px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+                  :disabled="!complete || creating"
+                  @click="createCharacter"
+                >
+                  {{ creating ? 'Creating…' : 'Create Character' }}
+                </button>
+              </div>
+            </template>
+
+            <div class="hidden flex-1 xl:block" />
+          </div>
+
+          <!-- Phone: compact stage indicator + expandable menu. -->
+          <div
+            v-if="compact && !catalogueLoading && !catalogueError && !catalogueIsEmpty"
+            class="mt-2"
+          >
             <CreationStageRail
-              :stages="steps"
+              :stages="stageNav"
               :active-key="activeStep"
-              :vertical="!compact"
+              variant="menu"
               @select="(key: string) => goTo(key as BuilderStepKey)"
             />
-          </aside>
+          </div>
+        </header>
 
-          <!-- Region B: Character Preview --------------------------------- -->
-          <aside :class="compact ? '' : 'lg:order-3 lg:sticky lg:top-8'">
-            <CharacterPreviewPanel
-              :name="draft.name"
-              :rows="previewRows"
-              :compact="compact"
-            />
+        <!-- ============================= stage content ============================= -->
+        <div
+          class="min-h-0 flex-1 overflow-y-auto px-3 pb-10 sm:px-6"
+          :class="compact ? 'pt-2' : 'pt-4'"
+        >
+          <!-- States -->
+          <div
+            v-if="catalogueLoading"
+            class="max-w-xl border border-eldra-accent/25 bg-eldra-ink/75 p-4 text-sm text-eldra-text-soft backdrop-blur-md"
+          >
+            Loading the World's Content Catalogue…
+          </div>
 
-            <!-- Desktop/tablet's extra room shows the ability summary
-                 continuously -- a phone reaches the identical summary on
-                 its own Review stage instead (Region C below). Back/Next/
-                 Create live in the persistent top toolbar now (every
-                 viewport), so this panel stays focused on readability:
-                 clean ability scores, and incomplete requirements kept
-                 COMPACT and expandable rather than a growing list. -->
+          <div
+            v-else-if="catalogueError"
+            class="max-w-xl border border-red-900 bg-red-950/70 p-4 text-sm text-red-200 backdrop-blur-md"
+          >
+            Could not load this World's Content Catalogue. Try again shortly.
+          </div>
+
+          <div
+            v-else-if="catalogueIsEmpty"
+            class="max-w-xl border border-eldra-accent/25 bg-eldra-ink/75 p-4 text-sm text-eldra-text-soft backdrop-blur-md"
+          >
+            <template v-if="!hasAnyBoundPack">
+              This World has no Content Packs bound yet. Bind one from Game Admin before creating a character.
+            </template>
+            <template v-else>
+              This World's bound Content Packs contain no Species, Classes, or Backgrounds yet.
+            </template>
+          </div>
+
+          <template v-else>
             <div
-              v-if="!compact"
-              class="eldra-ornate-panel eldra-frame-corners mt-4 rounded-none border border-eldra-accent/24 bg-eldra-panel/64 p-4 backdrop-blur"
+              class="mx-auto flex min-h-full w-full max-w-[96rem] gap-6"
+              :class="compact ? 'flex-col' : ''"
             >
-              <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
-                {{ STEP_LABELS.abilities }}
-              </div>
-              <CharacterAbilityScoresPanel
-                :scores="abilityScores"
-                empty-message="Not assigned yet."
-              />
-
-              <CreationValidationBanner
-                :messages="outstanding"
-                :error-message="createErrorMessage"
-                compact
-                class="mt-4"
-              />
-
-              <NuxtLink
-                :to="`/worlds/${worldId}/characters`"
-                class="eldra-arcane-link mt-3 inline-block text-sm text-eldra-text-faint"
-              >
-                Cancel
-              </NuxtLink>
-            </div>
-          </aside>
-
-          <!-- Region C: Choices / Details ---------------------------------- -->
-          <main class="min-w-0 lg:order-2">
-            <section>
-              <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. Name AND Species,
-                   one stage: the reported problem was a near-empty "just type a name" screen
-                   with the single most visually rich choice in the whole Builder stranded on
-                   its own separate stage right after it. -->
-              <div v-if="activeStep === 'identity'">
-                <label
-                  for="character-name"
-                  class="mb-2 block text-sm font-semibold text-eldra-text-soft"
-                >Character Name</label>
-                <input
-                  id="character-name"
-                  v-model="draft.name"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="Character name"
-                  class="eldra-input min-h-12 w-full max-w-md rounded-none px-4 py-3 text-base"
-                >
-
-                <h2 class="mb-3 mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  Species
-                </h2>
-                <CharacterBuilderOptionPicker
-                  label="Species"
-                  name="builder-species"
-                  :options="optionsFor.species"
-                  :model-value="selectedKeys.species"
-                  :compact="compact"
-                  @update:model-value="(value: string) => chooseOption('species', value)"
+              <div class="flex min-h-full min-w-0 flex-1 flex-col">
+                <!-- Phone: leave the top of the frame to the artwork. -->
+                <div
+                  v-if="compact && ['identity', 'class', 'background'].includes(activeStep)"
+                  aria-hidden="true"
+                  class="h-[16vh] shrink-0"
                 />
 
-                <!-- Prominent species artwork/description, updating reactively as the
-                     selection changes -- the SAME component, same models the Character
-                     Sheet renders. -->
-                <div class="mt-5">
-                  <CreationDetailPanel title="About this Species">
-                    <ContentPresentationPanel
-                      v-if="draft.species"
-                      :entry="draft.species?.presentation"
-                      context="preview"
-                      collapse-first-section
-                      empty-message="This Content Pack publishes no further details for this species."
-                    />
-                    <p
-                      v-else
-                      class="text-sm text-eldra-text-faint"
-                    >
-                      Choose a species above to see what it is and what it grants.
-                    </p>
-                  </CreationDetailPanel>
-                </div>
-              </div>
-
-              <div
-                v-for="key in STAGE_PICKER_KEYS"
-                v-show="activeStep === key"
-                :key="key"
-              >
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  {{ STEP_LABELS[key] }}
-                </h2>
-                <CharacterBuilderOptionPicker
-                  :label="STEP_LABELS[key]"
-                  :name="`builder-${key}`"
-                  :options="optionsFor[key]"
-                  :model-value="selectedKeys[key]"
-                  :compact="compact"
-                  @update:model-value="(value: string) => chooseOption(key, value)"
-                />
-
-                <!-- Live preview: the selected option, explained in place.
-                     Same component, same models the Character Sheet renders. -->
-                <div class="mt-5">
-                  <CreationDetailPanel :title="`About this ${STEP_LABELS[key]}`">
-                    <ContentPresentationPanel
-                      v-if="draft[key]"
-                      :entry="draft[key]?.presentation"
-                      context="preview"
-                      collapse-first-section
-                      :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
-                    />
-                    <p
-                      v-else
-                      class="text-sm text-eldra-text-faint"
-                    >
-                      Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
-                    </p>
-                  </CreationDetailPanel>
-                </div>
-              </div>
-
-              <div v-if="activeStep === 'proficiencies'">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  {{ STEP_LABELS.proficiencies }}
-                </h2>
-                <p
-                  v-if="!proficiencyChoices.length && !contentChoicePickers.length"
-                  class="text-sm leading-6 text-eldra-text-faint"
-                >
-                  The Species, Class, and Background you chose ask no proficiency
-                  questions, so there is nothing to answer here.
-                </p>
-
+                <!-- ============ IDENTITY: name + species roster | species hero ============ -->
                 <div
-                  v-else
-                  class="grid gap-6"
+                  v-if="activeStep === 'identity'"
+                  class="flex min-w-0 flex-1 gap-8"
+                  :class="compact ? 'flex-col' : 'items-center'"
                 >
-                  <CharacterChoiceSetPicker
-                    v-for="choice in proficiencyChoices"
-                    :key="choice.key"
-                    :choice="choice"
-                    :selected="selectionsFor(choice.key)"
-                    :offered="offeredFor(choice.key)"
-                    :prompt="promptFor(choice.choiceSetId)"
-                    :option-labels="optionLabels"
-                    :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                    @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
-                  />
-                  <CharacterChoiceSetPicker
-                    v-for="choice in contentChoicePickers"
-                    :key="choice.key"
-                    :choice="choice"
-                    :selected="contentSelectionsFor(choice.key)"
-                    :offered="contentOfferedFor(choice.key)"
-                    :prompt="promptFor(choice.choiceSetId)"
-                    :option-labels="contentLabels"
-                    :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
-                    @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
-                  />
-                </div>
-              </div>
-
-              <div v-if="activeStep === 'spells'">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  {{ STEP_LABELS.spells }}
-                </h2>
-                <p
-                  v-if="!spellSections.length"
-                  class="text-sm leading-6 text-eldra-text-faint"
-                >
-                  The Class you chose grants no spells at Level 1, so there is nothing to answer here.
-                </p>
-
-                <div
-                  v-else
-                  class="grid gap-6"
-                >
-                  <CharacterChoiceSetPicker
-                    v-for="section in spellSections"
-                    :key="section.requirementId"
-                    :choice="section.choice"
-                    :selected="spellSelectionsFor(section.requirementId)"
-                    :option-labels="section.optionLabels"
-                    :option-details="spellPresentationByRef"
-                    :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
-                    :slot-label="STEP_LABELS.class"
-                    @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
-                  />
-                </div>
-              </div>
-
-              <div v-if="activeStep === 'equipment'">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  {{ STEP_LABELS.equipment }}
-                </h2>
-                <p
-                  v-if="!equipmentSections.length"
-                  class="text-sm leading-6 text-eldra-text-faint"
-                >
-                  The Species, Class, and Background you chose declare no starting-equipment choice,
-                  so there is nothing to answer here.
-                </p>
-
-                <div
-                  v-else
-                  class="grid gap-6"
-                >
-                  <fieldset
-                    v-for="section in equipmentSections"
-                    :key="section.choiceId"
-                    class="min-w-0 border-0 p-0"
+                  <div
+                    class="shrink-0"
+                    :class="compact ? 'order-2 w-full' : 'w-64 xl:w-72'"
                   >
-                    <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
-                      {{ STEP_LABELS[section.slot] }} starting equipment
-                    </legend>
-                    <div class="grid gap-2">
-                      <label
-                        v-for="bundle in section.bundles"
-                        :key="bundle.id"
-                        class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
-                        :class="section.selectedBundleId === bundle.id
-                          ? 'border-eldra-accent/62 bg-eldra-accent/16'
-                          : 'border-eldra-accent/20 bg-eldra-panel/55 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'"
-                      >
-                        <input
-                          :name="`equipment-${section.choiceId}`"
-                          type="radio"
-                          class="peer sr-only"
-                          :value="bundle.id"
-                          :checked="section.selectedBundleId === bundle.id"
-                          @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
-                        >
-                        <span
-                          aria-hidden="true"
-                          class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
-                          :class="section.selectedBundleId === bundle.id
-                            ? 'border-eldra-accent-bright bg-eldra-accent-bright'
-                            : 'border-eldra-accent/35'"
-                        >
-                          <span
-                            v-if="section.selectedBundleId === bundle.id"
-                            class="h-2 w-2 rounded-full bg-eldra-ink"
-                          />
-                        </span>
-                        <span class="min-w-0 flex-1">
-                          <span class="block text-base font-semibold text-eldra-text-strong">{{ bundle.label }}</span>
-                          <span class="mt-0.5 block text-xs text-eldra-text-faint">{{ bundle.summary }}</span>
-                        </span>
-                        <span
-                          aria-hidden="true"
-                          class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-eldra-accent/65"
-                        />
-                      </label>
+                    <label
+                      for="character-name"
+                      class="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text"
+                    >Character Name</label>
+                    <input
+                      id="character-name"
+                      v-model="draft.name"
+                      type="text"
+                      autocomplete="off"
+                      placeholder="Name your character"
+                      class="eldra-input mb-5 min-h-12 w-full rounded-none border-eldra-accent/45 bg-eldra-ink/70 px-4 py-3 font-serif text-lg backdrop-blur"
+                    >
+                    <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
+                      Species
+                    </h2>
+                    <div :class="compact ? '' : 'max-h-[calc(100dvh-20rem)] overflow-y-auto pr-1'">
+                      <CharacterBuilderOptionPicker
+                        label="Species"
+                        name="builder-species"
+                        variant="list"
+                        :options="optionsFor.species"
+                        :model-value="selectedKeys.species"
+                        :compact="compact"
+                        @update:model-value="(value: string) => chooseOption('species', value)"
+                      />
                     </div>
-                  </fieldset>
+                  </div>
+
+                  <CreationHero
+                    :class="compact ? 'order-1' : ''"
+                    kicker="Species"
+                    :entry="draft.species?.presentation"
+                    empty-title="Who are you?"
+                    empty-hint="Choose a species to see what it is and what it grants."
+                    :figure-url="heroFigureUrl"
+                  />
+                </div>
+
+                <!-- ============ BACKGROUND: roster | background hero ============ -->
+                <div
+                  v-else-if="activeStep === 'background'"
+                  class="flex min-w-0 flex-1 gap-8"
+                  :class="compact ? 'flex-col' : 'items-center'"
+                >
+                  <div
+                    class="shrink-0"
+                    :class="compact ? 'order-2 w-full' : 'w-64 xl:w-72'"
+                  >
+                    <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
+                      Background
+                    </h2>
+                    <div :class="compact ? '' : 'max-h-[calc(100dvh-14rem)] overflow-y-auto pr-1'">
+                      <CharacterBuilderOptionPicker
+                        label="Background"
+                        name="builder-background"
+                        variant="list"
+                        :options="optionsFor.background"
+                        :model-value="selectedKeys.background"
+                        :compact="compact"
+                        @update:model-value="(value: string) => chooseOption('background', value)"
+                      />
+                    </div>
+                  </div>
+
+                  <CreationHero
+                    :class="compact ? 'order-1' : ''"
+                    kicker="Background"
+                    :entry="draft.background?.presentation"
+                    empty-title="Where do you come from?"
+                    empty-hint="Choose a background to see the life you led before adventuring."
+                    :figure-url="heroFigureUrl"
+                  />
+                </div>
+
+                <!-- ============ CLASS: hero over art | medallion strip along the bottom ============ -->
+                <div
+                  v-else-if="activeStep === 'class'"
+                  class="flex min-w-0 flex-1 flex-col"
+                >
+                  <div class="flex flex-1 items-center py-4">
+                    <CreationHero
+                      kicker="Class"
+                      :entry="draft.class?.presentation"
+                      empty-title="What is your calling?"
+                      empty-hint="Choose a class to see how it plays and what it grants."
+                      :figure-url="heroFigureUrl"
+                    />
+                  </div>
+                  <div class="mt-4 border-t border-eldra-accent/25 bg-eldra-ink/60 px-2 pt-3 backdrop-blur-md">
+                    <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
+                      Class
+                    </h2>
+                    <CharacterBuilderOptionPicker
+                      label="Class"
+                      name="builder-class"
+                      variant="strip"
+                      :options="optionsFor.class"
+                      :model-value="selectedKeys.class"
+                      :compact="compact"
+                      @update:model-value="(value: string) => chooseOption('class', value)"
+                    />
+                  </div>
+                </div>
+
+                <!-- ============ Every other stage: a header, then a dark-glass work area ============ -->
+                <div
+                  v-else
+                  class="min-w-0 max-w-5xl py-2"
+                >
+                  <p class="eldra-kicker text-xs tracking-[0.34em]">
+                    Step {{ activeStepPosition }} of {{ steps.length }}
+                  </p>
+                  <h2 class="mt-1 font-serif text-4xl font-semibold leading-[1.05] text-eldra-text-strong [text-shadow:0_2px_24px_rgb(0_0_0/0.85)] sm:text-5xl">
+                    {{ STEP_LABELS[activeStep] }}
+                  </h2>
+                  <p class="mt-2 max-w-xl text-sm leading-6 text-eldra-text-soft [text-shadow:0_1px_12px_rgb(0_0_0/0.9)]">
+                    {{ STAGE_BLURBS[activeStep] }}
+                  </p>
+
+                  <div class="mt-5 border border-eldra-accent/25 bg-eldra-ink/72 p-4 backdrop-blur-md sm:p-6">
+                    <!-- Proficiencies -->
+                    <div v-if="activeStep === 'proficiencies'">
+                      <p
+                        v-if="!proficiencyChoices.length && !contentChoicePickers.length"
+                        class="text-sm leading-6 text-eldra-text-soft"
+                      >
+                        The Species, Class, and Background you chose ask no proficiency
+                        questions, so there is nothing to answer here.
+                      </p>
+
+                      <div
+                        v-else
+                        class="grid gap-6"
+                      >
+                        <CharacterChoiceSetPicker
+                          v-for="choice in proficiencyChoices"
+                          :key="choice.key"
+                          :choice="choice"
+                          :selected="selectionsFor(choice.key)"
+                          :offered="offeredFor(choice.key)"
+                          :prompt="promptFor(choice.choiceSetId)"
+                          :option-labels="optionLabels"
+                          :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                          @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+                        />
+                        <CharacterChoiceSetPicker
+                          v-for="choice in contentChoicePickers"
+                          :key="choice.key"
+                          :choice="choice"
+                          :selected="contentSelectionsFor(choice.key)"
+                          :offered="contentOfferedFor(choice.key)"
+                          :prompt="promptFor(choice.choiceSetId)"
+                          :option-labels="contentLabels"
+                          :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                          @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
+                        />
+                      </div>
+                    </div>
+
+                    <!-- Spells: a roster beside a persistent inspector. -->
+                    <div v-else-if="activeStep === 'spells'">
+                      <p
+                        v-if="!spellSections.length"
+                        class="text-sm leading-6 text-eldra-text-soft"
+                      >
+                        The Class you chose grants no spells at Level 1, so there is nothing to answer here.
+                      </p>
+
+                      <div
+                        v-else
+                        class="grid gap-8"
+                      >
+                        <CharacterChoiceSetPicker
+                          v-for="section in spellSections"
+                          :key="section.requirementId"
+                          layout="inspector"
+                          :choice="section.choice"
+                          :selected="spellSelectionsFor(section.requirementId)"
+                          :option-labels="section.optionLabels"
+                          :option-details="spellPresentationByRef"
+                          :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
+                          :slot-label="STEP_LABELS.class"
+                          @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
+                        />
+                      </div>
+                    </div>
+
+                    <!-- Equipment: kit cards. -->
+                    <div v-else-if="activeStep === 'equipment'">
+                      <p
+                        v-if="!equipmentSections.length"
+                        class="text-sm leading-6 text-eldra-text-soft"
+                      >
+                        The Species, Class, and Background you chose declare no starting-equipment choice,
+                        so there is nothing to answer here.
+                      </p>
+                      <CreationEquipmentChoices
+                        v-else
+                        :sections="equipmentSections"
+                        :slot-labels="STEP_LABELS"
+                        @select="chooseEquipmentBundle"
+                      />
+                    </div>
+
+                    <!-- Ability scores -->
+                    <div v-else-if="activeStep === 'abilities'">
+                      <CharacterAbilityScoreEditor
+                        :method="draft.abilities.method"
+                        :assignment="abilityAssignment"
+                        @update:method="chooseAbilityMethod"
+                        @update:ability="setAbility"
+                      />
+                    </div>
+
+                    <!-- Review -->
+                    <div v-else-if="activeStep === 'review'">
+                      <!-- Wide layouts show the ability summary continuously in the side
+                           panel; narrower ones reach it here. -->
+                      <div class="mb-5 xl:hidden">
+                        <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-faint">
+                          {{ STEP_LABELS.abilities }}
+                        </div>
+                        <CharacterAbilityScoresPanel
+                          :scores="abilityScores"
+                          empty-message="Not assigned yet."
+                        />
+                      </div>
+
+                      <div class="grid gap-4 lg:grid-cols-3">
+                        <CreationDetailPanel
+                          v-for="row in summaryRows"
+                          :key="`review-${row.key}`"
+                          :title="row.label"
+                        >
+                          <ContentPresentationPanel
+                            v-if="row.entry"
+                            :entry="row.entry.presentation"
+                            context="preview"
+                            collapse-first-section
+                            :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
+                          />
+                          <p
+                            v-else
+                            class="text-sm text-eldra-text-faint"
+                          >
+                            No {{ row.label.toLowerCase() }} chosen yet.
+                          </p>
+                        </CreationDetailPanel>
+                      </div>
+
+                      <CreationValidationBanner
+                        :messages="outstanding"
+                        :error-message="createErrorMessage"
+                        class="mt-5"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Below xl the side panel is hidden: keep "who am I building" as a slim strip. -->
+                <div class="mt-5 xl:hidden">
+                  <CharacterPreviewPanel
+                    :name="draft.name"
+                    :rows="previewRows"
+                    :image-url="portraitUrl"
+                    compact
+                  />
+                  <CreationValidationBanner
+                    v-if="activeStep !== 'review' && createErrorMessage"
+                    :messages="[]"
+                    :error-message="createErrorMessage"
+                    compact
+                    class="mt-3"
+                  />
                 </div>
               </div>
 
-              <div v-if="activeStep === 'abilities'">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  {{ STEP_LABELS.abilities }}
-                </h2>
-                <CharacterAbilityScoreEditor
-                  :method="draft.abilities.method"
-                  :assignment="abilityAssignment"
-                  @update:method="chooseAbilityMethod"
-                  @update:ability="setAbility"
+              <!-- ======= "Your Character" side panel (wide screens) ======= -->
+              <aside
+                v-if="!compact"
+                class="hidden w-72 shrink-0 self-start xl:sticky xl:top-0 xl:block"
+              >
+                <CharacterPreviewPanel
+                  :name="draft.name"
+                  :rows="previewRows"
+                  :image-url="portraitUrl"
                 />
-              </div>
 
-              <div v-if="activeStep === 'review'">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-eldra-accent-text">
-                  Review
-                </h2>
-
-                <!-- Desktop/tablet already shows the ability summary and
-                     Create action continuously in Region B -- a phone
-                     reaches them here instead, on its own Review stage. -->
-                <div
-                  v-if="compact"
-                  class="mb-5 rounded-none border border-eldra-accent/20 bg-eldra-panel/55 p-3"
-                >
-                  <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-ghost">
+                <div class="mt-3 border border-eldra-accent/25 bg-eldra-ink/72 p-4 backdrop-blur-md">
+                  <div class="mb-2 text-xs uppercase tracking-[0.2em] text-eldra-text-faint">
                     {{ STEP_LABELS.abilities }}
                   </div>
                   <CharacterAbilityScoresPanel
                     :scores="abilityScores"
                     empty-message="Not assigned yet."
                   />
-                </div>
 
-                <!-- Everything chosen, explained, one last time before the
-                     Create button is reachable. -->
-                <div class="grid gap-4">
-                  <div
-                    v-for="row in summaryRows"
-                    :key="`review-${row.key}`"
+                  <CreationValidationBanner
+                    v-if="activeStep !== 'review' || createErrorMessage"
+                    :messages="activeStep === 'review' ? [] : outstanding"
+                    :error-message="createErrorMessage"
+                    compact
+                    class="mt-4"
+                  />
+
+                  <NuxtLink
+                    :to="`/worlds/${worldId}/characters`"
+                    class="eldra-arcane-link mt-3 inline-block min-h-11 text-sm leading-[2.75rem] text-eldra-text-faint"
                   >
-                    <CreationDetailPanel :title="row.label">
-                      <ContentPresentationPanel
-                        v-if="row.entry"
-                        :entry="row.entry.presentation"
-                        context="preview"
-                        collapse-first-section
-                        :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
-                      />
-                      <p
-                        v-else
-                        class="text-sm text-eldra-text-faint"
-                      >
-                        No {{ row.label.toLowerCase() }} chosen yet.
-                      </p>
-                    </CreationDetailPanel>
-                  </div>
+                    Cancel
+                  </NuxtLink>
                 </div>
-
-                <!-- CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- NAVIGATION. Back/Next/
-                     Create itself now live in the persistent top toolbar (every viewport) --
-                     this stays the Review stage's own validation feedback, moved up from the
-                     old bottom bar it used to share a home with. -->
-                <CreationValidationBanner
-                  :messages="outstanding"
-                  :error-message="createErrorMessage"
-                  class="mt-5"
-                />
-              </div>
-            </section>
-          </main>
+              </aside>
+            </div>
+          </template>
         </div>
-      </template>
+      </div>
     </div>
   </div>
 </template>

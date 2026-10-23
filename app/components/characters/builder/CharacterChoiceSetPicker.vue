@@ -78,6 +78,11 @@ const props = defineProps<{
   // outside the selection <label>, and never disabled by the option's own selected/at-cap state
   // (this task's own "selecting must not prevent inspecting or replacing" requirement).
   optionDetails?: Record<string, PresentationEntry | null | undefined>
+  // CHARACTER CREATOR V3 -- 'inspector' (requires optionDetails) lays the SAME choice out as a
+  // selectable roster beside a persistent detail inspector, so reading a spell and picking it
+  // are two separate, simultaneous interactions: "Details" only changes what the inspector
+  // shows, the checkbox only changes the selection. 'grid' (default) is the original layout.
+  layout?: 'grid' | 'inspector'
 }>()
 
 const emit = defineEmits<{ 'update:selected': [string[]] }>()
@@ -85,6 +90,28 @@ const emit = defineEmits<{ 'update:selected': [string[]] }>()
 const inspectedValue = ref<string | null>(null)
 function toggleInspect(option: string) {
   inspectedValue.value = inspectedValue.value === option ? null : option
+}
+
+// Inspector layout: always has something to show (the player's last inspection, else their
+// first pick, else the first option), so the detail region is never an empty hole. Inspecting
+// only ever moves this pointer; it never touches the selection.
+const inspectorValue = computed<string | null>(() =>
+  inspectedValue.value
+  ?? props.selected[0]
+  ?? displayed.value[0]?.value
+  ?? null
+)
+function inspect(option: string) {
+  inspectedValue.value = option
+}
+// "Cantrip · Divination" from the spell's own resolved Level/School facts, for the roster
+// subtitle. Display only: absent facts simply yield no subtitle.
+function subtitleFor(option: string): string {
+  const facts = props.optionDetails?.[option]?.facts ?? []
+  return ['Level', 'School']
+    .map((label) => facts.find((fact) => fact.label === label)?.value)
+    .filter(Boolean)
+    .join(' · ')
 }
 
 const displayed = computed<readonly OfferedOption[]>(() =>
@@ -232,6 +259,76 @@ function onSlotSelect(slotIndex: number, event: Event) {
       </label>
     </div>
 
+    <!-- CHARACTER CREATOR V3 -- inspector layout. -->
+    <div
+      v-else-if="layout === 'inspector' && optionDetails"
+      class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:items-start"
+    >
+      <ul class="grid min-w-0 gap-1.5">
+        <li
+          v-for="offered in displayed"
+          :key="offered.value"
+          class="flex min-h-14 items-stretch rounded-none border backdrop-blur-sm transition-colors"
+          :class="isSelected(offered.value)
+            ? 'border-eldra-accent-bright/80 bg-eldra-accent/20 shadow-[0_0_18px_rgb(var(--eldra-accent-rgb)/0.25)]'
+            : inspectorValue === offered.value ? 'border-eldra-accent/55 bg-eldra-ink/72' : 'border-eldra-accent/20 bg-eldra-ink/62'"
+        >
+          <label
+            class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
+            :class="isDisabled(offered.value) ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-eldra-accent/8'"
+          >
+            <input
+              type="checkbox"
+              class="size-5 shrink-0 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
+              :checked="isSelected(offered.value)"
+              :disabled="isDisabled(offered.value)"
+              @change="toggle(offered.value)"
+            >
+            <span class="min-w-0">
+              <span class="block truncate font-serif text-base font-semibold text-eldra-text-strong">{{ labelFor(offered.value) }}</span>
+              <span
+                v-if="subtitleFor(offered.value)"
+                class="block truncate text-xs text-eldra-text-faint"
+              >{{ subtitleFor(offered.value) }}</span>
+              <span
+                v-if="reasonFor(offered.value)"
+                class="block text-xs text-eldra-caution"
+              >{{ reasonFor(offered.value) }}</span>
+            </span>
+          </label>
+          <button
+            type="button"
+            class="min-h-11 shrink-0 border-l border-eldra-accent/20 px-3 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-accent-text hover:bg-eldra-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-eldra-accent/65"
+            :aria-pressed="inspectorValue === offered.value"
+            :aria-label="`Details for ${labelFor(offered.value)}`"
+            @click="inspect(offered.value)"
+          >
+            Details
+          </button>
+        </li>
+      </ul>
+
+      <aside
+        v-if="inspectorValue"
+        class="min-w-0 border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md md:sticky md:top-20"
+        aria-live="polite"
+      >
+        <p class="eldra-kicker text-[0.65rem]">
+          {{ subtitleFor(inspectorValue) || 'Details' }}
+        </p>
+        <h4 class="mt-1 font-serif text-2xl font-semibold text-eldra-text-strong">
+          {{ labelFor(inspectorValue) }}
+        </h4>
+        <div class="mt-3">
+          <ContentPresentationPanel
+            :entry="optionDetails[inspectorValue] ?? null"
+            empty-message="This Content Pack publishes no further details for this option."
+            context="preview"
+          />
+        </div>
+      </aside>
+    </div>
+
     <div
       v-else-if="!isSlotMode"
       class="mt-3 grid gap-2 sm:grid-cols-2"
@@ -292,7 +389,7 @@ function onSlotSelect(slotIndex: number, event: Event) {
       >
         <CreationDetailPanel :title="labelFor(inspectedValue)">
           <ContentPresentationPanel
-            :entry="optionDetails[inspectedValue] ?? null"
+            :entry="optionDetails?.[inspectedValue] ?? null"
             empty-message="This Content Pack publishes no further details for this option."
             context="preview"
           />

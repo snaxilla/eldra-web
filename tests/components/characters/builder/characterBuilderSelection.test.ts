@@ -1078,6 +1078,31 @@ describe('D&D 2024 Character Rules P8B -- Builder starting equipment', () => {
     expect(sections.find((s) => s.choiceId.includes('criminal'))!.slot).toBe('background')
   })
 
+  it('1b. Creator V3: each bundle lists its items one per entry, always agreeing with the joined summary and never exposing an id', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    for (const section of sections) {
+      for (const bundle of section.bundles) {
+        expect(bundle.items.length).toBeGreaterThan(0)
+        expect(bundle.items.join(', ')).toBe(bundle.summary)
+        for (const item of bundle.items) expect(item).not.toMatch(/choice:|::|^[a-z0-9.-]+@/)
+      }
+    }
+  })
+
+  it('1c. Creator V3: stage navigation never touches answers -- an equipment pick survives moving through every stage', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    const context = contextWith()
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    const before = JSON.stringify(draft)
+    const visited = [STEP_KEYS[0]!]
+    for (let next = nextStep(visited[0]!); next; next = nextStep(next)) visited.push(next)
+    expect(visited).toEqual([...STEP_KEYS])
+    for (const key of visited) isStepComplete(draft, key, context)
+    expect(JSON.stringify(draft)).toBe(before)
+    expect(effectiveStartingEquipment(draft)).toEqual({ 'choice:equipment.starting.bard-xphb': 'B' })
+  })
+
   it('2. selecting a legal bundle for both choices makes the equipment portion complete', () => {
     const draft = draftFor({ class: BARD, background: CRIMINAL })
     const context = contextWith()

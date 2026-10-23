@@ -612,12 +612,15 @@ async function createCharacter() {
     />
 
     <div class="relative z-10 flex h-full min-w-0">
-      <!-- Collapsed-by-default stage rail (desktop / tablet landscape). -->
+      <!-- Expanded-by-default stage rail (desktop / tablet landscape) -- Character Creator V3
+           scroll/navigation repair: starts expanded with labels visible, reserving its own space
+           (see CreationStageRail.vue's own header for why neither of those was true before). -->
       <CreationStageRail
         v-if="!compact && !catalogueLoading && !catalogueError && !catalogueIsEmpty"
         :stages="stageNav"
         :active-key="activeStep"
         variant="rail"
+        default-expanded
         @select="(key: string) => goTo(key as BuilderStepKey)"
       />
 
@@ -855,21 +858,31 @@ async function createCharacter() {
                 </div>
 
                 <!-- ============ CLASS: hero over art | medallion strip along the bottom ============ -->
-                <!-- `min-h-0` on this step and the hero wrapper below (Character Creator V3
-                     scroll/navigation repair): both are flex-COLUMN children with `flex-1` but no
-                     declared height floor, so without it their default `min-height: auto` refuses
-                     to shrink below the hero's own intrinsic content size -- the same flexbox
-                     behaviour already guarded against one level up, at this step's own ancestor
-                     (the `min-h-0` on the `flex flex-col` column a few lines above). The outer
-                     stage-content region (`overflow-y-auto`, a few lines above that) already makes
-                     any overflow here reachable by scrolling regardless, but leaving these two
-                     items without `min-h-0` is the one place in this file that pattern wasn't
-                     applied -- fixed defensively, not because a specific overflow was proven. -->
+                <!-- Character Creator V3 scroll/navigation repair -- ACTUAL CONFIRMED ROOT CAUSE
+                     (a real browser pass against the running app, mocked-data harness, not static
+                     markup): this step's ancestors (`min-h-full` on the row/column a few lines up,
+                     wrapping both this step and the "Your Character" aside) give the stage-content
+                     scroll region a FLOOR equal to its own full height. The hero wrapper below was
+                     `flex-1` -- flex-grow:1 -- so with the strip pinned `shrink-0`, EVERY pixel of
+                     that floor beyond the hero's and strip's own natural content was dumped into
+                     the hero as centering space. Content (hero text + strip) came to EXACTLY the
+                     floor's height every time, because the floor itself was what the hero kept
+                     growing to meet -- so the stage-content region's scrollHeight never exceeded
+                     its clientHeight, and there was nothing to scroll to: the strip was pushed to
+                     the very bottom of the floor with zero scrollable distance below it. A
+                     screenshot of the real app at 1920x920 showed exactly this -- a short hero,
+                     acres of empty space, and the Class heading clipped at the viewport's bottom
+                     edge. The fix removes `flex-1` from the hero wrapper so it sizes to its own
+                     content plus padding, never beyond -- the strip now renders immediately after
+                     it instead of past the fold. (The EARLIER `min-h-0` fix on this step and the
+                     wrapper, while harmless, did not address this -- `min-h-0` only affects how far
+                     a flex item may SHRINK, and the bug was the wrapper GROWING past its content,
+                     not refusing to shrink below it.) -->
                 <div
                   v-else-if="activeStep === 'class'"
                   class="flex min-h-0 min-w-0 flex-1 flex-col"
                 >
-                  <div class="flex min-h-0 flex-1 items-center py-4">
+                  <div class="flex items-center justify-center py-6 lg:py-10">
                     <CreationHero
                       kicker="Class"
                       :entry="draft.class?.presentation"

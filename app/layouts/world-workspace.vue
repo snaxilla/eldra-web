@@ -347,8 +347,22 @@ const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.valu
 
 <template>
   <div class="eldra-workspace-ground h-screen w-screen overflow-hidden text-eldra-text">
+    <!-- `[grid-template-rows:minmax(0,1fr)]` (Character Creator V3 scroll/navigation repair --
+         ACTUAL ROOT CAUSE of "scrolling does not work," confirmed by walking this element's own
+         ancestor chain in the running app): this grid declared columns but never rows, so its one
+         implicit row used the CSS Grid default -- `auto`, sized to its TALLEST content -- instead
+         of being pinned to this element's own `h-full`. A page whose content is taller than the
+         viewport (any character with a class selected, not just an empty-state visit) therefore
+         stretched this grid's own row past the viewport, and with it every descendant that relied
+         on `h-full`/`flex-1` to learn how tall "the available space" actually was -- including
+         every page's own `overflow-y-auto` scroll region, whose `clientHeight` and `scrollHeight`
+         were BOTH being measured against that inflated, content-driven number, so they were always
+         equal and nothing ever registered as scrollable. `minmax(0,1fr)` is the exact pattern
+         `--wksp-cols` already uses for this grid's own COLUMN tracks, applied here to its row:
+         it fills the container's real height and is NEVER allowed to grow past it, so a page's own
+         internal scroll regions finally measure against the true viewport, not their own content. -->
     <div
-      class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
+      class="relative grid h-full grid-cols-1 [grid-template-rows:minmax(0,1fr)] md:[grid-template-columns:var(--wksp-cols)]"
       :class="isFullBleedMap ? 'eldra-map-shell' : ''"
       :style="gridStyle"
       :data-eldra-page-backdrop-active="hasPageBackdrop ? '' : undefined"

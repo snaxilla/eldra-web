@@ -8,20 +8,27 @@
 // Two presentations of one component and one set of states
 // (current / complete / remaining):
 //
-//   rail  (desktop / tablet) -- a narrow icon column, COLLAPSED by default so
-//         it costs ~3.5rem of the screen. An explicit toggle button expands it
-//         to show labels; expanded it OVERLAYS the stage rather than pushing
-//         it, so artwork never re-flows (the component reserves only the
-//         collapsed width in the page flow). Nothing is hover-only: the toggle is
-//         a real button (aria-expanded), every icon button carries an
-//         accessible name, and collapsed icons also expose their label as a
-//         title for pointer users.
+//   rail  (desktop / tablet) -- a column with an explicit toggle button
+//         (aria-expanded) that switches between a narrow icon-only rail and a
+//         wider one with stage labels. create-v2.vue's own creator instance
+//         passes `default-expanded` to start expanded, with labels visible,
+//         per the Character Creator V3 scroll/navigation repair -- an
+//         EARLIER version of this component started collapsed and expanded
+//         OVER the stage content rather than beside it; both of those are
+//         reversed now. The placeholder column below always reserves exactly
+//         the nav's own current width (narrow or wide), so expanding never
+//         overlaps the page title, hero, or any interactive content -- a
+//         real browser pass confirmed the earlier "reserve only the
+//         collapsed width" version visibly covered them. Nothing is
+//         hover-only: every icon button carries an accessible name, and
+//         collapsed icons also expose their label as a title for pointer
+//         users.
 //
 //   menu  (phone) -- a compact "Stage N of M" button that opens a full-width
 //         list of 44px+ rows.
 //
-// Collapsed state is remembered per session only in memory: it is a view
-// preference, never creation state.
+// Expanded/collapsed state is remembered per session only in memory: it is a
+// view preference, never creation state.
 
 export type CreationStage = {
   key: string
@@ -72,17 +79,20 @@ function stageState(stage: CreationStage): string {
 
 <template>
   <!-- ======================= desktop / tablet rail ======================= -->
-  <!-- The placeholder reserves only the collapsed width in the page flow; the nav itself is
-       absolutely positioned so expanding it overlays the stage instead of pushing it. -->
+  <!-- The placeholder's own width tracks `expanded` exactly like the nav's own width does, so the
+       reserved column always matches what the (absolutely positioned, for a smooth width
+       transition) nav actually occupies -- expanding reflows the stage content next to it rather
+       than covering it. -->
   <div
     v-if="variant === 'rail'"
-    class="relative z-40 h-full w-14 shrink-0"
+    class="relative z-40 h-full shrink-0 transition-[width] duration-200 motion-reduce:transition-none"
+    :class="expanded ? 'w-56' : 'w-14'"
   >
     <nav
       ref="rootRef"
       aria-label="Character creation stages"
       class="creator-rail absolute inset-y-0 left-0 flex flex-col border-r border-eldra-accent/20 bg-eldra-ink/80 backdrop-blur-md transition-[width] duration-200 motion-reduce:transition-none"
-      :class="expanded ? 'w-56 shadow-[8px_0_32px_rgb(0_0_0/0.55)]' : 'w-14'"
+      :class="expanded ? 'w-56' : 'w-14'"
       @keydown="onKeydown"
     >
       <button

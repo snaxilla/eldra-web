@@ -31,9 +31,11 @@ import {
   findOptionByKey,
   hasAmbiguousTitles,
   isSelectionHidden,
+  isClassIdentityChoiceSet,
   isDraftComplete,
   isEquipmentStepComplete,
   isProficiencyStepComplete,
+  isSpeciesIdentityChoiceSet,
   isSpellStepComplete,
   isStepComplete,
   missingRequirements,
@@ -520,6 +522,38 @@ describe('declaredChoices', () => {
   })
 })
 
+// CHARACTER CREATOR V3 content-flow repair -- the ChoiceSet-id-namespace rule create-v2.vue uses
+// to decide whether a declared choice belongs on the Identity/Class stage (beside the hero that
+// already explains the content) or stays on the generic Proficiencies stage. Proven against the
+// REAL Elf facet (findRulesFacet), not a hand-written stand-in, so a future rename of these
+// ChoiceSet ids in the authoring corpus would fail this test rather than silently stop routing.
+describe('isSpeciesIdentityChoiceSet / isClassIdentityChoiceSet', () => {
+  it('matches the real Elf lineage pick and innate-spellcasting-ability pick, never the real skill pick', () => {
+    const draft = emptyDraft()
+    draft.species = entry({ title: 'Elf', slug: 'elf-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'species', 'elf-xphb') })
+
+    const choices = declaredChoices(draft)
+    const bySet = new Map(choices.map((choice) => [choice.choiceSetId, choice]))
+
+    expect(bySet.has('choice:species.feature-option')).toBe(true)
+    expect(bySet.has('choice:species.innate-spellcasting-ability')).toBe(true)
+    expect(bySet.has('choice:skill.proficiency')).toBe(true)
+
+    for (const choiceSetId of ['choice:species.feature-option', 'choice:species.innate-spellcasting-ability']) {
+      expect(isSpeciesIdentityChoiceSet(choiceSetId)).toBe(true)
+      expect(isClassIdentityChoiceSet(choiceSetId)).toBe(false)
+    }
+    expect(isSpeciesIdentityChoiceSet('choice:skill.proficiency')).toBe(false)
+  })
+
+  it('matches a real Class-namespaced id and nothing generic', () => {
+    expect(isClassIdentityChoiceSet('choice:class.feature-option')).toBe(true)
+    expect(isClassIdentityChoiceSet('choice:class.weapon-mastery')).toBe(true)
+    expect(isClassIdentityChoiceSet('choice:proficiency.instrument.class')).toBe(false)
+    expect(isSpeciesIdentityChoiceSet('choice:class.feature-option')).toBe(false)
+  })
+})
+
 describe('answering a choice', () => {
   it('records exactly what was ticked', () => {
     const draft = fighterDraft()
@@ -743,6 +777,33 @@ describe('D&D 2024 Character Rules P3.3 -- Builder spell acquisition (real facet
     const draft = fighterDraft()
     expect(spellRequirementSections(draft, contextWith([]))).toEqual([])
     expect(isSpellStepComplete(draft, contextWith([]))).toBe(true)
+  })
+
+  // CHARACTER CREATOR V3 interaction repair -- the real reported bug: selecting a spell moved it
+  // to the bottom of the list. Root cause: `requirement.options` deliberately excludes an
+  // already-selected spell (needed for the old slot/<select> picker; harmless for the checkbox
+  // picker spells use today), so a selected spell's ref only ever entered `optionLabels` via the
+  // SECOND of two insertion passes -- always after every still-unselected spell, regardless of
+  // where it sits in the catalogue. `choice.options` is what CharacterChoiceSetPicker.vue actually
+  // iterates to render the list, so this is a render-order proof, not just a labels proof.
+  it('selecting a spell keeps it in its original catalogue position -- never moves it to the end', () => {
+    const draft = wizardDraft()
+    const spellbookId = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spellbook')!.requirementId
+    const ref = (slug: string) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug })
+
+    const before = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spellbook')!
+    expect(before.choice.options).toEqual([...'abcdefghij'].map(ref))
+
+    // Select a spell from the MIDDLE of the catalogue -- 'e' -- the exact case that exposes a
+    // "moved to the bottom" bug (a spell already at the end would hide it).
+    setSpellSelections(draft, spellbookId, [ref('e')])
+    const afterSelect = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spellbook')!
+    expect(afterSelect.choice.options).toEqual([...'abcdefghij'].map(ref))
+
+    // Deselecting it must not move it either.
+    setSpellSelections(draft, spellbookId, [])
+    const afterDeselect = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spellbook')!
+    expect(afterDeselect.choice.options).toEqual([...'abcdefghij'].map(ref))
   })
 })
 

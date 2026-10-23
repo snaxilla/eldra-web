@@ -736,9 +736,15 @@ export function spellRequirementSections(
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): SpellRequirementSection[] {
   const plan = spellAcquisitionPresentation(draft, context)
+  const catalogueRefs = (context.spells ?? []).map((entry) => serializeContentRef({ packageId: entry.packageId, slug: entry.slug }))
   const catalogueTitleByRef = new Map(
-    (context.spells ?? []).map((entry) => [serializeContentRef({ packageId: entry.packageId, slug: entry.slug }), entry.title])
+    (context.spells ?? []).map((entry, index) => [catalogueRefs[index], entry.title])
   )
+  // The catalogue's own index per ref, so a requirement's rendered order always matches the
+  // World's bound Content Pack order -- never the order refs happened to be inserted into
+  // `optionLabels` below. Anything the catalogue doesn't carry (shouldn't happen; defensive only)
+  // sorts after everything that does, stably, rather than jumping to the front.
+  const catalogueIndexByRef = new Map(catalogueRefs.map((ref, index) => [ref, index]))
 
   return plan.requirements
     .filter((requirement) => requirement.target > 0)
@@ -747,6 +753,22 @@ export function spellRequirementSections(
       const optionLabels: Record<string, string> = {}
       for (const option of requirement.options) optionLabels[option.ref] = option.title
       for (const ref of selectedRefs) if (!(ref in optionLabels)) optionLabels[ref] = catalogueTitleByRef.get(ref) ?? ref
+
+      // CHARACTER CREATOR V3 interaction repair -- CONFIRMED ROOT CAUSE of "selecting a spell
+      // moves it to the bottom": `requirement.options` deliberately excludes an ALREADY-selected
+      // spell (see this function's own header a few lines up -- a slot-mode <select> must never
+      // offer an already-picked value again). The checkbox-mode picker this phase (B1.1) moved
+      // spells to has no such need -- it shows every option with a checked/unchecked state -- but
+      // `optionLabels` above is still built in two passes (not-yet-selected first, selected
+      // appended after), so `Object.keys(optionLabels)` put a spell at the END the instant it was
+      // checked. Sorting the merged ref set by the catalogue's own stable index fixes the render
+      // ORDER without touching `requirement.options`'/`optionLabels`' own semantics (still correct
+      // for anything else that reads them, e.g. `missing`/`satisfied` counts upstream).
+      const orderedRefs = Object.keys(optionLabels).sort((a, b) => {
+        const indexA = catalogueIndexByRef.get(a) ?? Number.MAX_SAFE_INTEGER
+        const indexB = catalogueIndexByRef.get(b) ?? Number.MAX_SAFE_INTEGER
+        return indexA - indexB
+      })
 
       return {
         requirementId: requirement.requirementId,
@@ -757,7 +779,7 @@ export function spellRequirementSections(
           slot: 'class',
           choiceSetId: requirement.pool,
           count: requirement.target,
-          options: Object.keys(optionLabels),
+          options: orderedRefs,
           // CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- SPELL DISCOVERY. `distinct: true`
           // (was `false` + `maxPerOption: 1`) renders through CharacterChoiceSetPicker's own
           // CHECKBOX branch instead of its slot/<select> branch -- behaviorally identical
@@ -976,6 +998,33 @@ export function declaredChoices(
     distinct: presentation.distinct,
     maxPerOption: presentation.maxPerOption
   }))
+}
+
+// CHARACTER CREATOR V3 content-flow repair -- which Species/Class IDENTITY choices (a lineage,
+// a feature-option benefit, an innate-spellcasting ability, a weapon-mastery pick, ...) belong on
+// the Identity/Class stage itself rather than the generic Proficiencies stage, where they
+// previously rendered indistinguishably from an ordinary skill/tool pick. The signal is the
+// ChoiceSet id's own namespace -- `choice:species.*`/`choice:class.*` -- a naming convention the
+// package's authoring already follows consistently (verified against the full corpus: every
+// species-granted "pick one of several named options" trait uses `choice:species.feature-option`
+// or a sibling `choice:species.*` id, never a bare `choice:skill.*`/`choice:proficiency.*` one, and
+// the same holds for `choice:class.*`), so this reads an EXISTING fact about the data rather than
+// inventing a new one. A choice ALSO declared on the species/class facet but namespaced generically
+// (e.g. a species granting an ordinary `choice:skill.proficiency`) is deliberately NOT moved -- it
+// is a real proficiency question, not part of the character's identity, and stays on Proficiencies
+// exactly as before. `choice:subclass.*` is read by the same convention but never matched here: no
+// class facet declares one in its OWN `choices[]` (subclass is chosen via
+// `progression:class.subclass-selection` at level 3, never at Level-1 creation -- confirmed against
+// every class in the corpus), so there is nothing today for a Level-1 Creator to move for it; this
+// predicate exists so a future PROGRESSION surface (the Level-Up Wizard) can reuse the identical
+// rule the day it has a real `choice:subclass.*` creation-time choice to place, without a second
+// classification being invented then.
+export function isSpeciesIdentityChoiceSet(choiceSetId: string): boolean {
+  return choiceSetId.startsWith('choice:species.')
+}
+
+export function isClassIdentityChoiceSet(choiceSetId: string): boolean {
+  return choiceSetId.startsWith('choice:class.')
 }
 
 export function choiceSelections(draft: CharacterBuilderDraft, key: string): string[] {

@@ -67,6 +67,67 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 const query = ref('')
 
+// CHARACTER CREATOR V3 interaction repair -- CONFIRMED ROOT CAUSE (real
+// browser hit-testing, not a layering/pointer-events guess): the `strip`
+// variant's medallion row is `overflow-x-auto`, and at every viewport this
+// task tests EXCEPT the widest, 12 real classes do not fit -- the trailing
+// cards are scrolled out of the strip's own clipped box. `document
+// .elementFromPoint()` at those cards' own geometry hit WHATEVER page
+// content actually sits there instead (the summary panel's text, mostly),
+// never the card -- there is no stacking-context bug, nothing to fix with
+// z-index or pointer-events. Arrow-key selection still worked because
+// focusing a radio triggers the browser's own default scrollIntoView. The
+// strip had no visible scroll affordance at all (no custom scrollbar CSS
+// anywhere in this app -- confirmed), so without a visible OS scrollbar
+// (default-hidden on some platforms until an active scroll gesture) a
+// pointer user had no way to discover or reach those cards. These two
+// always-rendered-when-needed nudge buttons are the fix: `overflow:
+// hidden` ancestors never block them (they live in this component's own
+// `relative` wrapper, not inside the scrolling row), and a click just
+// scrolls the row -- the exact same box a user could already drag-scroll,
+// now with a visible, obvious way to do it.
+const stripRef = ref<HTMLElement | null>(null)
+const canScrollStripLeft = ref(false)
+const canScrollStripRight = ref(false)
+
+function updateStripScrollState() {
+  const el = stripRef.value
+  if (!el) {
+    canScrollStripLeft.value = false
+    canScrollStripRight.value = false
+    return
+  }
+  canScrollStripLeft.value = el.scrollLeft > 1
+  canScrollStripRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+}
+
+function onStripScroll() {
+  if (props.variant === 'strip') updateStripScrollState()
+}
+
+function scrollStrip(direction: 1 | -1) {
+  const el = stripRef.value
+  if (!el) return
+  el.scrollBy({ left: direction * Math.max(el.clientWidth * 0.75, 150), behavior: 'smooth' })
+}
+
+let stripResizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  updateStripScrollState()
+  const el = stripRef.value
+  if (el && typeof ResizeObserver !== 'undefined') {
+    stripResizeObserver = new ResizeObserver(() => updateStripScrollState())
+    stripResizeObserver.observe(el)
+  }
+})
+onBeforeUnmount(() => {
+  stripResizeObserver?.disconnect()
+})
+// The option list itself can change width (a class selected -> its medallion gains a checkmark
+// badge, search narrows the set, the workspace nav collapses/expands) without the element ever
+// firing its own `scroll` event, so re-check whenever what's rendered could have changed.
+watch(() => [props.options.length, query.value], () => nextTick(updateStripScrollState))
+
 const visibleOptions = computed(() => filterOptions(props.options, query.value))
 const ambiguous = computed(() => hasAmbiguousTitles(props.options))
 const selectedEntry = computed(() => findOptionByKey(props.options, props.modelValue))
@@ -135,116 +196,149 @@ function select(entry: BuilderCatalogueEntry) {
          bigger than a plain list row, an emblem so each option reads as a
          "someone"/"something" rather than a line of text, but still a
          native radio + label underneath -- see this file's own header on
-         why that accessibility shape is never replaced by a styled div. -->
+         why that accessibility shape is never replaced by a styled div.
+         `relative` only matters for `strip`, where it anchors the two
+         scroll-nudge buttons below -- harmless on the other variants, which
+         never render them. -->
     <div
       v-else
-      :class="variant === 'strip'
-        ? 'creator-strip flex snap-x gap-2 overflow-x-auto pb-2'
-        : variant === 'list'
-          ? 'grid gap-1.5'
-          : ['grid gap-3', compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2']"
+      class="relative"
     >
-      <label
-        v-for="entry in visibleOptions"
-        :key="optionKey(entry)"
-        :class="[
-          creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-          variant === 'cards' && 'eldra-card-glyph group relative flex min-h-20 items-center gap-4 rounded-none border px-4 py-3 transition',
-          variant === 'list' && 'group relative flex min-h-14 items-center gap-3 rounded-none border py-1.5 pl-1.5 pr-3 backdrop-blur-sm transition',
-          variant === 'strip' && 'group relative flex w-[4.75rem] shrink-0 snap-start flex-col items-center gap-1 rounded-none border px-1 pb-1.5 pt-1.5 backdrop-blur-sm transition',
-          modelValue === optionKey(entry)
-            ? (variant === 'cards' ? 'eldra-ornate-card border-eldra-accent/62' : 'border-eldra-accent-bright/80 bg-eldra-accent/22 shadow-[0_0_22px_rgb(var(--eldra-accent-rgb)/0.35)]')
-            : (variant === 'cards' ? 'border-eldra-accent/26 bg-eldra-panel/68 hover:border-eldra-accent/42 hover:bg-eldra-accent/8' : 'border-eldra-accent/20 bg-eldra-ink/62 hover:border-eldra-accent/45 hover:bg-eldra-ink/80')
-        ]"
+      <div
+        ref="stripRef"
+        :class="variant === 'strip'
+          ? 'creator-strip flex snap-x gap-2 overflow-x-auto pb-2'
+          : variant === 'list'
+            ? 'grid gap-1.5'
+            : ['grid gap-3', compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2']"
+        @scroll="onStripScroll"
       >
-        <input
-          :name="name"
-          type="radio"
-          class="peer sr-only"
-          :value="optionKey(entry)"
-          :checked="modelValue === optionKey(entry)"
-          :disabled="!!creationUnavailableReason(entry)"
-          @change="select(entry)"
+        <label
+          v-for="entry in visibleOptions"
+          :key="optionKey(entry)"
+          :class="[
+            creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+            variant === 'cards' && 'eldra-card-glyph group relative flex min-h-20 items-center gap-4 rounded-none border px-4 py-3 transition',
+            variant === 'list' && 'group relative flex min-h-14 items-center gap-3 rounded-none border py-1.5 pl-1.5 pr-3 backdrop-blur-sm transition',
+            variant === 'strip' && 'group relative flex w-[4.75rem] shrink-0 snap-start flex-col items-center gap-1 rounded-none border px-1 pb-1.5 pt-1.5 backdrop-blur-sm transition',
+            modelValue === optionKey(entry)
+              ? (variant === 'cards' ? 'eldra-ornate-card border-eldra-accent/62' : 'border-eldra-accent-bright/80 bg-eldra-accent/22 shadow-[0_0_22px_rgb(var(--eldra-accent-rgb)/0.35)]')
+              : (variant === 'cards' ? 'border-eldra-accent/26 bg-eldra-panel/68 hover:border-eldra-accent/42 hover:bg-eldra-accent/8' : 'border-eldra-accent/20 bg-eldra-ink/62 hover:border-eldra-accent/45 hover:bg-eldra-ink/80')
+          ]"
         >
-
-        <CreationEntityEmblem
-          :title="entry.title"
-          :image-url="entry.presentation?.image?.url"
-          :size="variant === 'strip' ? 'md' : variant === 'list' ? 'md' : 'sm'"
-        />
-
-        <span
-          v-if="variant === 'strip'"
-          class="w-full min-w-0 text-center"
-        >
-          <span class="block truncate text-[0.7rem] font-semibold text-eldra-text-strong">{{ entry.title }}</span>
-          <span
-            v-if="ambiguous && entry.sourceBook"
-            class="block truncate text-[0.6rem] text-eldra-text-faint"
-          >{{ entry.sourceBook }}</span>
-          <span
-            v-if="creationUnavailableReason(entry)"
-            class="sr-only"
-          >Not available yet. {{ creationUnavailableReason(entry) }}</span>
-        </span>
-
-        <span
-          v-else
-          class="min-w-0 flex-1"
-        >
-          <span
-            class="block truncate font-serif font-semibold text-eldra-text-strong"
-            :class="variant === 'list' ? 'text-base' : 'text-lg'"
+          <input
+            :name="name"
+            type="radio"
+            class="peer sr-only"
+            :value="optionKey(entry)"
+            :checked="modelValue === optionKey(entry)"
+            :disabled="!!creationUnavailableReason(entry)"
+            @change="select(entry)"
           >
-            {{ entry.title }}
-          </span>
-          <span
-            v-if="variant === 'cards' || (ambiguous && entry.sourceBook)"
-            class="mt-0.5 block truncate text-xs"
-            :class="ambiguous ? 'text-eldra-text-soft' : 'text-eldra-text-faint'"
-          >
-            <template v-if="entry.sourceBook">{{ entry.sourceBook }}</template><template v-if="variant === 'cards'"> · {{ entry.packageId }}</template>
-          </span>
-          <span
-            v-if="creationUnavailableReason(entry)"
-            class="mt-1 block text-xs text-eldra-caution"
-          >
-            Not available yet. {{ creationUnavailableReason(entry) }}
-          </span>
-        </span>
 
-        <!-- Selection indicator: shape + fill, never colour alone. The strip
-             shows selection as a ring + check badge instead of a radio dot. -->
-        <span
-          v-if="variant === 'strip' && modelValue === optionKey(entry)"
-          aria-hidden="true"
-          class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-eldra-accent-bright text-eldra-ink"
-        >
-          <UIcon
-            name="i-lucide-check"
-            class="size-3"
+          <CreationEntityEmblem
+            :title="entry.title"
+            :image-url="entry.presentation?.image?.url"
+            :size="variant === 'strip' ? 'md' : variant === 'list' ? 'md' : 'sm'"
           />
-        </span>
-        <span
-          v-if="variant !== 'strip'"
-          aria-hidden="true"
-          class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
-          :class="modelValue === optionKey(entry)
-            ? 'border-eldra-accent-bright bg-eldra-accent-bright'
-            : 'border-eldra-accent/35'"
-        >
-          <span
-            v-if="modelValue === optionKey(entry)"
-            class="h-2 w-2 rounded-full bg-eldra-ink"
-          />
-        </span>
 
-        <!-- Keyboard focus ring, matched to what hover shows a mouse user. -->
-        <span
-          aria-hidden="true"
-          class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-eldra-accent/65"
-        />
-      </label>
+          <span
+            v-if="variant === 'strip'"
+            class="w-full min-w-0 text-center"
+          >
+            <span class="block truncate text-[0.7rem] font-semibold text-eldra-text-strong">{{ entry.title }}</span>
+            <span
+              v-if="ambiguous && entry.sourceBook"
+              class="block truncate text-[0.6rem] text-eldra-text-faint"
+            >{{ entry.sourceBook }}</span>
+            <span
+              v-if="creationUnavailableReason(entry)"
+              class="sr-only"
+            >Not available yet. {{ creationUnavailableReason(entry) }}</span>
+          </span>
+
+          <span
+            v-else
+            class="min-w-0 flex-1"
+          >
+            <span
+              class="block truncate font-serif font-semibold text-eldra-text-strong"
+              :class="variant === 'list' ? 'text-base' : 'text-lg'"
+            >
+              {{ entry.title }}
+            </span>
+            <span
+              v-if="variant === 'cards' || (ambiguous && entry.sourceBook)"
+              class="mt-0.5 block truncate text-xs"
+              :class="ambiguous ? 'text-eldra-text-soft' : 'text-eldra-text-faint'"
+            >
+              <template v-if="entry.sourceBook">{{ entry.sourceBook }}</template><template v-if="variant === 'cards'"> · {{ entry.packageId }}</template>
+            </span>
+            <span
+              v-if="creationUnavailableReason(entry)"
+              class="mt-1 block text-xs text-eldra-caution"
+            >
+              Not available yet. {{ creationUnavailableReason(entry) }}
+            </span>
+          </span>
+
+          <!-- Selection indicator: shape + fill, never colour alone. The strip
+               shows selection as a ring + check badge instead of a radio dot. -->
+          <span
+            v-if="variant === 'strip' && modelValue === optionKey(entry)"
+            aria-hidden="true"
+            class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-eldra-accent-bright text-eldra-ink"
+          >
+            <UIcon
+              name="i-lucide-check"
+              class="size-3"
+            />
+          </span>
+          <span
+            v-if="variant !== 'strip'"
+            aria-hidden="true"
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
+            :class="modelValue === optionKey(entry)
+              ? 'border-eldra-accent-bright bg-eldra-accent-bright'
+              : 'border-eldra-accent/35'"
+          >
+            <span
+              v-if="modelValue === optionKey(entry)"
+              class="h-2 w-2 rounded-full bg-eldra-ink"
+            />
+          </span>
+
+          <!-- Keyboard focus ring, matched to what hover shows a mouse user. -->
+          <span
+            aria-hidden="true"
+            class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-eldra-accent/65"
+          />
+        </label>
+      </div>
+
+      <!-- Scroll-nudge buttons -- strip only, and only on the edge that currently has more to
+           reveal. Click, not drag/scrollbar discovery, is the one input every pointer user already
+           has; `document.elementFromPoint` hit-testing (this task's own real-browser pass)
+           confirmed trailing medallions were simply scrolled out of this row's own clipped box with
+           no visible way to reach them -- this is the fix, not a z-index/pointer-events change. -->
+      <button
+        v-if="variant === 'strip' && canScrollStripLeft"
+        type="button"
+        class="absolute inset-y-0 left-0 z-10 flex w-8 items-center justify-center bg-gradient-to-r from-eldra-ink/92 to-transparent text-eldra-accent-text focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+        aria-label="Scroll earlier options into view"
+        @click="scrollStrip(-1)"
+      >
+        <UIcon name="i-lucide-chevron-left" class="size-5" />
+      </button>
+      <button
+        v-if="variant === 'strip' && canScrollStripRight"
+        type="button"
+        class="absolute inset-y-0 right-0 z-10 flex w-8 items-center justify-center bg-gradient-to-l from-eldra-ink/92 to-transparent text-eldra-accent-text focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+        aria-label="Scroll later options into view"
+        @click="scrollStrip(1)"
+      >
+        <UIcon name="i-lucide-chevron-right" class="size-5" />
+      </button>
     </div>
 
     <p

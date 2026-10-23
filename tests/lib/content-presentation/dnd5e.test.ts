@@ -22,7 +22,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { resolveContentPresentation } from '../../../app/lib/content-presentation'
-import { cleanText, resolveDnd5ePresentation } from '../../../app/lib/content-presentation/dnd5e'
+import { cleanText, flattenEntries, resolveDnd5ePresentation } from '../../../app/lib/content-presentation/dnd5e'
 import rows from './fixtures/5etools-real-rows.json'
 
 const xphb = rows.xphb as any
@@ -436,5 +436,68 @@ describe('resolveContentPresentation -- the system seam', () => {
     expect(resolved.facts).toEqual([])
     expect(resolved.sections).toEqual([])
     expect(resolved.description).toEqual([])
+  })
+})
+
+// CHARACTER CREATOR V3 content-flow repair -- `{type:'table'}` was previously dropped entirely
+// (none of `entries`/`entry`/`items`), silently losing content like the real XPHB Elf's own
+// "Elven Lineage" trait table (Drow/High Elf/Wood Elf, each with its own Level 1/3/5 benefits) --
+// exactly the "meaningful differences between the options" a player needs before picking a
+// lineage. This fixture is the real table verbatim (races.json, XPHB Elf, "Elven Lineage"),
+// confirmed against the actual dataset, not invented for this test.
+describe('flattenEntries -- 5etools tables', () => {
+  const elvenLineageTable = {
+    type: 'table',
+    caption: 'Elven Lineages',
+    colLabels: ['Lineage', 'Level 1', 'Level 3', 'Level 5'],
+    rows: [
+      [
+        'Drow',
+        'The range of your {@sense Darkvision|XPHB} increases to 120 feet. You also know the {@spell Dancing Lights|XPHB} cantrip.',
+        '{@spell Faerie Fire|XPHB}',
+        '{@spell Darkness|XPHB}'
+      ],
+      [
+        'High Elf',
+        'You know the {@spell Prestidigitation|XPHB} cantrip. Whenever you finish a {@variantrule Long Rest|XPHB}, you can replace that cantrip with a different {@filter cantrip from the Wizard spell list|spells|level=0|class=Wizard}.',
+        '{@spell Detect Magic|XPHB}',
+        '{@spell Misty Step|XPHB}'
+      ],
+      [
+        'Wood Elf',
+        'Your {@variantrule Speed|XPHB} increases to 35 feet. You also know the {@spell Druidcraft|XPHB} cantrip.',
+        '{@spell Longstrider|XPHB}',
+        '{@spell Pass without Trace|XPHB}'
+      ]
+    ]
+  }
+
+  it('reads each row into one readable line, by its own printed column headers, with every {@tag} cleaned', () => {
+    const lines = flattenEntries(elvenLineageTable)
+
+    expect(lines).toEqual([
+      'Drow — Level 1: The range of your Darkvision increases to 120 feet. You also know the Dancing Lights cantrip. — Level 3: Faerie Fire — Level 5: Darkness',
+      'High Elf — Level 1: You know the Prestidigitation cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list. — Level 3: Detect Magic — Level 5: Misty Step',
+      'Wood Elf — Level 1: Your Speed increases to 35 feet. You also know the Druidcraft cantrip. — Level 3: Longstrider — Level 5: Pass without Trace'
+    ])
+    expect(lines.join(' ')).not.toContain('{@')
+  })
+
+  it('reaches the real Elf species through resolveDnd5ePresentation -- a full section, not a dropped one', () => {
+    const elfWithLineageTable = {
+      ...xphb.species.Elf,
+      fluff: { entries: [{ type: 'entries', entries: ['Intro paragraph.', elvenLineageTable] }] }
+    }
+    const resolved = resolveDnd5ePresentation('species', elfWithLineageTable)!
+
+    expect(resolved.description).toContain('Intro paragraph.')
+    expect(resolved.description.some((paragraph) => paragraph.startsWith('Drow —'))).toBe(true)
+    expect(resolved.description.some((paragraph) => paragraph.startsWith('High Elf —'))).toBe(true)
+    expect(resolved.description.some((paragraph) => paragraph.startsWith('Wood Elf —'))).toBe(true)
+  })
+
+  it('an empty or malformed table (no rows) produces nothing -- never throws', () => {
+    expect(flattenEntries({ type: 'table', colLabels: ['A'], rows: [] })).toEqual([])
+    expect(flattenEntries({ type: 'table' })).toEqual([])
   })
 })

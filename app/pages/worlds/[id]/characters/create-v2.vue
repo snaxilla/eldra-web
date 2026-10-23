@@ -133,7 +133,9 @@ import {
   draftAbilityScores,
   emptyDraft,
   findOptionByKey,
+  isClassIdentityChoiceSet,
   isDraftComplete,
+  isSpeciesIdentityChoiceSet,
   isStepComplete,
   missingRequirements,
   nextStep,
@@ -340,6 +342,21 @@ const creationContext = computed<BuilderCreationContext>(() => {
 
 const proficiencyChoices = computed(() => declaredChoices(draft, creationContext.value))
 
+// CHARACTER CREATOR V3 content-flow repair -- the real reported bug: a Species' own lineage pick
+// (Elf: Drow/High Elf/Wood Elf) and a Class' own feature-option pick rendered as two more rows in
+// the generic Proficiencies list, indistinguishable from an ordinary skill/tool question, even
+// though the player is choosing part of who their character IS. Split by the ChoiceSet id's own
+// namespace (see isSpeciesIdentityChoiceSet/isClassIdentityChoiceSet's own header) -- species
+// picks render on the Identity stage, class picks on the Class stage, both alongside that stage's
+// own hero (which already carries real published content, e.g. Elf's own "Elven Lineage" trait
+// section -- see this task's own content-presentation table fix), and everything left over (every
+// ordinary proficiency question, unaffected) stays exactly where it already was.
+const speciesIdentityChoices = computed(() => proficiencyChoices.value.filter((choice) => isSpeciesIdentityChoiceSet(choice.choiceSetId)))
+const classIdentityChoices = computed(() => proficiencyChoices.value.filter((choice) => isClassIdentityChoiceSet(choice.choiceSetId)))
+const proficiencyStepChoices = computed(() => proficiencyChoices.value.filter((choice) =>
+  !isSpeciesIdentityChoiceSet(choice.choiceSetId) && !isClassIdentityChoiceSet(choice.choiceSetId)
+))
+
 // The content (ContentRef) choices the current selection declares, shaped for the
 // same generic picker: options are encoded refs, labels are catalogue titles.
 const contentPresentations = computed(() => creationContentPresentation(draft, creationContext.value))
@@ -378,6 +395,23 @@ const presentationByKey = computed(() => new Map(
 
 function promptFor(choiceSetId: string): string {
   return choiceOptions.value?.choiceSets?.[choiceSetId]?.prompt || 'Choose your options.'
+}
+
+// CHARACTER CREATOR V3 content-flow repair -- the real reported bug: a Background whose Origin
+// Feat ALSO grants a tool-proficiency choice (Artisan -> Crafter) rendered two rows that both said
+// "Background" with overlapping option pools, reading as one choice duplicated rather than two
+// real grants from different sources. Traced the underlying grants: `choice:proficiency.artisan-
+// tool.background` (the Background's own signature-tool pick, 1 of 17) and `choice:feat.crafter
+// .tools` (Crafter's own separate "three tools of your choice" feat text, 3 of a different, 8-tool
+// subset) are genuinely distinct ChoiceSets with distinct option pools -- not a rendering
+// duplicate, and neither is removed. The package already authors a per-ChoiceSet `label` distinct
+// enough to tell them apart ("Artisan's Tool" vs "Crafter's Tools") -- `promptFor` read `.prompt`
+// but never `.label`, so that distinction never reached the player. Preferred over the generic
+// slot label (the generic "Background"/"Class"/... STEP_LABELS a `choice.slot` resolves to below)
+// wherever a ChoiceSet authors its own -- never removed, since several existing ChoiceSets (plain
+// skill/tool picks) rely on the generic slot label and have no closer one of their own.
+function choiceSetLabelFor(choiceSetId: string): string | undefined {
+  return choiceOptions.value?.choiceSets?.[choiceSetId]?.label
 }
 
 function selectionsFor(key: string): string[] {
@@ -818,7 +852,28 @@ async function createCharacter() {
                     empty-title="Who are you?"
                     empty-hint="Choose a species to see what it is and what it grants."
                     :figure-url="heroFigureUrl"
-                  />
+                  >
+                    <!-- Species identity choices (a lineage, a feature-option benefit, ...) --
+                         CHARACTER CREATOR V3 content-flow repair: rendered here, beside the hero's
+                         own published description of the species, rather than mixed into the
+                         generic Proficiencies stage -- see speciesIdentityChoices' own header. -->
+                    <div
+                      v-if="draft.species && speciesIdentityChoices.length"
+                      class="mt-5 grid gap-5"
+                    >
+                      <CharacterChoiceSetPicker
+                        v-for="choice in speciesIdentityChoices"
+                        :key="choice.key"
+                        :choice="choice"
+                        :selected="selectionsFor(choice.key)"
+                        :offered="offeredFor(choice.key)"
+                        :prompt="promptFor(choice.choiceSetId)"
+                        :option-labels="optionLabels"
+                        :slot-label="choiceSetLabelFor(choice.choiceSetId)"
+                        @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+                      />
+                    </div>
+                  </CreationHero>
                 </div>
 
                 <!-- ============ BACKGROUND: roster | background hero ============ -->
@@ -889,7 +944,26 @@ async function createCharacter() {
                       empty-title="What is your calling?"
                       empty-hint="Choose a class to see how it plays and what it grants."
                       :figure-url="heroFigureUrl"
-                    />
+                    >
+                      <!-- Class identity choices -- CHARACTER CREATOR V3 content-flow repair, same
+                           reasoning as the Identity stage's own speciesIdentityChoices. -->
+                      <div
+                        v-if="draft.class && classIdentityChoices.length"
+                        class="mt-5 grid gap-5"
+                      >
+                        <CharacterChoiceSetPicker
+                          v-for="choice in classIdentityChoices"
+                          :key="choice.key"
+                          :choice="choice"
+                          :selected="selectionsFor(choice.key)"
+                          :offered="offeredFor(choice.key)"
+                          :prompt="promptFor(choice.choiceSetId)"
+                          :option-labels="optionLabels"
+                          :slot-label="choiceSetLabelFor(choice.choiceSetId)"
+                          @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+                        />
+                      </div>
+                    </CreationHero>
                   </div>
                   <div class="mt-4 shrink-0 border-t border-eldra-accent/25 bg-eldra-ink/60 px-2 pt-3 backdrop-blur-md">
                     <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
@@ -926,7 +1000,7 @@ async function createCharacter() {
                     <!-- Proficiencies -->
                     <div v-if="activeStep === 'proficiencies'">
                       <p
-                        v-if="!proficiencyChoices.length && !contentChoicePickers.length"
+                        v-if="!proficiencyStepChoices.length && !contentChoicePickers.length"
                         class="text-sm leading-6 text-eldra-text-soft"
                       >
                         The Species, Class, and Background you chose ask no proficiency
@@ -938,14 +1012,14 @@ async function createCharacter() {
                         class="grid gap-6"
                       >
                         <CharacterChoiceSetPicker
-                          v-for="choice in proficiencyChoices"
+                          v-for="choice in proficiencyStepChoices"
                           :key="choice.key"
                           :choice="choice"
                           :selected="selectionsFor(choice.key)"
                           :offered="offeredFor(choice.key)"
                           :prompt="promptFor(choice.choiceSetId)"
                           :option-labels="optionLabels"
-                          :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                          :slot-label="choiceSetLabelFor(choice.choiceSetId) || STEP_LABELS[choice.slot as BuilderChoiceKey]"
                           @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
                         />
                         <CharacterChoiceSetPicker
@@ -956,7 +1030,7 @@ async function createCharacter() {
                           :offered="contentOfferedFor(choice.key)"
                           :prompt="promptFor(choice.choiceSetId)"
                           :option-labels="contentLabels"
-                          :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                          :slot-label="choiceSetLabelFor(choice.choiceSetId) || STEP_LABELS[choice.slot as BuilderChoiceKey]"
                           @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
                         />
                       </div>

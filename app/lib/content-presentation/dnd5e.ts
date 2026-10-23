@@ -217,6 +217,33 @@ export function flattenEntries(value: unknown, out: string[] = []): string[] {
     return out
   }
 
+  // CHARACTER CREATOR V3 content-flow repair -- `{type:'table', colLabels, rows}` was silently
+  // dropped entirely: it has none of `entries`/`entry`/`items`, so it fell straight through to the
+  // no-op below. Measured against the real XPHB Elf's own "Elven Lineage" trait: the three
+  // paragraphs of prose this already rendered ("Choose a lineage from the Elven Lineages table...")
+  // never actually included that table, so a player saw every rule EXCEPT the one piece of real,
+  // already-published content that tells Drow, High Elf, and Wood Elf apart -- the per-lineage
+  // Level 1/3/5 benefits. This reads only what the table already contains: the row's own first
+  // cell as a name, each remaining column paired with its own printed header (the same label:body
+  // join the rest of this function already uses), never a computed or invented value. A cell may
+  // itself be a nested 5etools node (a tag string is the common case; a richer shape degrades to
+  // whatever flattenEntries already produces for it, never an error).
+  if (node.type === 'table' && Array.isArray(node.rows)) {
+    const colLabels = (Array.isArray(node.colLabels) ? node.colLabels : []).map((label) => cleanText(label))
+    for (const row of node.rows as unknown[]) {
+      if (!Array.isArray(row) || !row.length) continue
+      const rowName = flattenEntries(row[0], []).join(' ')
+      const cells = row.slice(1).map((cell, index) => {
+        const cellText = flattenEntries(cell, []).join(' ')
+        const header = colLabels[index + 1]
+        return header && cellText ? `${header}: ${cellText}` : cellText
+      }).filter(Boolean)
+      const line = [rowName, ...cells].filter(Boolean).join(' — ')
+      if (line) out.push(line)
+    }
+    return out
+  }
+
   flattenEntries(node.entries ?? node.entry ?? node.items, out)
   return out
 }

@@ -26,10 +26,15 @@
 // stage's own children, sharing its one position/size/z-index instead of
 // each owning a separate one.
 //
-// RENDERS NOTHING VISIBLE WHEN IDLE: WorldDiceStage.vue's own `v-if`
-// means the stage is inert chrome (zero opacity content, `pointer-events:
-// none` throughout) until a roll is actually queued -- never a permanent
-// panel.
+// RENDERS NOTHING VISIBLE WHEN IDLE: WorldDiceStage.vue's own `v-if` means
+// the stage is inert chrome (zero opacity content) until a roll is actually
+// queued -- never a permanent panel. CHARACTER CREATOR V3 interaction
+// repair: this file's own wrapper div around WorldDiceStage now mirrors
+// that exact `current`-queue condition for `pointer-events` too (previously
+// unconditionally `pointer-events-auto`, confirmed by real-browser hit-
+// testing to silently swallow clicks meant for whatever page content sat
+// under WorldDicePresentationStage's fixed bottom-right box, on every page,
+// roll or no roll) -- see this file's own `activeDiceRequest` below.
 //
 // ---------------------------------------------------------------------------
 // PHASE 3B (RENDERER REPLACEMENT): THE ONE PLACE THE REAL RENDERER IS
@@ -131,6 +136,21 @@ const authoredThreeDiceBoxRef = ref<WorldAuthoredThreeDiceRendererExposed | null
 const authoredPolyhedralDiceBoxRef = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(null)
 const diceQueue = useDiceAnimationQueue()
 const diceRendererMode = useDiceRendererMode()
+// CHARACTER CREATOR V3 interaction repair -- CONFIRMED ROOT CAUSE of a second,
+// separate click-dead-zone (real browser hit-testing: `document
+// .elementFromPoint` at a click-dead ability-score "Lower" button resolved to
+// THIS component's own wrapper div, by its exact class string). The header
+// comment above claims "pointer-events: none throughout" when idle, but that
+// was only ever true of WorldDiceStage's own internal content -- the
+// `pointer-events-auto absolute inset-0` div wrapping it, below, had no
+// condition on it at all, so the stage's full ~288px box (WorldDice
+// PresentationStage's own fixed bottom-right placement, see that file) was
+// ALWAYS capturing clicks meant for whatever page content happened to sit
+// under it, roll or no roll. `current` is the exact signal WorldDiceStage.vue
+// itself already uses to decide whether anything is actually showing
+// (`v-if="current"`) -- mirrored here so this wrapper is only a hit target
+// while a roll is genuinely on screen.
+const { current: activeDiceRequest } = diceQueue
 
 // Registers whichever renderer the mode currently selects. Re-run on
 // mount and on every mode change (see the `watch` below) -- both paths
@@ -164,7 +184,10 @@ onBeforeUnmount(() => {
 
 <template>
   <WorldDicePresentationStage>
-    <div class="pointer-events-auto absolute inset-0 flex items-center justify-center">
+    <div
+      class="absolute inset-0 flex items-center justify-center"
+      :class="activeDiceRequest ? 'pointer-events-auto' : 'pointer-events-none'"
+    >
       <WorldDiceStage />
     </div>
 

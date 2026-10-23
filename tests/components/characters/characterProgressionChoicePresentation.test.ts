@@ -16,6 +16,7 @@ import {
   draftToAnswer,
   isNonDistinctMultiSelect,
   reconcileSlotDrafts,
+  shouldShowInspectedDetail,
   type PresentableProgressionChoiceForReconciliation
 } from '../../../app/components/characters/characterProgressionChoicePresentation'
 
@@ -263,5 +264,43 @@ describe('reconcileSlotDrafts', () => {
       ]
     )
     expect(result).toEqual({})
+  })
+})
+
+// CONTENT PRESENTATION REPAIR (B1) -- the pure decision behind
+// CharacterChoiceSetPicker.vue's "Details" disclosure. Backs this task's own
+// regression list: Details opens visible content; Details closes correctly;
+// missing spell metadata degrades gracefully (a message, not a silent
+// no-op). Selection independence itself needs no test here -- the
+// component's "Details" button is a separate control that never emits
+// `update:selected`, provable by reading CharacterChoiceSetPicker.vue's
+// template directly, with nothing in this pure module touching selection.
+describe('shouldShowInspectedDetail', () => {
+  it('is false when nothing is inspected', () => {
+    expect(shouldShowInspectedDetail({ 'fire-bolt': null }, null)).toBe(false)
+  })
+
+  it('is false when optionDetails was never passed (callers before this task)', () => {
+    expect(shouldShowInspectedDetail(undefined, 'fire-bolt')).toBe(false)
+  })
+
+  it('is true once an option with a resolved presentation is inspected -- Details opens visible content', () => {
+    expect(shouldShowInspectedDetail({ 'fire-bolt': { kind: 'spell', name: 'Fire Bolt' } }, 'fire-bolt')).toBe(true)
+  })
+
+  // The real bug this task fixed: a key existing with a `null` value (the
+  // server found no resolvable presentation for this one option) must still
+  // show the panel -- ContentPresentationPanel's own empty state -- rather
+  // than leaving "Hide" on screen over nothing.
+  it('is true for a key with a null value -- missing spell metadata degrades to a message, not a no-op', () => {
+    expect(shouldShowInspectedDetail({ 'homebrew-spell': null }, 'homebrew-spell')).toBe(true)
+  })
+
+  it('is false for a value nothing in optionDetails ever named -- toggling Hide closes it again', () => {
+    // Mirrors the toggle in CharacterChoiceSetPicker.vue's own
+    // toggleInspect: clicking "Hide" sets inspectedValue back to null,
+    // which this function already treats as "show nothing" above -- this
+    // case instead covers an id optionDetails never had an entry for at all.
+    expect(shouldShowInspectedDetail({ 'fire-bolt': { kind: 'spell', name: 'Fire Bolt' } }, 'misty-step')).toBe(false)
   })
 })

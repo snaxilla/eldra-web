@@ -98,7 +98,11 @@ describe('getWorldContentCatalogue', () => {
     expect(catalogue.monsters.map((e) => e.title)).toEqual(['Owlbear'])
   })
 
-  it('exposes only identity and provenance for a category with no presentation model -- never `data`', async () => {
+  // CONTENT PRESENTATION REPAIR -- `presentation` is now present for a spell too
+  // (PRESENTATION_KIND_BY_CATEGORY gained `spells: 'spell'`; see that map's own header for the
+  // full root-cause writeup of why the Character Creation Wizard's spell-inspect panel showed no
+  // description at all before this). Still never `data`/`entityType`.
+  it('exposes identity, provenance, AND a resolved presentation for spells -- never `data`', async () => {
     resolveWorldContentMock.mockResolvedValue(resolved({
       entries: [entry({ entityType: 'spell' })]
     }))
@@ -109,16 +113,15 @@ describe('getWorldContentCatalogue', () => {
     expect(spell).not.toHaveProperty('data')
     expect(spell).not.toHaveProperty('entityType')
     expect(Object.keys(spell).sort()).toEqual([
-      // 'presentation' is absent -- spells have no PresentationKind (design
-      // decision 1's original three). 'actions' IS present: the Character
-      // Actions System resolves spell actions for the same category
-      // 'presentation' still does not cover -- see this file's own note on
-      // ACTION_CATEGORY_BY_CATALOGUE_CATEGORY. 'spellMechanics' is present
-      // for the identical reason, added by Character Sheet Body Phase 1B.1.
+      // 'actions' IS present: the Character Actions System resolves spell actions for the same
+      // category 'presentation' now ALSO covers -- see this file's own note on
+      // ACTION_CATEGORY_BY_CATALOGUE_CATEGORY. 'spellMechanics' is present for the identical
+      // reason, added by Character Sheet Body Phase 1B.1.
       'actions',
       'externalId',
       'packageId',
       'packageVersion',
+      'presentation',
       'provider',
       'slug',
       'sourceBook',
@@ -143,7 +146,20 @@ describe('getWorldContentCatalogue', () => {
       // shape) -- resolveDnd5eSpellMechanics degrades every optional field
       // to `undefined` rather than fabricating one, exactly the same
       // "absence is legal" posture `actions`/`presentation` already have.
-      spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null }
+      spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null },
+      // Likewise: this minimal fixture has no `entries`/`school`/`time`/etc, so every optional
+      // fact/section is honestly absent -- only the one fact this raw data actually supports
+      // (Level, derived from the real `level: 0`) is present, never a fabricated one.
+      presentation: {
+        kind: 'spell',
+        name: 'Fire Bolt',
+        sourceBook: undefined,
+        sourcePage: undefined,
+        description: [],
+        facts: [{ label: 'Level', value: 'Cantrip' }],
+        sections: [],
+        notes: ['This Content Pack does not publish descriptive text for this entry. Only what the pack actually contains is shown.']
+      }
     })
   })
 
@@ -295,7 +311,10 @@ describe('getWorldContentCatalogue -- presentation models', () => {
     expect(species!.presentation!.sections[0]!.paragraphs[0]).toBe('You gain Tremorsense.')
   })
 
-  it('leaves feats, items, spells and monsters unresolved -- no reader, no cost', async () => {
+  // CONTENT PRESENTATION REPAIR -- spells moved OUT of this "unresolved" group: they now get a
+  // real presentation (see PRESENTATION_KIND_BY_CATEGORY's own header). Feats/items/monsters are
+  // unaffected -- still no reader, no cost.
+  it('leaves feats, items, and monsters unresolved -- no reader, no cost -- but DOES resolve a presentation for spells', async () => {
     resolveWorldContentMock.mockResolvedValue(resolved({
       entries: [
         entry({ entityType: 'feat', title: 'Alert' }),
@@ -307,9 +326,11 @@ describe('getWorldContentCatalogue -- presentation models', () => {
 
     const catalogue = await getWorldContentCatalogue('5')
 
-    for (const collection of [catalogue.feats, catalogue.items, catalogue.spells, catalogue.monsters]) {
+    for (const collection of [catalogue.feats, catalogue.items, catalogue.monsters]) {
       expect(collection[0]).not.toHaveProperty('presentation')
     }
+    expect(catalogue.spells[0]).toHaveProperty('presentation')
+    expect(catalogue.spells[0]!.presentation).toMatchObject({ kind: 'spell', name: 'Fire Bolt' })
   })
 
   it('degrades a single unreadable entry to presentation: null, leaving its siblings intact', async () => {

@@ -189,3 +189,21 @@ export function isSlotOptionAtCap(
   const elsewhere = draft.filter((value, index) => index !== slotIndex && value === option).length
   return elsewhere >= maxPerOption
 }
+
+// CONTENT PRESENTATION REPAIR (B1) -- whether CharacterChoiceSetPicker.vue's
+// inspected-option detail panel should render at all. Keyed on the OPTION
+// KEY existing in `optionDetails`, never on the resolved value being
+// truthy -- an option the caller explicitly listed (even as `null`, meaning
+// "no presentation could be resolved for this one") must still render
+// ContentPresentationPanel's own empty state, so "Details" always opens
+// SOMETHING. Returning false here (no `optionDetails` prop at all, or
+// nothing currently inspected) is what callers before this phase -- and
+// callers that never pass `optionDetails` -- already behaved as; this
+// function only changes what happens once inspection is possible.
+export function shouldShowInspectedDetail(
+  optionDetails: Record<string, unknown> | null | undefined,
+  inspectedValue: string | null
+): boolean {
+  if (!optionDetails || !inspectedValue) return false
+  return inspectedValue in optionDetails
+}

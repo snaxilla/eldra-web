@@ -141,7 +141,7 @@ function select(entry: BuilderCatalogueEntry) {
           creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
           modelValue === optionKey(entry)
             ? 'eldra-ornate-card border-eldra-accent/62'
-            : 'border-eldra-accent/20 bg-eldra-panel/55 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'
+            : 'border-eldra-accent/26 bg-eldra-panel/68 hover:border-eldra-accent/42 hover:bg-eldra-accent/8'
         ]"
       >
         <input
@@ -198,7 +198,7 @@ function select(entry: BuilderCatalogueEntry) {
 
     <p
       v-if="options.length"
-      class="mt-2 text-xs text-eldra-text-ghost"
+      class="mt-2 text-xs text-eldra-text-faint"
     >
       {{ visibleOptions.length }} of {{ options.length }} shown
     </p>

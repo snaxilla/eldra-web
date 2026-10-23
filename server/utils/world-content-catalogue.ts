@@ -102,7 +102,8 @@ export type ContentCatalogueEntry = {
   provider: string
   sourceBook?: string
   sourcePage?: string
-  // Present only for species/classes/backgrounds -- see design decision 1.
+  // Present only for species/classes/backgrounds/spells -- see
+  // PRESENTATION_KIND_BY_CATEGORY's own header (CONTENT PRESENTATION REPAIR added spells).
   // `null` (rather than absent) means the category IS presentable but this
   // particular entry could not be resolved: an unreadable `data` payload, or
   // a pack from a game system Eldra has no resolver for. Consumers render
@@ -219,22 +220,33 @@ const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
 
 // Which catalogue categories resolve a presentation model, and as which
 // kind. Keyed by CATALOGUE CATEGORY (not entityType) so it reads against
-// WorldGameplayCatalogue's own field names. See design decision 1 for why
-// this is deliberately three entries and not seven.
+// WorldGameplayCatalogue's own field names.
+//
+// CONTENT PRESENTATION REPAIR -- `spells: 'spell'` added. Design decision 1's own original
+// "deliberately three entries and not seven" reasoning was correct AT THE TIME (no spell
+// resolver existed), but is now STALE: the Character Creation Wizard's own spell-inspect panel
+// (CharacterChoiceSetPicker.vue's `optionDetails`) depends on `entry.presentation` actually
+// being populated for a 'spells' catalogue entry, which this map's own absence of a 'spells' key
+// silently prevented -- `resolveDnd5ePresentation('spell', ...)` (content-presentation/dnd5e.ts's
+// own real resolver, added for exactly this feature) was NEVER CALLED for a single real spell in
+// production, no matter how correct that resolver was in isolation. This is the actual root
+// cause of "Details opens, but no description ever appears" -- confirmed by tracing this exact
+// map, not assumed.
 const PRESENTATION_KIND_BY_CATEGORY: Partial<Record<CatalogueCategory, PresentationKind>> = {
   species: 'species',
   classes: 'class',
-  backgrounds: 'background'
+  backgrounds: 'background',
+  spells: 'spell'
 }
 
 // Which catalogue categories resolve Actions, and as which
 // ContentSourceCategory -- the Character Actions System's counterpart to
-// PRESENTATION_KIND_BY_CATEGORY above, five entries rather than three
-// because Items and Spells grant actions (a weapon attack, a spell) that
-// they never resolve a narrative `presentation` card for (design decision 1:
-// "no surface consumes them yet" no longer holds for Items/Spells now that
-// Actions does). Feats and Monsters resolve neither, for the same "no
-// surface consumes them yet" reason presentation still gives.
+// PRESENTATION_KIND_BY_CATEGORY above. Items still resolve Actions only, never a narrative
+// `presentation` card (no printed "fluff" text exists for a plain item the way it does for a
+// spell) -- CONTENT PRESENTATION REPAIR only added a 'spells' presentation entry above; it did
+// not change what Items resolve (design decision 1's own "no surface consumes them yet" no
+// longer holds for Items/Spells now that Actions does). Feats and Monsters resolve neither, for
+// the same "no surface consumes them yet" reason presentation still gives.
 const ACTION_CATEGORY_BY_CATALOGUE_CATEGORY: Partial<Record<CatalogueCategory, ContentSourceCategory>> = {
   species: 'species',
   classes: 'class',

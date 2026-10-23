@@ -18,10 +18,10 @@ withDefaults(defineProps<{
 </script>
 
 <template>
-  <div class="eldra-ornate-panel eldra-frame-corners min-w-0 rounded-none border border-eldra-accent/24 bg-eldra-panel/64 p-4 backdrop-blur">
+  <div class="eldra-ornate-panel eldra-frame-corners min-w-0 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 p-4 backdrop-blur">
     <h3
       v-if="title"
-      class="text-xs uppercase tracking-[0.2em] text-eldra-text-ghost"
+      class="text-xs uppercase tracking-[0.2em] text-eldra-text-faint"
     >
       {{ title }}
     </h3>

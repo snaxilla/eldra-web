@@ -66,6 +66,7 @@
 import type {
   PresentationEntry,
   PresentationFact,
+  PresentationImage,
   PresentationKind,
   PresentationSection
 } from './types'
@@ -513,6 +514,38 @@ function readDescription(raw: Record<string, unknown>): string[] {
   return flattenEntries(raw.description ?? raw.fluffEntries)
 }
 
+// CONTENT PRESENTATION REPAIR (B1) -- artwork. Same `.fluff` join
+// readDescription already reads, this time its `images` array -- 5etools'
+// own fluff shape (measured against the real XPHB Dwarf/raceFluff row):
+// `images: [{type:'image', href:{type:'internal', path:'races/XPHB/
+// Dwarf.webp'}, credit:'...', width, height}]`. Mirrors the 5etools monster
+// importer's own `getRemoteMonsterImageUrl` (app/lib/importers/
+// 5etools-monsters.ts) path-for-path -- same `/api/5etools-img/` route,
+// same internal-vs-url branch -- so this resolver needs no new serving
+// mechanism, only this one reader. Builds a URL string only; never touches
+// the filesystem (this module must stay pure -- see file header).
+function readImage(raw: Record<string, unknown>): PresentationImage | null {
+  const fluff = raw.fluff as Record<string, unknown> | undefined
+  const images = asArray(fluff?.images)
+  const first = images[0] as Record<string, unknown> | undefined
+  const href = first?.href as Record<string, unknown> | undefined
+  if (!href) return null
+
+  let url = ''
+  if (typeof href.url === 'string' && href.url.trim()) {
+    url = href.url.trim()
+  } else if (href.type === 'internal' && typeof href.path === 'string' && href.path.trim()) {
+    url = `/api/5etools-img/${href.path.trim().replace(/^\/+/, '')}`
+  }
+  if (!url) return null
+
+  const width = typeof first?.width === 'number' ? first.width : undefined
+  const height = typeof first?.height === 'number' ? first.height : undefined
+  const credit = typeof first?.credit === 'string' && first.credit.trim() ? first.credit.trim() : undefined
+
+  return { url, ...(credit ? { credit } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}) }
+}
+
 // Named prose blocks ({type:'entries', name, entries}) become sections.
 // Anonymous or empty blocks are skipped rather than rendered headless.
 //
@@ -644,7 +677,8 @@ function resolveSpecies(raw: Record<string, unknown>): PresentationEntry {
       fact('Traits', asArray(raw.traitTags).map((tag) => cleanText(String(tag))).join(', '))
     ]),
     sections,
-    notes
+    notes,
+    image: readImage(raw)
   }
 }
 
@@ -794,7 +828,8 @@ function resolveClass(raw: Record<string, unknown>): PresentationEntry {
       fact('Subclass', cleanText(raw.subclassTitle))
     ]),
     sections,
-    notes
+    notes,
+    image: readImage(raw)
   }
 }
 
@@ -876,7 +911,8 @@ function resolveBackground(raw: Record<string, unknown>): PresentationEntry {
       fact('Languages', languages)
     ]),
     sections,
-    notes
+    notes,
+    image: readImage(raw)
   }
 }
 

@@ -47,6 +47,7 @@
 // this project's build, so it must not be used here.
 
 import type { PresentationEntry } from '~/lib/content-presentation'
+import CreationEntityEmblem from './builder/CreationEntityEmblem.vue'
 
 const props = withDefaults(defineProps<{
   entry?: PresentationEntry | null
@@ -70,6 +71,21 @@ const props = withDefaults(defineProps<{
   context: 'detail',
   collapseFirstSection: false
 })
+
+// CONTENT PRESENTATION REPAIR (B1) -- artwork. Species/Class/Background are
+// the only kinds a Content Pack's fluff join ever carries an `images` array
+// for (see readImage, app/lib/content-presentation/dnd5e.ts) -- Spells never
+// set `entry.image`, so this framed block is scoped to the other three kinds
+// on purpose: a Spell's detail panel must render exactly as it did before
+// this task, never gain an empty artwork frame no fluff join could ever fill.
+const showsArtworkFrame = computed(() => !!props.entry && props.entry.kind !== 'spell')
+
+// A `url` that 404s (a pack's fluff join pointed at a path the running
+// deployment's /api/5etools-img route can't read) must fall back to the
+// existing monogram rather than a broken <img>. Reset per entry so swapping
+// the inspected option doesn't carry a stale failure forward.
+const imageFailed = ref(false)
+watch(() => props.entry, () => { imageFailed.value = false })
 </script>
 
 <template>
@@ -82,6 +98,40 @@ const props = withDefaults(defineProps<{
     </p>
 
     <template v-else>
+      <!-- Artwork ----------------------------------------------------------
+           A prominent framed panel when the pack's fluff join published a
+           usable image; the existing monogram emblem otherwise -- never a
+           broken image, never fabricated art. Scoped away from Spells; see
+           showsArtworkFrame above. -->
+      <div
+        v-if="showsArtworkFrame"
+        class="eldra-frame-corners mb-4 overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-ink/35"
+      >
+        <img
+          v-if="entry!.image && !imageFailed"
+          :src="entry!.image.url"
+          :alt="`Artwork for ${entry!.name}`"
+          loading="lazy"
+          class="block max-h-72 w-full object-cover sm:max-h-80"
+          @error="imageFailed = true"
+        >
+        <div
+          v-else
+          class="flex items-center justify-center bg-gradient-to-b from-eldra-accent/10 to-transparent py-10"
+        >
+          <CreationEntityEmblem
+            :title="entry!.name"
+            size="lg"
+          />
+        </div>
+        <p
+          v-if="entry!.image && !imageFailed && entry!.image.credit"
+          class="border-t border-eldra-accent/14 bg-eldra-panel/70 px-3 py-1 text-right text-[0.65rem] text-eldra-text-faint"
+        >
+          Art: {{ entry!.image.credit }}
+        </p>
+      </div>
+
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3
           class="min-w-0 break-words font-semibold text-eldra-text-strong"
@@ -142,7 +192,7 @@ const props = withDefaults(defineProps<{
           v-for="(section, index) in entry.sections"
           :key="section.title"
           :open="index === 0 && !collapseFirstSection"
-          class="group min-w-0 rounded-none border border-eldra-accent/20 bg-eldra-panel/55"
+          class="group min-w-0 rounded-none border border-eldra-accent/20 bg-eldra-panel/68"
         >
           <summary
             class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-semibold text-eldra-accent-text marker:hidden focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
@@ -178,7 +228,7 @@ const props = withDefaults(defineProps<{
         <li
           v-for="note in entry.notes"
           :key="note"
-          class="break-words text-xs leading-5 text-eldra-text-ghost"
+          class="break-words text-xs leading-5 text-eldra-text-faint"
         >
           {{ note }}
         </li>

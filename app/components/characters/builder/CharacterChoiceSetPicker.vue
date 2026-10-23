@@ -49,7 +49,8 @@ import {
   draftFromAnswer,
   draftToAnswer,
   isNonDistinctMultiSelect,
-  isSlotOptionAtCap
+  isSlotOptionAtCap,
+  shouldShowInspectedDetail
 } from '~/components/characters/characterProgressionChoicePresentation'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import CreationDetailPanel from '~/components/characters/builder/CreationDetailPanel.vue'
@@ -208,7 +209,7 @@ function onSlotSelect(slotIndex: number, event: Event) {
       <label
         v-for="slotIndex in slotIndexes"
         :key="slotIndex"
-        class="flex min-h-14 flex-col justify-center gap-1 rounded-none border border-eldra-accent/24 bg-eldra-panel/55 px-3 py-2"
+        class="flex min-h-14 flex-col justify-center gap-1 rounded-none border border-eldra-accent/24 bg-eldra-panel/68 px-3 py-2"
       >
         <span class="text-xs text-eldra-text-faint">Selection {{ slotIndex + 1 }}</span>
         <select
@@ -241,7 +242,7 @@ function onSlotSelect(slotIndex: number, event: Event) {
         class="flex min-h-14 items-stretch gap-1 rounded-none border transition-colors"
         :class="isSelected(offered.value)
           ? 'border-eldra-accent/65 bg-eldra-accent/12'
-          : 'border-eldra-accent/24 bg-eldra-panel/55'"
+          : 'border-eldra-accent/26 bg-eldra-panel/68'"
       >
         <label
           class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
@@ -278,13 +279,21 @@ function onSlotSelect(slotIndex: number, event: Event) {
         </button>
       </div>
 
+      <!-- CONTENT PRESENTATION REPAIR (B1) -- the panel renders even when this
+           option's own resolved presentation is null, rather than the
+           wrapper disappearing while the button still reads "Hide". A spell
+           with genuinely no readable metadata must degrade to an honest
+           "no details published" message (ContentPresentationPanel's own
+           built-in empty state), never to a toggle that visibly does
+           nothing. -->
       <div
-        v-if="optionDetails && inspectedValue && optionDetails[inspectedValue]"
+        v-if="inspectedValue && shouldShowInspectedDetail(optionDetails, inspectedValue)"
         class="sm:col-span-2"
       >
         <CreationDetailPanel :title="labelFor(inspectedValue)">
           <ContentPresentationPanel
-            :entry="optionDetails[inspectedValue]"
+            :entry="optionDetails[inspectedValue] ?? null"
+            empty-message="This Content Pack publishes no further details for this option."
             context="preview"
           />
         </CreationDetailPanel>

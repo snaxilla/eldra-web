@@ -148,6 +148,27 @@ describe('resolveDnd5ePresentation -- species (XPHB)', () => {
     expect(resolved.description[0]).toContain('Dwarves were raised from the earth in the elder days')
     expect(resolved.notes).toEqual([])
   })
+
+  // CONTENT PRESENTATION REPAIR (B1) -- ARTWORK. Same real fixture's `images`
+  // array (an actual field on the real fluff-races.json row, not invented
+  // for this test) must resolve to a URL through the existing
+  // /api/5etools-img/** route, carrying the artist credit along with it.
+  it('resolves the REAL fluff image for Dwarf to the existing /api/5etools-img/** route', () => {
+    const withFluff = { ...xphb.species.Dwarf, fluff: xphb.fluff.species.Dwarf }
+    const resolved = resolveDnd5ePresentation('species', withFluff)!
+
+    expect(resolved.image).toEqual({
+      url: '/api/5etools-img/races/XPHB/Dwarf.webp',
+      credit: 'Mike Pape',
+      width: 1700,
+      height: 1126
+    })
+  })
+
+  it('publishes no image when the pack carries no fluff join -- never a broken or invented link', () => {
+    const resolved = resolveDnd5ePresentation('species', xphb.species.Dwarf)!
+    expect(resolved.image).toBeFalsy()
+  })
 })
 
 describe('resolveDnd5ePresentation -- class (XPHB)', () => {
@@ -226,6 +247,21 @@ describe('resolveDnd5ePresentation -- class (XPHB)', () => {
     expect(resolved.description.every((paragraph) => !paragraph.startsWith('Fighter:'))).toBe(true)
     expect(resolved.description[0]).toContain('Fighters rule many battlefields')
   })
+
+  // CONTENT PRESENTATION REPAIR (B1) -- ARTWORK. Fighter's real fluff row
+  // carries TWO images; the resolver takes the first, matching the 5etools
+  // monster importer's own getRemoteMonsterImageUrl precedent.
+  it('resolves the REAL fluff image for Fighter (first of two) to the existing /api/5etools-img/** route', () => {
+    const withFluff = { ...xphb.classes.Fighter, fluff: xphb.fluff.classes.Fighter }
+    const resolved = resolveDnd5ePresentation('class', withFluff)!
+
+    expect(resolved.image).toEqual({
+      url: '/api/5etools-img/classes/XPHB/Fighter.webp',
+      credit: 'Nèstor Ossandón Leal',
+      width: 1700,
+      height: 2242
+    })
+  })
 })
 
 describe('resolveDnd5ePresentation -- background (XPHB)', () => {
@@ -260,6 +296,19 @@ describe('resolveDnd5ePresentation -- background (XPHB)', () => {
 
     expect(resolved.description[0]).toContain('You devoted yourself to service in a temple')
     expect(resolved.notes).toEqual([])
+  })
+
+  // CONTENT PRESENTATION REPAIR (B1) -- ARTWORK.
+  it('resolves the REAL fluff image for Acolyte to the existing /api/5etools-img/** route', () => {
+    const withFluff = { ...xphb.backgrounds.Acolyte, fluff: xphb.fluff.backgrounds.Acolyte }
+    const resolved = resolveDnd5ePresentation('background', withFluff)!
+
+    expect(resolved.image).toEqual({
+      url: '/api/5etools-img/backgrounds/XPHB/Acolyte.webp',
+      credit: 'Titus Lunter',
+      width: 2513,
+      height: 952
+    })
   })
 })
 
@@ -333,6 +382,15 @@ describe('resolveDnd5ePresentation -- spell (XPHB)', () => {
     if (withMaterial) {
       expect(factValue(resolveDnd5ePresentation('spell', withMaterial)!, 'Components')).toMatch(/M \([^)]+\)/)
     }
+  })
+
+  // CONTENT PRESENTATION REPAIR (B1) -- ARTWORK is scoped to Species/Class/
+  // Background only (see readImage's own header); a spell never gets an
+  // `image`, with or without a fluff join, so ContentPresentationPanel's
+  // artwork frame has nothing to render for one.
+  it('never carries an image -- artwork is scoped to Species/Class/Background', () => {
+    const resolved = resolveDnd5ePresentation('spell', xphb.spells['Fire Bolt'])!
+    expect(resolved.image).toBeFalsy()
   })
 })
 

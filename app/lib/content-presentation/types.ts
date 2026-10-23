@@ -52,6 +52,22 @@ export type PresentationSection = {
   paragraphs: string[]
 }
 
+// CONTENT PRESENTATION REPAIR (B1) -- artwork. A Content Pack's own fluff
+// join (server/utils/content-sources/dnd5e/5etools-dataset.ts's
+// `loadDatasetEntriesWithFluff`) may carry an `images` array alongside the
+// descriptive prose `readDescription` already reads. `url` is always
+// resolver-produced and already safe to render directly -- either a path
+// under the existing `/api/5etools-img/**` route (server/api/5etools-img/
+// [...path].get.ts, the same route the 5etools monster importer already
+// resolves artwork through) or a publisher-supplied absolute URL. Consumers
+// never construct this URL themselves and never read a raw fluff path.
+export type PresentationImage = {
+  url: string
+  credit?: string
+  width?: number
+  height?: number
+}
+
 export type PresentationEntry = {
   kind: PresentationKind
   name: string
@@ -67,6 +83,11 @@ export type PresentationEntry = {
   // player can tell "this Species grants no languages" apart from "Eldra
   // failed to read them".
   notes: string[]
+  // Present only when the pack's fluff join carried a usable image
+  // reference (see PresentationImage above). null/absent means "no artwork
+  // published" -- consumers render their existing fallback, never a broken
+  // image or an invented one.
+  image?: PresentationImage | null
 }
 
 // One game system's translation of raw Content Pack `data` into the models

@@ -19,14 +19,22 @@ watch(showPins, (value) => {
   showPinsCookie.value = value ? 'true' : 'false'
 })
 
-// Character sheet routes default the workspace navigation to its compact
-// icon rail (still expandable) so the sheet gets the width. Covers the
-// legacy sheet (`entities/:id/sheet`) and the V2 sheet, including the
-// canonical `characters/:id/sheet` resolver route (Phase 4B-0).
+// Character Creator V3 (`characters/create-v2`): a cinematic, full-bleed stage.
+function isCharacterCreatorPath(path: any) {
+  return /^\/worlds\/[^/]+\/characters\/create-v2(?:\/|$)/.test(String(path || ''))
+}
+
+// Character sheet routes and the Character Creator default the workspace
+// navigation to its compact icon rail (still expandable) so they get the
+// width. Covers the legacy sheet (`entities/:id/sheet`) and the V2 sheet,
+// including the canonical `characters/:id/sheet` resolver route (Phase 4B-0).
+// The previous rail state is restored on leaving (see `preSheetCollapsed`),
+// so no other page's navigation is affected.
 function shouldCollapseWorkspaceSidebar(path: any) {
   const value = String(path || '')
   return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(value)
     || /^\/worlds\/[^/]+\/characters\/[^/]+\/sheet(?:-v2)?(?:\/|$)/.test(value)
+    || isCharacterCreatorPath(value)
 }
 
 const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => shouldCollapseWorkspaceSidebar(route.path))
@@ -342,7 +350,13 @@ const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.valu
   <div class="eldra-workspace-ground h-screen w-screen overflow-hidden text-eldra-text">
     <div
       class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
-      :class="isFullBleedMap ? 'eldra-map-shell' : ''"
+      :class="[
+        isFullBleedMap ? 'eldra-map-shell' : '',
+        // The grid's auto row otherwise grows to the sidebar's intrinsic height, making the page
+        // cell taller than the viewport so a page's own scroller never overflows and its lower
+        // content is clipped. A definite row lets the sidebar's own nav scroll instead.
+        isCharacterCreatorPath(route.path) ? 'grid-rows-[minmax(0,1fr)]' : ''
+      ]"
       :style="gridStyle"
       :data-eldra-page-backdrop-active="hasPageBackdrop ? '' : undefined"
     >

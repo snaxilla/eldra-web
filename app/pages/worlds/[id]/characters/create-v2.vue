@@ -1060,7 +1060,7 @@ async function createCharacter() {
               <!-- ======= "Your Character" side panel (wide screens) ======= -->
               <aside
                 v-if="!compact"
-                class="hidden w-72 shrink-0 self-start xl:sticky xl:top-0 xl:block"
+                class="hidden w-72 shrink-0 self-start xl:sticky xl:top-0 xl:block xl:max-h-[calc(100dvh-8rem)] xl:overflow-y-auto xl:overscroll-contain"
               >
                 <CharacterPreviewPanel
                   :name="draft.name"

@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: false },
-  modules: ['@nuxt/ui'],
+  modules: ['@nuxt/eslint', '@nuxt/ui'],
 
   // Fonts are bundled locally via @fontsource (see app/assets/css/main.css);
   // disable Nuxt UI's @nuxt/fonts integration so builds never download fonts.

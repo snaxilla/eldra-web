@@ -266,42 +266,42 @@ function onSlotSelect(slotIndex: number, event: Event) {
     >
       <ul class="grid min-w-0 gap-1.5">
         <li
-          v-for="offered in displayed"
-          :key="offered.value"
+          v-for="item in displayed"
+          :key="item.value"
           class="flex min-h-14 items-stretch rounded-none border backdrop-blur-sm transition-colors"
-          :class="isSelected(offered.value)
+          :class="isSelected(item.value)
             ? 'border-eldra-accent-bright/80 bg-eldra-accent/20 shadow-[0_0_18px_rgb(var(--eldra-accent-rgb)/0.25)]'
-            : inspectorValue === offered.value ? 'border-eldra-accent/55 bg-eldra-ink/72' : 'border-eldra-accent/20 bg-eldra-ink/62'"
+            : inspectorValue === item.value ? 'border-eldra-accent/55 bg-eldra-ink/72' : 'border-eldra-accent/20 bg-eldra-ink/62'"
         >
           <label
             class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
-            :class="isDisabled(offered.value) ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-eldra-accent/8'"
+            :class="isDisabled(item.value) ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-eldra-accent/8'"
           >
             <input
               type="checkbox"
               class="size-5 shrink-0 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
-              :checked="isSelected(offered.value)"
-              :disabled="isDisabled(offered.value)"
-              @change="toggle(offered.value)"
+              :checked="isSelected(item.value)"
+              :disabled="isDisabled(item.value)"
+              @change="toggle(item.value)"
             >
             <span class="min-w-0">
-              <span class="block truncate font-serif text-base font-semibold text-eldra-text-strong">{{ labelFor(offered.value) }}</span>
+              <span class="block truncate font-serif text-base font-semibold text-eldra-text-strong">{{ labelFor(item.value) }}</span>
               <span
-                v-if="subtitleFor(offered.value)"
+                v-if="subtitleFor(item.value)"
                 class="block truncate text-xs text-eldra-text-faint"
-              >{{ subtitleFor(offered.value) }}</span>
+              >{{ subtitleFor(item.value) }}</span>
               <span
-                v-if="reasonFor(offered.value)"
+                v-if="reasonFor(item.value)"
                 class="block text-xs text-eldra-caution"
-              >{{ reasonFor(offered.value) }}</span>
+              >{{ reasonFor(item.value) }}</span>
             </span>
           </label>
           <button
             type="button"
             class="min-h-11 shrink-0 border-l border-eldra-accent/20 px-3 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-accent-text hover:bg-eldra-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-eldra-accent/65"
-            :aria-pressed="inspectorValue === offered.value"
-            :aria-label="`Details for ${labelFor(offered.value)}`"
-            @click="inspect(offered.value)"
+            :aria-pressed="inspectorValue === item.value"
+            :aria-label="`Details for ${labelFor(item.value)}`"
+            @click="inspect(item.value)"
           >
             Details
           </button>

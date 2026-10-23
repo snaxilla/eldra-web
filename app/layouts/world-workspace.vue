@@ -20,7 +20,7 @@ watch(showPins, (value) => {
 })
 
 // Character Creator V3 (`characters/create-v2`): a cinematic, full-bleed stage.
-function isCharacterCreatorPath(path: any) {
+function isCharacterCreatorPath(path: unknown) {
   return /^\/worlds\/[^/]+\/characters\/create-v2(?:\/|$)/.test(String(path || ''))
 }
 

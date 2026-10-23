@@ -259,11 +259,6 @@ function chooseOption(key: BuilderChoiceKey, value: string) {
   draft[key] = findOptionByKey(optionsFor.value[key], value)
 }
 
-// CINEMATIC CREATOR REFINEMENT (Milestone B1.1) -- IDENTITY. Species renders INLINE within the
-// merged 'identity' stage below (see STEP_KEYS's own header on the merge) -- this is the
-// remainder CHOICE_KEYS renders through the generic per-key stage loop.
-const STAGE_PICKER_KEYS: readonly BuilderChoiceKey[] = ['class', 'background']
-
 // ---------------------------------------------------------------------------
 // Ability scores (Phase 3) -- state only; all logic is in the pure modules.
 // ---------------------------------------------------------------------------

@@ -839,18 +839,6 @@ async function createCharacter() {
                     class="shrink-0"
                     :class="compact ? 'order-2 w-full' : 'w-64 xl:w-72'"
                   >
-                    <label
-                      for="character-name"
-                      class="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text"
-                    >Character Name</label>
-                    <input
-                      id="character-name"
-                      v-model="draft.name"
-                      type="text"
-                      autocomplete="off"
-                      placeholder="Name your character"
-                      class="eldra-input mb-5 min-h-12 w-full rounded-none border-eldra-accent/45 bg-eldra-ink/70 px-4 py-3 font-serif text-lg backdrop-blur"
-                    >
                     <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
                       Species
                     </h2>
@@ -895,6 +883,7 @@ async function createCharacter() {
                         layout="inspector"
                         :option-details="optionPresentationByDefinitionId"
                         :require-selection-or-inspection="true"
+                        :stable-inspector-height="true"
                         @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
                       />
                     </div>
@@ -988,6 +977,7 @@ async function createCharacter() {
                           layout="inspector"
                           :option-details="optionPresentationByDefinitionId"
                           :require-selection-or-inspection="true"
+                          :stable-inspector-height="true"
                           @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
                         />
                       </div>
@@ -1170,7 +1160,9 @@ async function createCharacter() {
                     :name="draft.name"
                     :rows="previewRows"
                     :image-url="portraitUrl"
+                    editable-name
                     compact
+                    @update:name="(value: string) => draft.name = value"
                   />
                   <CreationValidationBanner
                     v-if="activeStep !== 'review' && createErrorMessage"
@@ -1198,6 +1190,8 @@ async function createCharacter() {
                   :name="draft.name"
                   :rows="previewRows"
                   :image-url="portraitUrl"
+                  editable-name
+                  @update:name="(value: string) => draft.name = value"
                 />
 
                 <div class="mt-3 border border-eldra-accent/25 bg-eldra-ink/72 p-4 backdrop-blur-md">

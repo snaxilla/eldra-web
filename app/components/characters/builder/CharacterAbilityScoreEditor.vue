@@ -295,7 +295,15 @@ function canStepManual(key: AbilityKey, delta: number): boolean {
             &minus;
           </button>
 
-          <!-- Typing beats nine taps; the steppers are for nudging. -->
+          <!-- Typing beats nine taps; the steppers are for nudging. Native number spinners
+               suppressed cross-browser (real reported bug: the browser's own up/down arrows
+               rendered alongside the Eldra -/+ buttons, a visibly duplicated control) -- keeps
+               `type="number"`/`inputmode="numeric"` so keyboard entry, the numeric keypad, and
+               min/max validation are all unaffected; only the native spin-button chrome is
+               removed. `[appearance:textfield]` is Firefox's own suppression (its legacy
+               `-moz-appearance: textfield` is a no-op here as an arbitrary value, so the
+               standard property name is used instead); the two `&::-webkit-*-spin-button`
+               variants are Chrome/Safari/Edge's. -->
           <input
             :id="`ability-manual-${key}`"
             type="number"
@@ -303,7 +311,7 @@ function canStepManual(key: AbilityKey, delta: number): boolean {
             :min="MIN_STORED_ABILITY_SCORE"
             :max="MAX_STORED_ABILITY_SCORE"
             :value="assignment[key] ?? ''"
-            class="min-h-12 w-16 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-2 text-center text-lg tabular-nums text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)]"
+            class="min-h-12 w-16 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-2 text-center text-lg tabular-nums text-[#fff7df] outline-none [appearance:textfield] focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             @input="onManualInput(key, ($event.target as HTMLInputElement).value)"
           >
 

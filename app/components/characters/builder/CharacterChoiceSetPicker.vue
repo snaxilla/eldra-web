@@ -91,6 +91,18 @@ const props = defineProps<{
   // Identity/Class (true) need different behavior here. Ignored by the
   // 'grid' layout, which has no such fallback to gate.
   requireSelectionOrInspection?: boolean
+  // CHARACTER CREATOR V3 LAYOUT STABILITY. Gates ONLY the inspector aside's fixed footprint --
+  // see that element's own template comment for the real reported bug (Identity/Class's own
+  // choice-list/stage jumping as the inspected option changes or Details opens for the first
+  // time). Scoped to Identity/Class alone, never Spells: Spells' own inspector already always
+  // shows something (defaults to the first offered spell -- see inspectorValueFor, gated by
+  // `requireSelectionOrInspection` above, which Spells also leaves unset), so it never has the
+  // DOM-presence transition that causes the jump, and no screenshot/code evidence showed it
+  // sharing the content-length-driven resize either -- changing its established, unreported-as-
+  // broken layout was out of this task's scope. Absent/false (every caller before this phase,
+  // Spells included) is byte-identical old behavior: the aside is removed from the DOM via
+  // `v-if` and sized to its own content, never a fixed height.
+  stableInspectorHeight?: boolean
 }>()
 
 const emit = defineEmits<{ 'update:selected': [string[]] }>()
@@ -318,24 +330,53 @@ function onSlotSelect(slotIndex: number, event: Event) {
         </li>
       </ul>
 
+      <!-- CHARACTER CREATOR V3 LAYOUT STABILITY -- a real reported bug, Identity/Class only
+           (`stableInspectorHeight`; see that prop's own header for why Spells is excluded). This
+           aside used to be removed from the DOM entirely via `v-if="inspectorValue"`, and even
+           once present its height was whatever that option's own prose happened to be. Because
+           the grid row's cross-axis height is the max of both columns (even with
+           `md:items-start`, which only controls alignment WITHIN the row, not the row's own
+           height), switching from nothing inspected to something, or between a short option
+           (Dragonborn: Black) and a long one (Elf: Drow, three sections), changed this row's
+           height and shoved everything below it (the next picker, the Class strip) up or down.
+           A fixed `h-*` + internal scroll makes this aside's footprint constant regardless of
+           inspection state or content length -- the row is always exactly this tall when
+           `stableInspectorHeight` is set; always rendered (never removed from the DOM) in that
+           case too, with a neutral placeholder when nothing is inspected -- this is NOT the
+           "defaults to the first offered option" behavior `requireSelectionOrInspection` still
+           gates (see inspectorValueFor); it never shows a specific option's content unsolicited,
+           only a generic instruction, so the "no empty panel pre-selection" rule this component
+           was built around still holds. When `stableInspectorHeight` is unset (Spells, every
+           caller before this phase), this is byte-identical old behavior: removed from the DOM
+           via `v-if`, sized to its own content, no reserved space on an unrelated stage/short
+           viewport. -->
       <aside
-        v-if="inspectorValue"
+        v-if="stableInspectorHeight || inspectorValue"
         class="min-w-0 border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md md:sticky md:top-20"
+        :class="stableInspectorHeight ? 'h-[22rem] overflow-y-auto' : ''"
         aria-live="polite"
       >
-        <p class="eldra-kicker text-[0.65rem]">
-          {{ subtitleFor(inspectorValue) || 'Details' }}
+        <template v-if="inspectorValue">
+          <p class="eldra-kicker text-[0.65rem]">
+            {{ subtitleFor(inspectorValue) || 'Details' }}
+          </p>
+          <h4 class="mt-1 font-serif text-2xl font-semibold text-eldra-text-strong">
+            {{ labelFor(inspectorValue) }}
+          </h4>
+          <div class="mt-3">
+            <ContentPresentationPanel
+              :entry="optionDetails[inspectorValue] ?? null"
+              empty-message="This Content Pack publishes no further details for this option."
+              context="preview"
+            />
+          </div>
+        </template>
+        <p
+          v-else-if="stableInspectorHeight"
+          class="text-sm leading-6 text-eldra-text-faint"
+        >
+          Select an option, or choose &ldquo;Details,&rdquo; to read more about it here.
         </p>
-        <h4 class="mt-1 font-serif text-2xl font-semibold text-eldra-text-strong">
-          {{ labelFor(inspectorValue) }}
-        </h4>
-        <div class="mt-3">
-          <ContentPresentationPanel
-            :entry="optionDetails[inspectorValue] ?? null"
-            empty-message="This Content Pack publishes no further details for this option."
-            context="preview"
-          />
-        </div>
       </aside>
     </div>
 

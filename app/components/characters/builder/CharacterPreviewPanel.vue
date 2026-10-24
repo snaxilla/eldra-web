@@ -36,10 +36,21 @@ const props = withDefaults(defineProps<{
   // CHARACTER CREATOR V3 -- the species' published artwork, when it has one;
   // absent means the monogram emblem (see CreationEntityEmblem.vue).
   imageUrl?: string | null
+  // CHARACTER CREATOR V3 -- NAME FIELD RELOCATION. A real reported first-time-player bug: the
+  // Creator had a SEPARATE "Character Name" input above the Species picker, disconnected from
+  // this "who am I building" card -- a player naturally tried to type her name onto this card's
+  // own displayed title instead. Default false so this stays a pure, reusable display-only
+  // component (this header's own stated B2/Level-Up-Wizard reuse, which previews an EXISTING
+  // character and must stay read-only, needs no change): `create-v2.vue` is the only caller
+  // today and is the only one that opts in.
+  editableName?: boolean
 }>(), {
   compact: false,
-  imageUrl: null
+  imageUrl: null,
+  editableName: false
 })
+
+const emit = defineEmits<{ 'update:name': [string] }>()
 
 const portraitFailed = ref<string | null>(null)
 // See CreationEntityEmblem.vue: an SSR-parsed image can fail before hydration attaches `@error`.
@@ -96,7 +107,24 @@ const hasAnyChoice = computed(() => props.rows.some((row) => row.title))
       <p class="eldra-kicker text-[0.65rem]">
         {{ hasAnyChoice ? 'In the Making' : 'A Blank Page' }}
       </p>
+      <div v-if="editableName">
+        <label
+          for="character-preview-name"
+          class="mt-1 block text-[0.65rem] uppercase tracking-[0.22em] text-eldra-text-ghost"
+        >Character Name</label>
+        <input
+          id="character-preview-name"
+          type="text"
+          autocomplete="off"
+          placeholder="Name your character"
+          :value="name"
+          class="eldra-title mt-0.5 w-full min-w-0 truncate border-0 border-b border-eldra-accent/35 bg-transparent font-serif outline-none focus-visible:border-eldra-accent-bright"
+          :class="compact ? 'text-base' : 'text-2xl sm:text-3xl'"
+          @input="emit('update:name', ($event.target as HTMLInputElement).value)"
+        >
+      </div>
       <h2
+        v-else
         class="eldra-title mt-1 truncate font-serif"
         :class="compact ? 'text-base' : 'text-2xl sm:text-3xl'"
       >

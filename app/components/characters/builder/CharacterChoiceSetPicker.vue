@@ -126,6 +126,16 @@ const inspectorValue = computed<string | null>(() => inspectorValueFor({
 function inspect(option: string) {
   inspectedValue.value = option
 }
+
+// CHARACTER CREATOR V3 -- HIDEABLE INSPECTOR. A real reported request: the inspector aside sits
+// over the species/class hero's own artwork, and a player may want to see that artwork without
+// losing their place. `panelHidden` toggles the aside's own VISIBILITY, never its presence in the
+// DOM or its box size -- see the aside's own template comment for why this is what "just simply
+// hide the box... nothing jumping around" means in CSS terms. Reset to visible whenever the
+// inspected option changes, so switching options never leaves a new option's details hidden by a
+// leftover choice from a previous one.
+const panelHidden = ref(false)
+watch(inspectorValue, () => { panelHidden.value = false })
 // "Cantrip · Divination" from the spell's own resolved Level/School facts, for the roster
 // subtitle. Display only: absent facts simply yield no subtitle.
 function subtitleFor(option: string): string {
@@ -385,35 +395,67 @@ function onSlotSelect(slotIndex: number, event: Event) {
 
            When `stableInspectorHeight` is unset (Spells, every caller before this phase), both
            of the above are byte-identical old behavior: removed from the DOM via `v-if`, sized
-           to its own content, sticky, no reserved space on an unrelated stage/short viewport. -->
-      <aside
+           to its own content, sticky, no reserved space on an unrelated stage/short viewport.
+
+           HIDEABLE PANEL (Identity/Class only) -- a real request: the aside sits over the
+           species/class hero's own artwork, and a player may want to glance at that artwork
+           without losing their place. The Hide/Show button lives OUTSIDE the aside (a sibling
+           in this wrapper), so it stays visible and clickable no matter what the aside itself
+           is doing; the aside toggles `invisible` (`visibility: hidden`), never `v-if`/`v-show`
+           display removal -- `visibility: hidden` keeps the element's own box in layout (this
+           wrapper, and therefore the grid column and row, never changes size), so hiding never
+           moves the choice list or any sibling picker, exactly "just simply hide the box...
+           nothing jumping around". `panelHidden` resets whenever the inspected option changes,
+           so a newly inspected option is never hidden by a leftover toggle from a different one. -->
+      <div
         v-if="stableInspectorHeight || inspectorValue"
-        class="min-w-0 border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md"
-        :class="stableInspectorHeight ? 'h-[22rem] overflow-y-auto' : 'md:sticky md:top-20'"
-        aria-live="polite"
+        class="relative min-w-0"
       >
-        <template v-if="inspectorValue">
-          <p class="eldra-kicker text-[0.65rem]">
-            {{ subtitleFor(inspectorValue) || 'Details' }}
-          </p>
-          <h4 class="mt-1 font-serif text-2xl font-semibold text-eldra-text-strong">
-            {{ labelFor(inspectorValue) }}
-          </h4>
-          <div class="mt-3">
-            <ContentPresentationPanel
-              :entry="optionDetails[inspectorValue] ?? null"
-              empty-message="This Content Pack publishes no further details for this option."
-              context="preview"
-            />
-          </div>
-        </template>
-        <p
-          v-else-if="stableInspectorHeight"
-          class="text-sm leading-6 text-eldra-text-faint"
+        <button
+          v-if="stableInspectorHeight"
+          type="button"
+          class="absolute right-3 top-3 z-10 min-h-9 rounded-none border border-eldra-accent/35 bg-eldra-ink/85 px-3 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-accent-text backdrop-blur-sm transition hover:border-eldra-accent-bright/60 hover:bg-eldra-accent/15 focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
+          :aria-pressed="panelHidden"
+          :aria-label="panelHidden ? 'Show details' : 'Hide details to see the artwork behind this panel'"
+          @click="panelHidden = !panelHidden"
         >
-          Select an option, or choose &ldquo;Details,&rdquo; to read more about it here.
-        </p>
-      </aside>
+          {{ panelHidden ? 'Show' : 'Hide' }}
+        </button>
+        <aside
+          class="min-w-0 w-full border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md"
+          :class="[
+            stableInspectorHeight ? 'h-[22rem] overflow-y-auto' : 'md:sticky md:top-20',
+            stableInspectorHeight && panelHidden ? 'invisible' : ''
+          ]"
+          aria-live="polite"
+        >
+          <template v-if="inspectorValue">
+            <!-- `pr-20` only when the Hide/Show button is present (stableInspectorHeight),
+                 reserving room so a long title never runs underneath it. -->
+            <div :class="stableInspectorHeight ? 'pr-20' : ''">
+              <p class="eldra-kicker text-[0.65rem]">
+                {{ subtitleFor(inspectorValue) || 'Details' }}
+              </p>
+              <h4 class="mt-1 font-serif text-2xl font-semibold text-eldra-text-strong">
+                {{ labelFor(inspectorValue) }}
+              </h4>
+            </div>
+            <div class="mt-3">
+              <ContentPresentationPanel
+                :entry="optionDetails[inspectorValue] ?? null"
+                empty-message="This Content Pack publishes no further details for this option."
+                context="preview"
+              />
+            </div>
+          </template>
+          <p
+            v-else-if="stableInspectorHeight"
+            class="text-sm leading-6 text-eldra-text-faint"
+          >
+            Select an option, or choose &ldquo;Details,&rdquo; to read more about it here.
+          </p>
+        </aside>
+      </div>
     </div>
 
     <div

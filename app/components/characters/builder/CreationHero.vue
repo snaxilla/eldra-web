@@ -75,7 +75,14 @@ const showFigure = computed(() => !!props.figureUrl && figureFailed.value !== pr
     aria-live="polite"
   >
     <div class="flex items-start gap-5">
-      <div class="relative min-w-0 max-w-2xl flex-1">
+      <!-- CHARACTER CREATOR V3 -- WIDER DETAILS PANEL. Raised from `max-w-2xl` (672px) to
+           `max-w-4xl` (896px): the prose below (`highlights.summary`/`highlights.facts`) already
+           caps itself independently at `max-w-xl`, so this only widens the ROOM AVAILABLE TO THE
+           SLOT -- the Identity/Class CharacterChoiceSetPicker's own list+inspector split
+           (CharacterChoiceSetPicker.vue's own `minmax(0,26rem)` list column + remaining-space
+           aside) -- a real reported problem: the inspector aside was cramped into whatever was
+           left of 672px after a fixed-width list, with real unused space visible beside it. -->
+      <div class="relative min-w-0 max-w-4xl flex-1">
         <!-- Soft dark scrim behind the text block: keeps copy readable over the brightest art
              without boxing it in an opaque panel. -->
         <div

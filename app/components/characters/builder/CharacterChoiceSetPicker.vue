@@ -282,19 +282,25 @@ function onSlotSelect(slotIndex: number, event: Event) {
     </div>
 
     <!-- CHARACTER CREATOR V3 -- inspector layout.
-         RESPONSIVE BREAKPOINT FIX -- Identity/Class (`stableInspectorHeight`) raises the
-         side-by-side breakpoint from `md:` (768px) to `lg:` (1024px): at `md:`, this grid's own
-         2-column split activates purely by VIEWPORT width, with no awareness that the Identity/
-         Class stage ALSO reserves a left species/class rail outside this component -- at
-         real in-between widths that left the actual rendered column uncomfortably narrow for a
-         real reported problem ("do not force a side-by-side layout if it leaves the list too
-         narrow"). Spells has no such sibling rail squeezing it, so its own `md:` breakpoint is
-         unchanged -- see the aside's own comment for why `stableInspectorHeight` is the one
-         signal distinguishing the two. -->
+         STACKED LAYOUT FIX -- a real reported bug, found by reading the actual ancestor markup
+         (not just this component in isolation): CreationHero.vue renders this component's slot
+         inside a column capped at `max-w-2xl` (672px) -- a FIXED CSS max-width, never responsive
+         to viewport. A `lg:`/`md:` VIEWPORT breakpoint still fires well past 1024px/768px no
+         matter how wide the window is, forcing a side-by-side split into that same unchanging
+         672px ceiling -- raising the breakpoint further cannot fix this, since the container's
+         own cap never grows. At that width the list column could end up narrow enough that its
+         own content (a "DETAILS" button, a long option label) failed to stay inside its grid
+         track and bled into the aside's column, which paints over it (later in DOM order) --
+         exactly the reported "overlapping, unreadable Details buttons". Identity/Class
+         (`stableInspectorHeight`) never splits side-by-side now: list, then aside, always
+         stacked and full-width -- the "full-width panel in a predictable position in normal
+         flow" option the task's own instructions call for. Spells is untouched: its own call
+         site is NOT inside CreationHero's capped column, so its existing `md:` side-by-side
+         split is unaffected. -->
     <div
       v-else-if="layout === 'inspector' && optionDetails"
       class="mt-3 grid items-start gap-3"
-      :class="stableInspectorHeight ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'"
+      :class="stableInspectorHeight ? '' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'"
     >
       <ul class="grid min-w-0 gap-1.5">
         <li

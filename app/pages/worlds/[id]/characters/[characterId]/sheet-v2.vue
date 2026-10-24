@@ -1305,6 +1305,60 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             @select-condition="openConditionContext"
             @select-resource="openResourceContext"
           />
+
+          <!-- Roll Tray Milestone -- PLACEMENT, revised after review. Mounting after the entire
+               CharacterSheetShell (every reference column, skills, and the full tabbed body) put
+               the collapsed handle at the very bottom of a long scrolling sheet -- effectively
+               undiscoverable during play. Neither sheet presentation has a universal
+               always-reachable region to anchor to: CharacterSheetDesktopLayout.vue has no sticky
+               element anywhere; CharacterSheetCompanionLayout.vue DOES (a sticky condensed
+               header/nav once the full header scrolls away), but that condensed bar is a separate,
+               hardcoded template (this page's own `#condensed` slot above) that would need its own
+               Roll Tray affordance added to truly stay reachable at any scroll depth -- a real,
+               larger follow-up (touching a shared layout component on both presentations), not
+               attempted here. This placement -- inside the `#header` slot, right after the
+               identity/vitals header, BEFORE the rail/skills/tabbed body -- is the smallest
+               adjustment that meaningfully helps: visible with zero scrolling on page load,
+               constant regardless of which tab is active (switching tabs never moves it), and at
+               most a scroll back to the top to reach from anywhere -- the same reach already
+               required for HP/vitals, which a player already does constantly. `inline` still
+               reserves real layout space when opened and reflows whatever is below it (the
+               rail/skills/body), never covering it. -->
+          <WorldRollTray
+            v-if="blueprint"
+            inline
+            class="mt-3"
+            :rolls="rollHistory"
+            :pending="rollPending"
+            :error="rollError"
+            :history-pending="rollHistoryPending"
+            :history-error="rollHistoryError"
+            :has-more="Boolean(rollNextCursor)"
+            empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
+            @load-more="loadMoreRolls"
+            @roll-manual-die="rollManualDie"
+          >
+            <template #header-actions>
+              <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">
+                <button
+                  type="button"
+                  class="rounded-none px-2 py-1 transition"
+                  :class="rollVisibility === 'private' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
+                  @click="rollVisibility = 'private'"
+                >
+                  Private
+                </button>
+                <button
+                  type="button"
+                  class="rounded-none px-2 py-1 transition"
+                  :class="rollVisibility === 'table' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
+                  @click="rollVisibility = 'table'"
+                >
+                  Table
+                </button>
+              </div>
+            </template>
+          </WorldRollTray>
         </template>
 
         <!-- Reference rail -- rendered once; the shell places it (a column,
@@ -1686,42 +1740,5 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         </template>
       </CharacterSheetShell>
     </div>
-
-    <!-- Eldra Roll System Phase 2C -- the permanent Roll Tray, unchanged
-         (Phase 4B does not move or restyle it). A page-level sibling
-         because it is `fixed` to the viewport. -->
-    <WorldRollTray
-      v-if="blueprint"
-      :rolls="rollHistory"
-      :pending="rollPending"
-      :error="rollError"
-      :history-pending="rollHistoryPending"
-      :history-error="rollHistoryError"
-      :has-more="Boolean(rollNextCursor)"
-      empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
-      @load-more="loadMoreRolls"
-      @roll-manual-die="rollManualDie"
-    >
-      <template #header-actions>
-        <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">
-          <button
-            type="button"
-            class="rounded-none px-2 py-1 transition"
-            :class="rollVisibility === 'private' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
-            @click="rollVisibility = 'private'"
-          >
-            Private
-          </button>
-          <button
-            type="button"
-            class="rounded-none px-2 py-1 transition"
-            :class="rollVisibility === 'table' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
-            @click="rollVisibility = 'table'"
-          >
-            Table
-          </button>
-        </div>
-      </template>
-    </WorldRollTray>
   </div>
 </template>

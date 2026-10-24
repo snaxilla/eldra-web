@@ -26,6 +26,21 @@
 // own.
 //
 // ---------------------------------------------------------------------------
+// CHARACTER SHEET ROLL TRAY MILESTONE -- `inline` PROP
+// ---------------------------------------------------------------------------
+// The Character Sheet moved its own mounting of this component out of
+// viewport-fixed positioning and into its normal scrolling content column,
+// using the Creator's Stages panel (CreationStageRail.vue) as the
+// collapsed-bar/open-panel visual and interaction reference. Rather than
+// build a second tray, this component gained one opt-in prop (`inline`,
+// default false) that swaps ONLY the outer two wrapper divs' positioning
+// classes -- `fixed`/viewport-docked vs. a plain full-width block -- and
+// changes nothing else: same header, same reserved `dice-stage` slot, same
+// manual dice rack, same history feed/pagination, same props/events, same
+// roll data. AdminRollSandbox.vue never passes `inline`, so its own
+// floating presentation is byte-identical to before.
+//
+// ---------------------------------------------------------------------------
 // LOCATION
 // ---------------------------------------------------------------------------
 // Desktop/tablet (`sm:` and up): docked bottom-right, `fixed`, escaping
@@ -115,6 +130,19 @@ const props = withDefaults(defineProps<{
   hasMore?: boolean
   defaultCollapsed?: boolean
   emptyMessage?: string
+  // CHARACTER SHEET ROLL TRAY MILESTONE. Default false: byte-identical old
+  // behavior (`fixed`, viewport-docked, bottom-right desktop / bottom sheet
+  // mobile) for every existing caller (AdminRollSandbox.vue included, which
+  // never passes this). `true` renders the SAME header/dice-stage slot/
+  // manual dice rack/history feed/pagination -- no roll state, no markup,
+  // nothing about this component's DATA duplicated -- inside a plain block
+  // element instead, so a caller that wants the Tray living in normal
+  // document flow (e.g. the Character Sheet's own collapsible Roll Tray
+  // section) can compose this component directly rather than building a
+  // second tray. Only the OUTER two wrapper divs' positioning/sizing
+  // classes change; everything from the collapsed-handle button down is
+  // unchanged.
+  inline?: boolean
 }>(), {
   rolls: () => [],
   pending: false,
@@ -123,7 +151,8 @@ const props = withDefaults(defineProps<{
   historyError: '',
   hasMore: false,
   defaultCollapsed: false,
-  emptyMessage: 'No rolls yet. Click an ability, save, or skill to roll one.'
+  emptyMessage: 'No rolls yet. Click an ability, save, or skill to roll one.',
+  inline: false
 })
 
 const emit = defineEmits<{
@@ -146,9 +175,11 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
 
 <template>
   <div
-    class="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:justify-end sm:px-0 sm:pb-0"
+    :class="inline
+      ? 'w-full'
+      : 'pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:justify-end sm:px-0 sm:pb-0'"
   >
-    <div class="pointer-events-auto w-full max-w-md sm:w-96">
+    <div :class="inline ? 'w-full' : 'pointer-events-auto w-full max-w-md sm:w-96'">
       <!-- Collapsed handle -- "a compact Roll Tray handle with the latest
            total" (this task's own BEHAVIOR section). -->
       <Transition
@@ -160,7 +191,8 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
         <button
           v-if="collapsed"
           type="button"
-          class="eldra-ornate-panel eldra-frame-corners flex w-full items-center gap-3 rounded-none border px-4 py-2.5 text-left backdrop-blur sm:ml-auto sm:w-auto"
+          class="eldra-ornate-panel eldra-frame-corners flex w-full items-center gap-3 rounded-none border px-4 py-2.5 text-left backdrop-blur"
+          :class="inline ? '' : 'sm:ml-auto sm:w-auto'"
           aria-label="Expand Roll Tray"
           @click="collapsed = false"
         >

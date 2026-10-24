@@ -528,7 +528,11 @@ function resolveOption(raw: Record<string, unknown>): PresentationEntry {
   const description = flattenEntries(raw.entries)
 
   const rawFacts = Array.isArray(raw.facts) ? raw.facts as Array<{ label?: unknown, value?: unknown }> : []
-  const facts = compactFacts(rawFacts.map((item) => fact(String(item?.label ?? ''), item?.value == null ? '' : String(item.value))))
+  // CHARACTER CREATOR V3 -- COMPLETE OPTION-DESCRIPTION COVERAGE. cleanText on both sides, not
+  // String(): a fact value a species importer pulls straight from a 5etools table cell (e.g. a
+  // future column holding a `{@spell ...}` tag) must never leak raw markup just because it took
+  // the `facts` path instead of `entries`.
+  const facts = compactFacts(rawFacts.map((item) => fact(cleanText(item?.label), cleanText(item?.value))))
 
   const notes: string[] = []
   if (!description.length) notes.push(NO_DESCRIPTION_NOTE)

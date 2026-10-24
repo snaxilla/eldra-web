@@ -44,15 +44,13 @@ import {
 } from '../../../../app/lib/importers/5etools-feature-options'
 import type { SourceCategoryLoadResult } from '../types'
 
-function slugify(input: string, separator: '-' | '_' = '-'): string {
-  const escaped = separator === '_' ? '_' : '-'
-  return String(input || '')
-    .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^a-z0-9]+/g, escaped)
-    .replace(new RegExp(`^${escaped}+|${escaped}+$`, 'g'), '')
-}
-
+// COMPLETE OPTION-DESCRIPTION COVERAGE. `definitionIdFor` is a full callback, not a
+// `prefix + slugify` formula baked in here -- Elf's own hand-authored ids
+// (`source:elven-lineage.drow`/`.high`/`.wood`) drop the common "Elf" suffix from "High
+// Elf"/"Wood Elf" that every other species' formula keeps, so the EXACT derivation is a
+// per-species fact the registration site (xphb.ts) states explicitly, never a single formula
+// this module would otherwise have to special-case per caller.
+//
 // See this file's header -- `_membership` (the PROVIDER's own predicate) is
 // intentionally unused, mirroring loadSubclassCandidatesFor's own posture
 // exactly: both options this category authors need a DIFFERENT membership
@@ -62,9 +60,8 @@ export function loadSpeciesFeatureOptionCandidatesFor(
   speciesName: string,
   tableSectionName: string,
   sharedSectionNames: string[],
-  definitionIdPrefix: string,
-  factLabel: string | undefined,
-  vocabulary: string | undefined
+  definitionIdFor: (optionBaseName: string) => string,
+  _vocabulary: string | undefined
 ) {
   return async function loadSpeciesFeatureOptionCandidates(_membership: (entry: any) => boolean): Promise<SourceCategoryLoadResult> {
     const rows = await loadDatasetEntries('species', isEntryFromSource(sourceCode))
@@ -74,45 +71,77 @@ export function loadSpeciesFeatureOptionCandidatesFor(
       return { candidates: [], warnings: [`${speciesName} (${sourceCode}) not found -- no feature options published`] }
     }
 
-    const preview = preview5eToolsSpeciesFeatureOptions(species, {
-      tableSectionName,
-      sharedSectionNames,
-      factLabel,
-      definitionIdFor: (optionName) => `${definitionIdPrefix}.${slugify(optionName)}`
-    })
+    const preview = preview5eToolsSpeciesFeatureOptions(species, { tableSectionName, sharedSectionNames, definitionIdFor })
     const candidates = toContentPublicationCandidates(preview)
     return { candidates, warnings: preview.warnings }
   }
 }
 
-let cachedOptionalFeatures: any[] | null = null
+// A known file read directly at a fixed path, outside the DatasetKey/walkJsonFiles machinery --
+// see this file's header. Generic over which top-level array key to read (`optionalfeature` for
+// optionalfeatures.json; `classFeature` for a `class/class-<X>.json` file), since both are
+// single-array-per-file JSON documents at a path this module already knows, not a dataset-walk
+// concern.
+const fileRowCache = new Map<string, any[]>()
 
-async function loadOptionalFeatureRows(): Promise<any[]> {
-  if (cachedOptionalFeatures) return cachedOptionalFeatures
+async function loadJsonArrayRows(relativePath: string, arrayKey: string): Promise<any[]> {
+  const cacheKey = `${relativePath}#${arrayKey}`
+  const cached = fileRowCache.get(cacheKey)
+  if (cached) return cached
+
   let rows: any[] = []
   try {
-    const raw = await readFile(join(DATA_ROOT, 'optionalfeatures.json'), 'utf8')
+    const raw = await readFile(join(DATA_ROOT, relativePath), 'utf8')
     const parsed = JSON.parse(raw)
-    rows = Array.isArray(parsed?.optionalfeature) ? parsed.optionalfeature : []
+    rows = Array.isArray(parsed?.[arrayKey]) ? parsed[arrayKey] : []
   } catch {
     rows = []
   }
-  cachedOptionalFeatures = rows
+  fileRowCache.set(cacheKey, rows)
   return rows
 }
 
+// COMPLETE OPTION-DESCRIPTION COVERAGE. `definitionIdFor` is a full callback for the same reason
+// `loadSpeciesFeatureOptionCandidatesFor`'s own is -- Warlock's invocations need a `.known` suffix
+// the Divine Order/Primal Order class-feature options below do not, so no single
+// `prefix + slugify` formula could serve both without a hidden special case.
 export function loadClassOptionCandidatesFor(
   sourceCode: string,
   optionNames: readonly string[],
-  definitionIdPrefix: string,
+  definitionIdFor: (optionName: string) => string,
   _vocabulary: string | undefined
 ) {
   return async function loadClassOptionCandidates(_membership: (entry: any) => boolean): Promise<SourceCategoryLoadResult> {
-    const allRows = await loadOptionalFeatureRows()
+    const allRows = await loadJsonArrayRows('optionalfeatures.json', 'optionalfeature')
     const names = new Set(optionNames)
     const rows = allRows.filter((row) => row?.source === sourceCode && names.has(row?.name))
 
-    const preview = preview5eToolsClassOptions(rows, (optionName) => `${definitionIdPrefix}.${slugify(optionName, '_')}.known`)
+    const preview = preview5eToolsClassOptions(rows, definitionIdFor)
+    const candidates = toContentPublicationCandidates(preview)
+    return { candidates, warnings: preview.warnings }
+  }
+}
+
+// COMPLETE OPTION-DESCRIPTION COVERAGE -- Cleric's Divine Order (Protector/Thaumaturge) and
+// Druid's Primal Order (Magician/Warden). Structurally DIFFERENT from a Warlock invocation or a
+// species feature-option: each named option is ALREADY its own complete, independent
+// `classFeature` row in the class's own `class/class-<X>.json` file (verified directly against
+// class-cleric.json/class-druid.json) -- nothing is synthesized from a table or list, so this
+// reuses `preview5eToolsClassOptions` exactly as the Warlock invocation loader does, just reading
+// `classFeature` rows from a class file instead of `optionalfeature` rows from
+// optionalfeatures.json.
+export function loadClassFeatureOptionCandidatesFor(
+  classFileName: string,
+  sourceCode: string,
+  optionNames: readonly string[],
+  definitionIdFor: (optionName: string) => string
+) {
+  return async function loadClassFeatureOptionCandidates(_membership: (entry: any) => boolean): Promise<SourceCategoryLoadResult> {
+    const allRows = await loadJsonArrayRows(`class/${classFileName}`, 'classFeature')
+    const names = new Set(optionNames)
+    const rows = allRows.filter((row) => row?.source === sourceCode && names.has(row?.name))
+
+    const preview = preview5eToolsClassOptions(rows, definitionIdFor)
     const candidates = toContentPublicationCandidates(preview)
     return { candidates, warnings: preview.warnings }
   }

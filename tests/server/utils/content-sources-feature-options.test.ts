@@ -47,7 +47,6 @@ describe('preview5eToolsSpeciesFeatureOptions -- structural identity, never pros
     const result = preview5eToolsSpeciesFeatureOptions(dragonborn, {
       tableSectionName: 'Draconic Ancestry',
       sharedSectionNames: ['Breath Weapon', 'Damage Resistance'],
-      factLabel: 'Damage Type',
       definitionIdFor: (name) => `source:draconic-ancestry.${name.toLowerCase()}`
     })
 
@@ -73,6 +72,85 @@ describe('preview5eToolsSpeciesFeatureOptions -- structural identity, never pros
     expect(result.items).toHaveLength(0)
     expect(result.warnings.length).toBeGreaterThan(0)
   })
+
+  // COMPLETE OPTION-DESCRIPTION COVERAGE -- a table with MORE than one extra column (Elf's Elven
+  // Lineages, Tiefling's Fiendish Legacies: Lineage/Legacy | Level 1 | Level 3 | Level 5) folds
+  // every extra column into the option's own `entries` as a labeled section, using the table's
+  // own real column headers -- never a single hardcoded `factLabel`.
+  it('a multi-column table folds every extra column into entries, labeled by the table\'s own real headers', () => {
+    const elf = {
+      name: 'Elf',
+      source: 'XPHB',
+      page: 189,
+      entries: [
+        {
+          type: 'entries',
+          name: 'Elven Lineage',
+          entries: [
+            {
+              type: 'table',
+              colLabels: ['Lineage', 'Level 1', 'Level 3', 'Level 5'],
+              rows: [
+                ['Drow', 'The range of your Darkvision increases to 120 feet.', '{@spell Faerie Fire|XPHB}', '{@spell Darkness|XPHB}']
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    const result = preview5eToolsSpeciesFeatureOptions(elf, {
+      tableSectionName: 'Elven Lineage',
+      definitionIdFor: (name) => `source:elven-lineage.${name.toLowerCase()}`
+    })
+
+    expect(result.items).toHaveLength(1)
+    const drow = result.items[0]!
+    expect((drow as any).definitionId).toBe('source:elven-lineage.drow')
+    expect((drow.raw as any).facts).toEqual([])
+    const sections = (drow.raw as any).entries
+    expect(sections.map((s: any) => s.name)).toEqual(['Level 1', 'Level 3', 'Level 5'])
+    expect(sections[1].entries).toBe('{@spell Faerie Fire|XPHB}')
+  })
+
+  // Goliath's Giant Ancestry / Gnome's Gnomish Lineage: a {type:'list', items:[{name,entries}]}
+  // shape, structurally different from a table -- each item's own `entries` IS the option's
+  // complete description, nothing extracted from a row. Also proves parenthetical stripping:
+  // "Cloud's Jaunt (Cloud Giant)" must derive the id from "Cloud's Jaunt" alone (matching the real
+  // hand-authored `source:giant-ancestry.clouds-jaunt`), while surfacing "Cloud Giant" as a real,
+  // non-fabricated fact rather than silently dropping it.
+  it('a named-list section uses each item\'s own entries directly, and strips a parenthetical variant tag before deriving the id', () => {
+    const goliath = {
+      name: 'Goliath',
+      source: 'XPHB',
+      page: 192,
+      entries: [
+        {
+          type: 'entries',
+          name: 'Giant Ancestry',
+          entries: [
+            {
+              type: 'list',
+              items: [
+                { type: 'item', name: "Cloud's Jaunt (Cloud Giant)", entries: ['As a Bonus Action, you magically teleport up to 30 feet.'] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    const result = preview5eToolsSpeciesFeatureOptions(goliath, {
+      tableSectionName: 'Giant Ancestry',
+      definitionIdFor: (name) => `source:giant-ancestry.${name.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-')}`
+    })
+
+    expect(result.items).toHaveLength(1)
+    const cloudsJaunt = result.items[0]!
+    expect((cloudsJaunt as any).definitionId).toBe('source:giant-ancestry.clouds-jaunt')
+    expect((cloudsJaunt.raw as any).entries).toEqual(['As a Bonus Action, you magically teleport up to 30 feet.'])
+    expect((cloudsJaunt.raw as any).facts).toEqual([{ label: 'Variant', value: 'Cloud Giant' }])
+  })
 })
 
 describe('preview5eToolsClassOptions -- each row is already a complete entry', () => {
@@ -90,21 +168,23 @@ describe('preview5eToolsClassOptions -- each row is already a complete entry', (
 })
 
 describe('xphbProvider -- real dataset, feature-options category', () => {
-  it('discovers Dragonborn\'s 10 real Draconic Ancestry colors and Warlock\'s 5 real Level-1 invocations', async () => {
+  it('discovers all 33 real Identity/Class Definition ids this phase authors (5 species families + Warlock + Cleric + Druid)', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const definitionIds = result.candidates.map((c: any) => c.definitionId).sort()
 
-    const expectedAncestryColors = ['black', 'blue', 'brass', 'bronze', 'copper', 'gold', 'green', 'red', 'silver', 'white']
-    for (const color of expectedAncestryColors) {
-      expect(definitionIds).toContain(`source:draconic-ancestry.${color}`)
-    }
+    const expected = [
+      ...['black', 'blue', 'brass', 'bronze', 'copper', 'gold', 'green', 'red', 'silver', 'white'].map((c) => `source:draconic-ancestry.${c}`),
+      ...['drow', 'high', 'wood'].map((c) => `source:elven-lineage.${c}`),
+      ...['clouds-jaunt', 'fires-burn', 'frosts-chill', 'hills-tumble', 'stones-endurance', 'storms-thunder'].map((c) => `source:giant-ancestry.${c}`),
+      ...['forest-gnome', 'rock-gnome'].map((c) => `source:gnomish-lineage.${c}`),
+      ...['abyssal', 'chthonic', 'infernal'].map((c) => `source:fiendish-legacy.${c}`),
+      ...['armor_of_shadows', 'eldritch_mind', 'pact_of_the_blade', 'pact_of_the_chain', 'pact_of_the_tome'].map((c) => `value:invocation.${c}.known`),
+      'source:divine-order.protector', 'source:divine-order.thaumaturge',
+      'source:primal-order.magician', 'source:primal-order.warden'
+    ].sort()
 
-    const expectedInvocations = ['armor_of_shadows', 'eldritch_mind', 'pact_of_the_blade', 'pact_of_the_chain', 'pact_of_the_tome']
-    for (const invocation of expectedInvocations) {
-      expect(definitionIds).toContain(`value:invocation.${invocation}.known`)
-    }
-
-    expect(result.candidates.length).toBe(expectedAncestryColors.length + expectedInvocations.length)
+    expect(definitionIds).toEqual(expected)
+    expect(result.candidates.length).toBe(33)
   })
 
   it('every discovered candidate carries a non-empty definitionId and real, non-fabricated description text', async () => {
@@ -133,6 +213,57 @@ describe('xphbProvider -- real dataset, feature-options category', () => {
     expect((armorOfShadows.data as any).entries).toEqual([
       'You can cast {@spell Mage Armor|XPHB} on yourself without expending a spell slot.'
     ])
+  })
+
+  it('the real Elf Drow candidate (High Elf/Wood Elf suffix stripped per the real authored ids) carries its Level 1/3/5 sections', async () => {
+    const result = await xphbProvider.loadCategory('feature-options')
+    const drow = result.candidates.find((c: any) => c.definitionId === 'source:elven-lineage.drow')!
+    const highElf = result.candidates.find((c: any) => c.definitionId === 'source:elven-lineage.high')!
+    const woodElf = result.candidates.find((c: any) => c.definitionId === 'source:elven-lineage.wood')!
+    expect(drow).toBeDefined()
+    expect(highElf).toBeDefined()
+    expect(woodElf).toBeDefined()
+
+    const sections = (drow.data as any).entries.map((s: any) => s.name)
+    expect(sections).toEqual(['Level 1', 'Level 3', 'Level 5'])
+  })
+
+  it('the real Goliath Giant Ancestry candidates carry their own real per-benefit prose and a Variant fact from the real parenthetical', async () => {
+    const result = await xphbProvider.loadCategory('feature-options')
+    const cloudsJaunt = result.candidates.find((c: any) => c.definitionId === 'source:giant-ancestry.clouds-jaunt')!
+    expect(cloudsJaunt).toBeDefined()
+    expect((cloudsJaunt.data as any).facts).toEqual([{ label: 'Variant', value: 'Cloud Giant' }])
+    expect((cloudsJaunt.data as any).entries).toEqual([
+      'As a {@variantrule Bonus Action|XPHB}, you magically teleport up to 30 feet to an unoccupied space you can see.'
+    ])
+  })
+
+  it('the real Gnome Gnomish Lineage candidates carry their own real entries directly, no Variant fact (no parenthetical in the real names)', async () => {
+    const result = await xphbProvider.loadCategory('feature-options')
+    const forestGnome = result.candidates.find((c: any) => c.definitionId === 'source:gnomish-lineage.forest-gnome')!
+    expect(forestGnome).toBeDefined()
+    expect((forestGnome.data as any).facts).toEqual([])
+    expect((forestGnome.data as any).entries[0]).toContain('Minor Illusion')
+  })
+
+  it('the real Tiefling Fiendish Legacy candidates carry their Level 1/3/5 sections', async () => {
+    const result = await xphbProvider.loadCategory('feature-options')
+    const abyssal = result.candidates.find((c: any) => c.definitionId === 'source:fiendish-legacy.abyssal')!
+    expect(abyssal).toBeDefined()
+    const sections = (abyssal.data as any).entries.map((s: any) => s.name)
+    expect(sections).toEqual(['Level 1', 'Level 3', 'Level 5'])
+  })
+
+  it('the real Cleric Divine Order / Druid Primal Order candidates are each already-complete classFeature rows', async () => {
+    const result = await xphbProvider.loadCategory('feature-options')
+    const protector = result.candidates.find((c: any) => c.definitionId === 'source:divine-order.protector')!
+    const warden = result.candidates.find((c: any) => c.definitionId === 'source:primal-order.warden')!
+    expect(protector).toBeDefined()
+    expect(protector.title).toBe('Protector')
+    expect((protector.data as any).entries[0]).toContain('Martial weapons')
+    expect(warden).toBeDefined()
+    expect(warden.title).toBe('Warden')
+    expect((warden.data as any).entries[0]).toContain('Medium armor')
   })
 })
 

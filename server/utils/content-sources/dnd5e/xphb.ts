@@ -27,6 +27,7 @@
 import { create5eToolsCollectionProvider } from './5etools-collection'
 import { CATEGORY_LABELS, DATASETS, isEntryFromSource } from './5etools-dataset'
 import { loadSubclassCandidatesFor } from './subclasses'
+import { loadClassOptionCandidatesFor, loadSpeciesFeatureOptionCandidatesFor } from './feature-options'
 
 const VOCABULARY = 'dnd5e.2024'
 
@@ -48,6 +49,40 @@ export const xphbProvider = create5eToolsCollectionProvider({
     // vertical slice is XPHB only). Uses `loadCandidates` because subclasses
     // need a different membership predicate than every other category in
     // this same collection -- see subclasses.ts's own header.
-    { key: 'subclasses', label: CATEGORY_LABELS.subclasses, loadCandidates: loadSubclassCandidatesFor('XPHB', VOCABULARY) }
+    { key: 'subclasses', label: CATEGORY_LABELS.subclasses, loadCandidates: loadSubclassCandidatesFor('XPHB', VOCABULARY) },
+    // Character Creator V3 -- Selected Option Explanations. A ninth
+    // category, same posture as 'subclasses' above: real prose for the two
+    // named examples this phase authors (Dragonborn's Draconic Ancestry
+    // colors; Warlock's five Level-1 invocations), each joined back to its
+    // own hand-authored Rules Engine Definition id (see feature-options.ts).
+    // Deliberately scoped to only these two owners for now -- Elf/Goliath/
+    // Gnome/Tiefling also use `choice:species.feature-option` (see
+    // app/lib/content-rules/dnd5e-2024.ts) but are not authored here; see
+    // this phase's own final report for the honest remaining-gap list.
+    {
+      key: 'feature-options',
+      label: 'Feature Options',
+      loadCandidates: async (membership) => {
+        const species = await loadSpeciesFeatureOptionCandidatesFor(
+          'XPHB',
+          'Dragonborn',
+          'Draconic Ancestry',
+          ['Breath Weapon', 'Damage Resistance'],
+          'source:draconic-ancestry',
+          'Damage Type',
+          VOCABULARY
+        )(membership)
+        const classOptions = await loadClassOptionCandidatesFor(
+          'XPHB',
+          ['Armor of Shadows', 'Eldritch Mind', 'Pact of the Blade', 'Pact of the Chain', 'Pact of the Tome'],
+          'value:invocation',
+          VOCABULARY
+        )(membership)
+        return {
+          candidates: [...species.candidates, ...classOptions.candidates],
+          warnings: [...species.warnings, ...classOptions.warnings]
+        }
+      }
+    }
   ]
 })

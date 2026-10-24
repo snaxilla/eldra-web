@@ -48,6 +48,7 @@ import {
   applySlotChange,
   draftFromAnswer,
   draftToAnswer,
+  inspectorValueFor,
   isNonDistinctMultiSelect,
   isSlotOptionAtCap,
   shouldShowInspectedDetail
@@ -83,6 +84,13 @@ const props = defineProps<{
   // are two separate, simultaneous interactions: "Details" only changes what the inspector
   // shows, the checkbox only changes the selection. 'grid' (default) is the original layout.
   layout?: 'grid' | 'inspector'
+  // CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS. Gates ONLY the
+  // inspector's "nothing picked or inspected yet" fallback -- see
+  // inspectorValueFor's own header (characterProgressionChoicePresentation.ts)
+  // for why Spells (this prop absent/false, its existing default) and
+  // Identity/Class (true) need different behavior here. Ignored by the
+  // 'grid' layout, which has no such fallback to gate.
+  requireSelectionOrInspection?: boolean
 }>()
 
 const emit = defineEmits<{ 'update:selected': [string[]] }>()
@@ -92,15 +100,17 @@ function toggleInspect(option: string) {
   inspectedValue.value = inspectedValue.value === option ? null : option
 }
 
-// Inspector layout: always has something to show (the player's last inspection, else their
-// first pick, else the first option), so the detail region is never an empty hole. Inspecting
-// only ever moves this pointer; it never touches the selection.
-const inspectorValue = computed<string | null>(() =>
-  inspectedValue.value
-  ?? props.selected[0]
-  ?? displayed.value[0]?.value
-  ?? null
-)
+// Inspector layout: by default (Spells, `requireSelectionOrInspection` unset) always has
+// something to show -- the player's last inspection, else their first pick, else the first
+// option -- so the detail region is never an empty hole. When `requireSelectionOrInspection` is
+// set (Identity/Class), the third fallback is withheld instead: see inspectorValueFor's own
+// header. Either way, inspecting only ever moves this pointer; it never touches the selection.
+const inspectorValue = computed<string | null>(() => inspectorValueFor({
+  inspected: inspectedValue.value,
+  selected: props.selected,
+  firstOffered: displayed.value[0]?.value ?? null,
+  requireSelectionOrInspection: props.requireSelectionOrInspection ?? false
+}))
 function inspect(option: string) {
   inspectedValue.value = option
 }

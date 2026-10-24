@@ -125,6 +125,19 @@ export type ContentPublicationCandidate = {
   // only carried through to publication) -- the same posture `rulesFacet`
   // already has here.
   parentClassSlug?: string
+  // Character Creator V3 -- Selected Option Explanations. Present only for
+  // `entityType: 'featureOption'` candidates (app/lib/importers/
+  // 5etools-feature-options.ts) -- the Rules Engine Definition id (e.g.
+  // `source:draconic-ancestry.black`, `value:invocation.armor_of_shadows.known`)
+  // this option's real-prose entry explains, computed structurally at
+  // import time using the SAME id formula the hand-authored Rules Package
+  // Definition already uses. Opaque to this module (never read, only
+  // carried through to publication), mirroring `parentClassSlug`'s own
+  // posture exactly -- this is the join key a Content Pack entry uses to
+  // link back to a Rules Engine Definition in the sibling Rules system,
+  // never the other way around (the Rules Package itself carries no
+  // description -- see rules-package-architecture.md §18.1).
+  definitionId?: string
 }
 
 // ---------------------------------------------------------------------------

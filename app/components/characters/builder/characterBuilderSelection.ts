@@ -150,6 +150,13 @@ export type BuilderCatalogueEntry = {
   // nothing, which is legal and common -- the Builder simply asks no
   // questions for it.
   rulesFacet?: RulesFacet
+  // Character Creator V3 -- Selected Option Explanations. Present only on
+  // `featureOptions` catalogue entries -- the Rules Engine Definition id
+  // this entry's `presentation` explains (e.g. `source:draconic-ancestry
+  // .black`), relayed verbatim by GET /api/worlds/:id/catalogue. This is
+  // the join key create-v2.vue uses to look an option's presentation up by
+  // the SAME Definition id its ChoiceSet already offers it under.
+  definitionId?: string
 }
 
 export type BuilderChoiceKey = 'species' | 'class' | 'background'

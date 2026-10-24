@@ -207,3 +207,25 @@ export function shouldShowInspectedDetail(
   if (!optionDetails || !inspectedValue) return false
   return inspectedValue in optionDetails
 }
+
+// CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS. CharacterChoiceSetPicker.vue's own
+// `inspectorValue` computed (`inspectedValue ?? selected[0] ?? displayed[0]?.value ?? null`) was
+// built for Spells, where showing the FIRST offered spell before the player has picked or
+// inspected anything is reasonable (there is always something worth reading). Identity/Class
+// feature options are different: "a label-only panel does not meet the request," but an inspector
+// that opens pre-filled with Dragonborn's "Black" ancestry before the player has touched anything
+// reads as if Black were already decided -- the explicit "no large empty details area when
+// nothing is selected" requirement this phase was given. `requireSelectionOrInspection` gates ONLY
+// the third fallback (`firstOffered`); an explicit inspection or an existing selection still always
+// wins, so once the player picks or inspects anything, behavior is identical to Spells'.
+export function inspectorValueFor(params: {
+  inspected: string | null
+  selected: readonly string[]
+  firstOffered: string | null
+  requireSelectionOrInspection: boolean
+}): string | null {
+  if (params.inspected != null) return params.inspected
+  if (params.selected[0] != null) return params.selected[0]
+  if (params.requireSelectionOrInspection) return null
+  return params.firstOffered
+}

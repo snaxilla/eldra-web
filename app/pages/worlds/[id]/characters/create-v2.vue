@@ -192,6 +192,10 @@ type WorldCatalogue = {
   // title. Already part of GET /api/worlds/:id/catalogue's own response (server/utils/
   // world-content-catalogue.ts's `WorldGameplayCatalogue.items`); only newly typed/threaded here.
   items: BuilderCatalogueEntry[]
+  // Character Creator V3 -- Selected Option Explanations. Each entry's own
+  // `definitionId` is the join key to a Species/Class Feature Option's real
+  // prose -- see server/utils/world-content-catalogue.ts's own doc comment.
+  featureOptions: BuilderCatalogueEntry[]
 }
 
 const { data: catalogue, pending: catalogueLoading, error: catalogueError } = await useFetch<WorldCatalogue>(
@@ -447,6 +451,24 @@ const spellPresentationByRef = computed<Record<string, PresentationEntry | null>
     byRef[serializeContentRef({ packageId: entry.packageId, slug: entry.slug })] = entry.presentation ?? null
   }
   return byRef
+})
+
+// CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS. Every Feature
+// Option's own already-resolved presentation (app/lib/content-presentation/
+// dnd5e.ts's 'option' branch), keyed by the SAME Rules Engine Definition id
+// the Identity/Class ChoiceSets already offer their options under
+// (`source:draconic-ancestry.black`, `value:invocation.armor_of_shadows.known`,
+// ...) -- unlike spellPresentationByRef immediately above, no ContentRef
+// serialization is needed here, because these choices are plain Rules
+// Engine ChoiceSets whose offered option VALUES already are the Definition
+// id. The catalogue's own `/catalogue` response already carries this -- no
+// second fetch, no new server call.
+const optionPresentationByDefinitionId = computed<Record<string, PresentationEntry | null>>(() => {
+  const byDefinitionId: Record<string, PresentationEntry | null> = {}
+  for (const entry of catalogue.value?.featureOptions ?? []) {
+    if (entry.definitionId) byDefinitionId[entry.definitionId] = entry.presentation ?? null
+  }
+  return byDefinitionId
 })
 
 function spellSelectionsFor(requirementId: string): string[] {
@@ -870,6 +892,9 @@ async function createCharacter() {
                         :prompt="promptFor(choice.choiceSetId)"
                         :option-labels="optionLabels"
                         :slot-label="choiceSetLabelFor(choice.choiceSetId)"
+                        layout="inspector"
+                        :option-details="optionPresentationByDefinitionId"
+                        :require-selection-or-inspection="true"
                         @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
                       />
                     </div>
@@ -960,6 +985,9 @@ async function createCharacter() {
                           :prompt="promptFor(choice.choiceSetId)"
                           :option-labels="optionLabels"
                           :slot-label="choiceSetLabelFor(choice.choiceSetId)"
+                          layout="inspector"
+                          :option-details="optionPresentationByDefinitionId"
+                          :require-selection-or-inspection="true"
                           @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
                         />
                       </div>

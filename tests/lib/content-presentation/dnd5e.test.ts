@@ -394,6 +394,66 @@ describe('resolveDnd5ePresentation -- spell (XPHB)', () => {
   })
 })
 
+// CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS. Raw shapes below are the real,
+// verbatim-extracted text app/lib/importers/5etools-feature-options.ts produces for the two
+// examples this phase authors (Dragonborn's Draconic Ancestry: Black, Warlock's Armor of
+// Shadows) -- not a synthetic fixture, so this also proves the resolver against the actual
+// content these two importer functions will publish.
+describe('resolveDnd5ePresentation -- option (Character Creator V3)', () => {
+  it('a species option reads its shared-section prose and its own fact, real XPHB Dragonborn text', () => {
+    const resolved = resolveDnd5ePresentation('option', {
+      name: 'Dragonborn: Black',
+      source: 'XPHB',
+      page: '187',
+      entries: [
+        {
+          type: 'entries',
+          name: 'Breath Weapon',
+          entries: [
+            'When you take the {@action Attack|XPHB} action on your turn, you can replace one of your attacks with an exhalation of magical energy in either a 15-foot {@variantrule Cone [Area of Effect]|XPHB|Cone} or a 30-foot {@variantrule Line [Area of Effect]|XPHB|Line} that is 5 feet wide (choose the shape each time).',
+            'You can use this Breath Weapon a number of times equal to your {@variantrule Proficiency|XPHB|Proficiency Bonus}, and you regain all expended uses when you finish a {@variantrule Long Rest|XPHB}.'
+          ]
+        },
+        {
+          type: 'entries',
+          name: 'Damage Resistance',
+          entries: ['You have {@variantrule Resistance|XPHB} to the damage type determined by your Draconic Ancestry trait.']
+        }
+      ],
+      facts: [{ label: 'Damage Type', value: 'Acid' }]
+    })!
+
+    expect(resolved.kind).toBe('option')
+    expect(resolved.name).toBe('Dragonborn: Black')
+    expect(resolved.sourceBook).toBe('XPHB')
+    expect(factValue(resolved, 'Damage Type')).toBe('Acid')
+    expect(resolved.description.some((paragraph) => paragraph.startsWith('Breath Weapon:'))).toBe(true)
+    expect(resolved.description.some((paragraph) => paragraph.startsWith('Damage Resistance:'))).toBe(true)
+    // {@tag} markup must never leak through.
+    expect(resolved.description.join(' ')).not.toMatch(/\{@/)
+  })
+
+  it('a class option reads its own entries directly, real XPHB Warlock text, with no facts needed', () => {
+    const resolved = resolveDnd5ePresentation('option', {
+      name: 'Armor of Shadows',
+      source: 'XPHB',
+      page: '155',
+      entries: ['You can cast {@spell Mage Armor|XPHB} on yourself without expending a spell slot.'],
+      facts: []
+    })!
+
+    expect(resolved.name).toBe('Armor of Shadows')
+    expect(resolved.description).toEqual(['You can cast Mage Armor on yourself without expending a spell slot.'])
+    expect(resolved.facts).toEqual([])
+  })
+
+  it('degrades to the "no description" note when a candidate publishes no entries at all', () => {
+    const resolved = resolveDnd5ePresentation('option', { name: 'Unexplained Option', source: 'XPHB' })!
+    expect(resolved.description).toEqual([])
+    expect(resolved.notes.length).toBeGreaterThan(0)
+  })
+})
+
 describe('every XPHB row resolves to something a player can read', () => {
   const cases: Array<[any, any]> = [
     ...Object.values(xphb.species).map((row) => ['species', row] as [any, any]),

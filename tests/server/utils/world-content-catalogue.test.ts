@@ -196,7 +196,8 @@ describe('getWorldContentCatalogue', () => {
       items: [],
       spells: [],
       monsters: [],
-      subclasses: []
+      subclasses: [],
+      featureOptions: []
     })
   })
 

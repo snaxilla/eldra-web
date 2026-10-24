@@ -163,6 +163,14 @@ export type ContentCatalogueEntry = {
   // today: Milestone A resolves weapons only) -- absent entirely means this entry is not an item
   // at all.
   itemMechanics?: CanonicalItemMechanics | null
+  // Character Creator V3 -- Selected Option Explanations. Present only for
+  // `featureOptions` entries -- relayed, not computed, exactly like
+  // `parentClassSlug` below: the Rules Engine Definition id this option's
+  // real prose explains, normalized structurally at import time
+  // (app/lib/importers/5etools-feature-options.ts). This is the join key a
+  // Builder/Creator client uses to look up an option's own `presentation`
+  // by the SAME Definition id its ChoiceSet already offers it under.
+  definitionId?: string
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -182,6 +190,10 @@ export type MonsterCatalogueEntry = ContentCatalogueEntry
 // additive field (`parentClassSlug`, below) no other category needs. Not a
 // distinct type shape, exactly like every other alias in this block.
 export type SubclassCatalogueEntry = ContentCatalogueEntry
+// Character Creator V3. Structurally an ordinary catalogue entry plus one
+// additive field (`definitionId`, above), the same posture `SubclassCatalogueEntry`
+// already established for `parentClassSlug`.
+export type FeatureOptionCatalogueEntry = ContentCatalogueEntry
 
 export type WorldGameplayCatalogue = {
   worldId: string
@@ -198,6 +210,10 @@ export type WorldGameplayCatalogue = {
   // own "closed, not speculative" posture, which this stays consistent
   // with by being one more named collection, not a generic open registry.
   subclasses: SubclassCatalogueEntry[]
+  // Character Creator V3. Additive ninth category, the same shape of
+  // extension 'subclasses' already was -- see design decision 2's own
+  // "closed, not speculative" posture.
+  featureOptions: FeatureOptionCatalogueEntry[]
 }
 
 // The exact, closed entityType -> catalogue-collection mapping -- see
@@ -215,7 +231,8 @@ const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
   item: 'items',
   spell: 'spells',
   enemy: 'monsters',
-  subclass: 'subclasses'
+  subclass: 'subclasses',
+  featureOption: 'featureOptions'
 }
 
 // Which catalogue categories resolve a presentation model, and as which
@@ -236,7 +253,9 @@ const PRESENTATION_KIND_BY_CATEGORY: Partial<Record<CatalogueCategory, Presentat
   species: 'species',
   classes: 'class',
   backgrounds: 'background',
-  spells: 'spell'
+  spells: 'spell',
+  // Character Creator V3 -- Selected Option Explanations.
+  featureOptions: 'option'
 }
 
 // Which catalogue categories resolve Actions, and as which
@@ -332,6 +351,15 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
     base.parentClassSlug = parentClassSlug
   }
 
+  // Character Creator V3 -- relayed, not computed, exactly like
+  // `parentClassSlug` immediately above: the Definition id is normalized
+  // once, at publish time, by the feature-option importer
+  // (app/lib/importers/5etools-feature-options.ts), never re-derived here.
+  const definitionId = (entry as any).definitionId
+  if (typeof definitionId === 'string' && definitionId) {
+    base.definitionId = definitionId
+  }
+
   // D&D 2024 Character Rules Phase 2A.1 -- feats only, mirroring
   // `spellMechanics` immediately above exactly: `data` read only here, a
   // throwing resolver degrades this ONE entry to `featMechanics: null`
@@ -377,7 +405,8 @@ export async function getWorldContentCatalogue(worldId: string | number): Promis
     items: [],
     spells: [],
     monsters: [],
-    subclasses: []
+    subclasses: [],
+    featureOptions: []
   }
 
   for (const entry of resolved.entries) {

@@ -24,6 +24,13 @@ export type EldraImportPreviewEntity = {
   // class's own catalogue slug, derived structurally at import time.
   // Optional and additive: every other importer simply never sets it.
   parentClassSlug?: string
+  // Character Creator V3. Present only when `entityType === 'featureOption'`
+  // (app/lib/importers/5etools-feature-options.ts) -- the Rules Engine
+  // Definition id this option's real prose explains, derived structurally
+  // (never from this option's own prose) using the same id formula the
+  // hand-authored Rules Package Definition already uses. Optional and
+  // additive, mirroring `parentClassSlug` exactly.
+  definitionId?: string
 }
 
 export type EldraImportPreviewResult = {

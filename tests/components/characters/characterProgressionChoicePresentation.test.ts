@@ -14,6 +14,7 @@ import {
   applySlotChange,
   draftFromAnswer,
   draftToAnswer,
+  inspectorValueFor,
   isNonDistinctMultiSelect,
   reconcileSlotDrafts,
   shouldShowInspectedDetail,
@@ -302,5 +303,50 @@ describe('shouldShowInspectedDetail', () => {
     // which this function already treats as "show nothing" above -- this
     // case instead covers an id optionDetails never had an entry for at all.
     expect(shouldShowInspectedDetail({ 'fire-bolt': { kind: 'spell', name: 'Fire Bolt' } }, 'misty-step')).toBe(false)
+  })
+})
+
+// CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS.
+describe('inspectorValueFor', () => {
+  it('always prefers an explicit inspection, regardless of selection or the gate', () => {
+    expect(inspectorValueFor({
+      inspected: 'source:draconic-ancestry.blue',
+      selected: ['source:draconic-ancestry.black'],
+      firstOffered: 'source:draconic-ancestry.black',
+      requireSelectionOrInspection: true
+    })).toBe('source:draconic-ancestry.blue')
+  })
+
+  it('falls back to the first selection when nothing is inspected', () => {
+    expect(inspectorValueFor({
+      inspected: null,
+      selected: ['source:draconic-ancestry.black'],
+      firstOffered: 'source:draconic-ancestry.blue',
+      requireSelectionOrInspection: true
+    })).toBe('source:draconic-ancestry.black')
+  })
+
+  // Spells' existing behavior (requireSelectionOrInspection unset/false): the gate never applies,
+  // so the inspector still defaults to the first offered option -- byte-identical to
+  // CharacterChoiceSetPicker.vue's own pre-existing `inspectorValue` computed.
+  it('without the gate, falls back to the first offered option', () => {
+    expect(inspectorValueFor({
+      inspected: null,
+      selected: [],
+      firstOffered: 'fire-bolt',
+      requireSelectionOrInspection: false
+    })).toBe('fire-bolt')
+  })
+
+  // The actual bug this task fixes: Identity/Class must NOT default to the first offered option
+  // before the player has picked or inspected anything -- "a label-only panel does not meet the
+  // request," and defaulting to Dragonborn's "Black" ancestry unasked reads as already decided.
+  it('with the gate, withholds the first-offered fallback -- the "no empty panel" requirement', () => {
+    expect(inspectorValueFor({
+      inspected: null,
+      selected: [],
+      firstOffered: 'source:draconic-ancestry.black',
+      requireSelectionOrInspection: true
+    })).toBe(null)
   })
 })

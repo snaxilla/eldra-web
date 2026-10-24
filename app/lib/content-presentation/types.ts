@@ -40,7 +40,15 @@
 // real member for it here, the dispatcher silently fell through to
 // `resolveBackground`, producing a nonsense presentation for every spell
 // in the game. See dnd5e.ts's own `resolveSpell` for the real resolver.
-export type PresentationKind = 'species' | 'class' | 'background' | 'spell'
+//
+// CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS -- 'option' added. A
+// "feature option" is a single named choice inside a larger species trait
+// or class feature (a Draconic Ancestry color, a Warlock invocation) --
+// see app/lib/importers/5etools-feature-options.ts and dnd5e.ts's own
+// `resolveOption`. Deliberately one generic kind for both species- and
+// class-sourced options, not two -- the resolver has no Dragonborn- or
+// Warlock-specific branch, and neither should any consumer of this union.
+export type PresentationKind = 'species' | 'class' | 'background' | 'spell' | 'option'
 
 export type PresentationFact = {
   label: string

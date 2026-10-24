@@ -61,6 +61,13 @@ export function toContentPublicationCandidate(entity: EldraImportPreviewEntity):
     candidate.parentClassSlug = entity.parentClassSlug
   }
 
+  // Character Creator V3 -- relayed only when the importer set it
+  // (currently only app/lib/importers/5etools-feature-options.ts), mirroring
+  // `parentClassSlug` immediately above.
+  if (entity.definitionId) {
+    candidate.definitionId = entity.definitionId
+  }
+
   return candidate
 }
 

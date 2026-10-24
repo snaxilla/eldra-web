@@ -514,6 +514,37 @@ function describeCodeOrProseList(value: unknown): string {
     .join(', ')
 }
 
+// Character Creator V3 -- Feature Option presentation. A "feature option"
+// is a single named choice inside a larger species trait or class feature
+// (a Draconic Ancestry color, a Warlock invocation) -- see
+// app/lib/importers/5etools-feature-options.ts for how these candidates are
+// built. Deliberately generic: this resolver reads only `entries` (the
+// option's own description, exactly like resolveSpell reads a spell's) and
+// an optional `facts` array the importer may attach for small structured
+// facts (e.g. "Damage Type: Acid") -- it has no Dragonborn- or
+// Warlock-specific branch, so a future option of either kind needs no
+// change here.
+function resolveOption(raw: Record<string, unknown>): PresentationEntry {
+  const description = flattenEntries(raw.entries)
+
+  const rawFacts = Array.isArray(raw.facts) ? raw.facts as Array<{ label?: unknown, value?: unknown }> : []
+  const facts = compactFacts(rawFacts.map((item) => fact(String(item?.label ?? ''), item?.value == null ? '' : String(item.value))))
+
+  const notes: string[] = []
+  if (!description.length) notes.push(NO_DESCRIPTION_NOTE)
+
+  return {
+    kind: 'option',
+    name: cleanText(raw.name),
+    sourceBook: raw.source ? String(raw.source) : undefined,
+    sourcePage: raw.page != null ? String(raw.page) : undefined,
+    description,
+    facts,
+    sections: [],
+    notes
+  }
+}
+
 function fact(label: string, value: string | null | undefined): PresentationFact | null {
   const text = String(value ?? '').trim()
   return text ? { label, value: text } : null
@@ -959,5 +990,6 @@ export function resolveDnd5ePresentation(kind: PresentationKind, data: unknown):
   if (kind === 'species') return resolveSpecies(raw)
   if (kind === 'class') return resolveClass(raw)
   if (kind === 'spell') return resolveSpell(raw)
+  if (kind === 'option') return resolveOption(raw)
   return resolveBackground(raw)
 }

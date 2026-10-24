@@ -127,15 +127,6 @@ function inspect(option: string) {
   inspectedValue.value = option
 }
 
-// CHARACTER CREATOR V3 -- HIDEABLE INSPECTOR. A real reported request: the inspector aside sits
-// over the species/class hero's own artwork, and a player may want to see that artwork without
-// losing their place. `panelHidden` toggles the aside's own VISIBILITY, never its presence in the
-// DOM or its box size -- see the aside's own template comment for why this is what "just simply
-// hide the box... nothing jumping around" means in CSS terms. Reset to visible whenever the
-// inspected option changes, so switching options never leaves a new option's details hidden by a
-// leftover choice from a previous one.
-const panelHidden = ref(false)
-watch(inspectorValue, () => { panelHidden.value = false })
 // "Cantrip · Divination" from the spell's own resolved Level/School facts, for the roster
 // subtitle. Display only: absent facts simply yield no subtitle.
 function subtitleFor(option: string): string {
@@ -149,6 +140,27 @@ function subtitleFor(option: string): string {
 const displayed = computed<readonly OfferedOption[]>(() =>
   props.offered ?? props.choice.options.map((value) => ({ value, eligible: true }))
 )
+
+// CHARACTER CREATOR V3 -- HIDEABLE INSPECTOR. A real reported request: the inspector aside sits
+// over the species/class hero's own artwork, and a player may want to see that artwork without
+// losing their place. `panelHidden` toggles the aside's own VISIBILITY, never its presence in the
+// DOM or its box size -- see the aside's own template comment for why this is what "just simply
+// hide the box... nothing jumping around" means in CSS terms. Reset to visible whenever the
+// inspected option changes, so switching options never leaves a new option's details hidden by a
+// leftover choice from a previous one.
+//
+// DECLARATION ORDER MATTERS HERE (a real crash this phase caused and fixed): `watch(inspectorValue,
+// ...)` reads `inspectorValue.value` synchronously, once, right when `watch()` itself is called --
+// Vue needs that read to capture the baseline "old value" for future comparisons, even though the
+// callback itself does not run yet. `inspectorValue`'s own computed getter reads `displayed.value`.
+// Placing this watch BEFORE `displayed` was declared (its original position, directly under
+// `inspectorValue`) meant that synchronous read happened while `displayed` was still in its
+// temporal dead zone, throwing on every single render of every inspector-layout picker -- which
+// silently removed the ENTIRE picker (list and all), not just the hideable panel, since the
+// surrounding `<script setup>` block never finished executing. Declared here, after `displayed`
+// already exists, it cannot repeat that failure.
+const panelHidden = ref(false)
+watch(inspectorValue, () => { panelHidden.value = false })
 
 const remaining = computed(() => props.choice.count - props.selected.length)
 const complete = computed(() => props.selected.length === props.choice.count)

@@ -282,35 +282,41 @@ function onSlotSelect(slotIndex: number, event: Event) {
     </div>
 
     <!-- CHARACTER CREATOR V3 -- inspector layout.
-         RESPONSIVE BREAKPOINT FIX -- Identity/Class (`stableInspectorHeight`) raises the
-         side-by-side breakpoint from `md:` (768px) to `lg:` (1024px): at `md:`, this grid's own
-         2-column split activates purely by VIEWPORT width, with no awareness that the Identity/
-         Class stage ALSO reserves a left species/class rail outside this component -- at
-         real in-between widths that left the actual rendered column uncomfortably narrow for a
-         real reported problem ("do not force a side-by-side layout if it leaves the list too
-         narrow"). Spells has no such sibling rail squeezing it, so its own `md:` breakpoint is
-         unchanged -- see the aside's own comment for why `stableInspectorHeight` is the one
-         signal distinguishing the two.
+         RESPONSIVE BREAKPOINT -- Identity/Class (`stableInspectorHeight`) uses `lg:` (1024px)
+         for the side-by-side split instead of Spells' own `md:` (768px): the Identity/Class
+         stage also reserves a left species/class rail outside this component, which Spells does
+         not have to share space with, so a lower breakpoint there risked a cramped split.
 
-         REVERTED A STACKED-LAYOUT ATTEMPT (confirmed by live browser test): a theory that
-         CreationHero's `max-w-2xl` slot column was forcing list content to overflow its grid
-         track turned out to be unconfirmed -- a live test showed the side-by-side layout
-         rendering correctly (Elf's own Lineage/Innate Spellcasting pickers, clean, no overlap)
-         on the SAME deploy this theory was built from, and the user explicitly asked for
-         side-by-side back: stacking "stretches the page" and reads worse than the real bug ever
-         did. Side-by-side is restored; see the aside's own comment for the ACTUAL overlap fix
-         (dropping `sticky`), which a live test after that commit still had not been
-         re-confirmed as broken when this stacking detour was taken. -->
+         DETERMINISTIC COLUMN WIDTH -- a real reported bug, found by tracing why a long list
+         (Dragonborn's 10-row Draconic Ancestry) rendered with its own "DETAILS" buttons hidden
+         under the aside, while a short list (Elf's 3-row Elven Lineage) rendered cleanly at the
+         SAME breakpoint: `minmax(0,1fr)` is a PROPORTIONAL track, dividing whatever space is
+         left AFTER each grid item's own automatic minimum size is satisfied -- and a flex/grid
+         item's automatic minimum defaults to its content's min-content size unless something
+         inside it is explicitly told it may shrink to 0. The roster `<li>` itself never had that
+         override (only its label span did), so a long option label plus the "DETAILS" button
+         could push that row's own min-content width past what `1fr` left it, and the browser let
+         it overflow into the aside's column instead of forcing it to truncate -- unnoticeable on
+         Elf's short labels, visible on Dragonborn's. Two independent fixes close this, together:
+         `min-w-0` added directly to the roster `<li>` (so truncation can actually reach 0 instead
+         of stopping at the row's own natural content width), and the list column changed from a
+         proportional `1fr` to a fixed CAP (`minmax(0,26rem)`) -- a deterministic pixel width
+         that renders IDENTICALLY across every Identity/Class picker instance on the page
+         (Elven Lineage, Innate Spellcasting Ability, Draconic Ancestry, ...) regardless of each
+         one's own content, which is what "evenly spaced, aligned like Elven Lineage" means in
+         CSS terms: the split point is a property of the LAYOUT, never of what each list happens
+         to contain. The aside still takes whatever space remains (`minmax(0,1fr)`). Spells is
+         unaffected -- unchanged `1fr`/`1.15fr` proportional split, its own existing behavior. -->
     <div
       v-else-if="layout === 'inspector' && optionDetails"
       class="mt-3 grid items-start gap-3"
-      :class="stableInspectorHeight ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'"
+      :class="stableInspectorHeight ? 'lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'"
     >
       <ul class="grid min-w-0 gap-1.5">
         <li
           v-for="offered in displayed"
           :key="offered.value"
-          class="flex min-h-14 items-stretch rounded-none border backdrop-blur-sm transition-colors"
+          class="flex min-w-0 min-h-14 items-stretch rounded-none border backdrop-blur-sm transition-colors"
           :class="isSelected(offered.value)
             ? 'border-eldra-accent-bright/80 bg-eldra-accent/20 shadow-[0_0_18px_rgb(var(--eldra-accent-rgb)/0.25)]'
             : inspectorValue === offered.value ? 'border-eldra-accent/55 bg-eldra-ink/72' : 'border-eldra-accent/20 bg-eldra-ink/62'"

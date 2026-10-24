@@ -871,9 +871,24 @@ async function createCharacter() {
                       v-if="draft.species && speciesIdentityChoices.length"
                       class="mt-5 grid gap-5"
                     >
+                      <!-- STALE INSPECTOR STATE FIX -- a real reported bug: `choice.key` is
+                           `${slot}:${choiceSetId}` (e.g. 'species:choice:species.feature-option'),
+                           and that generic ChoiceSet id is REUSED, verbatim, by every one of the
+                           5 species that have a feature-option pick (Dragonborn/Elf/Goliath/
+                           Gnome/Tiefling all share the SAME id). So switching species (Elf ->
+                           Dragonborn) produced the IDENTICAL `:key`, Vue patched the EXISTING
+                           CharacterChoiceSetPicker instance instead of remounting a fresh one, and
+                           that component's own internal `inspectedValue` ref (never reset by a
+                           prop change) kept pointing at Elf's definitionId -- which still resolves
+                           to a real entry in the global `optionPresentationByDefinitionId` map, so
+                           Elf's own Details text kept showing beside Dragonborn's options. Folding
+                           the SPECIES' OWN slug into the key forces a real remount (a fresh,
+                           null `inspectedValue`) whenever the owning species changes, while a pick
+                           WITHIN the same species's own choice set keeps the identical key (species
+                           slug unchanged) and so keeps behaving exactly as before. -->
                       <CharacterChoiceSetPicker
                         v-for="choice in speciesIdentityChoices"
-                        :key="choice.key"
+                        :key="`${draft.species?.slug}:${choice.key}`"
                         :choice="choice"
                         :selected="selectionsFor(choice.key)"
                         :offered="offeredFor(choice.key)"
@@ -960,14 +975,18 @@ async function createCharacter() {
                       :figure-url="heroFigureUrl"
                     >
                       <!-- Class identity choices -- CHARACTER CREATOR V3 content-flow repair, same
-                           reasoning as the Identity stage's own speciesIdentityChoices. -->
+                           reasoning as the Identity stage's own speciesIdentityChoices. STALE
+                           INSPECTOR STATE FIX -- see that block's own comment: `choice:class
+                           .feature-option` is reused verbatim by both Cleric's Divine Order and
+                           Druid's Primal Order, so the same species slug fix applies here, keyed
+                           on the CLASS's own slug instead. -->
                       <div
                         v-if="draft.class && classIdentityChoices.length"
                         class="mt-5 grid gap-5"
                       >
                         <CharacterChoiceSetPicker
                           v-for="choice in classIdentityChoices"
-                          :key="choice.key"
+                          :key="`${draft.class?.slug}:${choice.key}`"
                           :choice="choice"
                           :selected="selectionsFor(choice.key)"
                           :offered="offeredFor(choice.key)"

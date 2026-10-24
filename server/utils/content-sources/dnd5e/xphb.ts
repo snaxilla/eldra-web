@@ -90,11 +90,11 @@ async function loadFeatureOptionCandidates(membership: (entry: any) => boolean):
     ),
     loadClassFeatureOptionCandidatesFor(
       'class-cleric.json', 'XPHB', ['Protector', 'Thaumaturge'],
-      (name) => `source:divine-order.${slugify(name)}`
+      (name) => `source:divine-order.${slugify(name)}`, 'Divine Order'
     ),
     loadClassFeatureOptionCandidatesFor(
       'class-druid.json', 'XPHB', ['Magician', 'Warden'],
-      (name) => `source:primal-order.${slugify(name)}`
+      (name) => `source:primal-order.${slugify(name)}`, 'Primal Order'
     )
   ]
 

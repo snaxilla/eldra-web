@@ -55,8 +55,11 @@ describe('preview5eToolsSpeciesFeatureOptions -- structural identity, never pros
     expect((black as any).definitionId).toBe('source:draconic-ancestry.black')
     expect(black.entityType).toBe('featureOption')
     expect((black.raw as any).facts).toEqual([{ label: 'Damage Type', value: 'Acid' }])
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- the section's own real lead-in prose
+    // (everything before the table node) comes first, verbatim.
+    expect((black.raw as any).entries[0]).toBe('Choose the kind of dragon from the Draconic Ancestors table.')
     // Both shared sections' real prose carried into every option's own entries, never only one.
-    const names = (black.raw as any).entries.map((entry: any) => entry.name)
+    const names = (black.raw as any).entries.slice(1).map((entry: any) => entry.name)
     expect(names).toEqual(['Breath Weapon', 'Damage Resistance'])
 
     const blue = result.items.find((item) => item.title === 'Dragonborn: Blue')!
@@ -195,13 +198,16 @@ describe('xphbProvider -- real dataset, feature-options category', () => {
     }
   })
 
-  it('the real Dragonborn Black candidate carries the real Breath Weapon/Damage Resistance prose and its own Damage Type fact', async () => {
+  it('the real Dragonborn Black candidate carries the real lead-in prose, Breath Weapon/Damage Resistance sections, and its own Damage Type fact', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const black = result.candidates.find((c: any) => c.definitionId === 'source:draconic-ancestry.black')!
     expect(black).toBeDefined()
     const raw = black.data as any
     expect(raw.facts).toEqual([{ label: 'Damage Type', value: 'Acid' }])
-    const sectionNames = raw.entries.map((entry: any) => entry.name)
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- the real "what is Draconic Ancestry"
+    // lead-in sentence, previously dropped entirely, now comes first.
+    expect(raw.entries[0]).toContain('Your lineage stems from a dragon progenitor')
+    const sectionNames = raw.entries.slice(1).map((entry: any) => entry.name)
     expect(sectionNames).toEqual(['Breath Weapon', 'Damage Resistance'])
   })
 
@@ -224,46 +230,71 @@ describe('xphbProvider -- real dataset, feature-options category', () => {
     expect(highElf).toBeDefined()
     expect(woodElf).toBeDefined()
 
-    const sections = (drow.data as any).entries.map((s: any) => s.name)
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- the real "what is an Elven Lineage, how
+    // do levels 3/5 work, which ability casts it" lead-in prose (THREE real sentences here,
+    // unlike Dragonborn's one), previously dropped entirely, now comes first, verbatim.
+    expect((drow.data as any).entries[0]).toContain('You are part of a lineage that grants you supernatural abilities')
+    expect((drow.data as any).entries[1]).toContain('When you reach character levels 3 and 5')
+    expect((drow.data as any).entries[2]).toContain('Intelligence, Wisdom, or Charisma is your spellcasting ability')
+    const sections = (drow.data as any).entries.slice(3).map((s: any) => s.name)
     expect(sections).toEqual(['Level 1', 'Level 3', 'Level 5'])
   })
 
-  it('the real Goliath Giant Ancestry candidates carry their own real per-benefit prose and a Variant fact from the real parenthetical', async () => {
+  it('the real Goliath Giant Ancestry candidates carry their own real lead-in + per-benefit prose and a Variant fact from the real parenthetical', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const cloudsJaunt = result.candidates.find((c: any) => c.definitionId === 'source:giant-ancestry.clouds-jaunt')!
     expect(cloudsJaunt).toBeDefined()
     expect((cloudsJaunt.data as any).facts).toEqual([{ label: 'Variant', value: 'Cloud Giant' }])
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- the real "what is Giant Ancestry, how the
+    // Proficiency-Bonus-per-Long-Rest use count works" lead-in sentence, previously dropped.
     expect((cloudsJaunt.data as any).entries).toEqual([
+      'You are descended from Giants. Choose one of the following benefits—a supernatural boon from your ancestry; you can use the chosen benefit a number of times equal to your {@variantrule Proficiency|XPHB|Proficiency Bonus}, and you regain all expended uses when you finish a {@variantrule Long Rest|XPHB}:',
       'As a {@variantrule Bonus Action|XPHB}, you magically teleport up to 30 feet to an unoccupied space you can see.'
     ])
   })
 
-  it('the real Gnome Gnomish Lineage candidates carry their own real entries directly, no Variant fact (no parenthetical in the real names)', async () => {
+  it('the real Gnome Gnomish Lineage candidates carry their own real lead-in + entries, no Variant fact (no parenthetical in the real names)', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const forestGnome = result.candidates.find((c: any) => c.definitionId === 'source:gnomish-lineage.forest-gnome')!
     expect(forestGnome).toBeDefined()
     expect((forestGnome.data as any).facts).toEqual([])
-    expect((forestGnome.data as any).entries[0]).toContain('Minor Illusion')
+    expect((forestGnome.data as any).entries[0]).toContain('You are part of a lineage that grants you supernatural abilities')
+    expect((forestGnome.data as any).entries[1]).toContain('Minor Illusion')
   })
 
-  it('the real Tiefling Fiendish Legacy candidates carry their Level 1/3/5 sections', async () => {
+  it('the real Tiefling Fiendish Legacy candidates carry their real lead-in prose and Level 1/3/5 sections', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const abyssal = result.candidates.find((c: any) => c.definitionId === 'source:fiendish-legacy.abyssal')!
     expect(abyssal).toBeDefined()
-    const sections = (abyssal.data as any).entries.map((s: any) => s.name)
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- the real "what is a Fiendish Legacy, how
+    // levels 3/5 work" lead-in prose (TWO sentences here, unlike Elf's one), previously dropped.
+    expect((abyssal.data as any).entries[0]).toContain('You are the recipient of a legacy that grants you supernatural abilities')
+    expect((abyssal.data as any).entries[1]).toContain('When you reach character levels 3 and 5')
+    const sections = (abyssal.data as any).entries.slice(2).map((s: any) => s.name)
     expect(sections).toEqual(['Level 1', 'Level 3', 'Level 5'])
   })
 
-  it('the real Cleric Divine Order / Druid Primal Order candidates are each already-complete classFeature rows', async () => {
+  it('the real Cleric Divine Order / Druid Primal Order candidates carry the real parent-feature lead-in prose, then their own entries', async () => {
     const result = await xphbProvider.loadCategory('feature-options')
     const protector = result.candidates.find((c: any) => c.definitionId === 'source:divine-order.protector')!
+    const thaumaturge = result.candidates.find((c: any) => c.definitionId === 'source:divine-order.thaumaturge')!
+    const magician = result.candidates.find((c: any) => c.definitionId === 'source:primal-order.magician')!
     const warden = result.candidates.find((c: any) => c.definitionId === 'source:primal-order.warden')!
     expect(protector).toBeDefined()
     expect(protector.title).toBe('Protector')
-    expect((protector.data as any).entries[0]).toContain('Martial weapons')
+    // COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP -- Divine Order's own real parent intro
+    // ("You have dedicated yourself to one of the following sacred roles of your choice."),
+    // previously never read at all, now comes first for BOTH of its children; Protector's own
+    // real text ("Martial weapons"/"Heavy armor") follows, unmodified.
+    expect((protector.data as any).entries[0]).toContain('dedicated yourself to one of the following sacred roles')
+    expect((protector.data as any).entries[1]).toContain('Martial weapons')
+    expect((thaumaturge.data as any).entries[0]).toContain('dedicated yourself to one of the following sacred roles')
+
     expect(warden).toBeDefined()
     expect(warden.title).toBe('Warden')
-    expect((warden.data as any).entries[0]).toContain('Medium armor')
+    expect((warden.data as any).entries[0]).toContain('dedicated yourself to one of the following sacred roles')
+    expect((warden.data as any).entries[1]).toContain('Medium armor')
+    expect((magician.data as any).entries[0]).toContain('dedicated yourself to one of the following sacred roles')
   })
 })
 

@@ -122,6 +122,25 @@ export function loadClassOptionCandidatesFor(
   }
 }
 
+// COMPLETE OPTION-DESCRIPTION COVERAGE FOLLOW-UP. Mirrors the species importer's own `leadIn`
+// fix exactly, for the same reason: Cleric's "Divine Order" classFeature row carries its own
+// real intro sentence ("You have dedicated yourself to one of the following sacred roles of
+// your choice.") BEFORE its `refClassFeature` pointers to "Protector"/"Thaumaturge" -- real,
+// sourced context about what Divine Order even IS, previously never read because the loader
+// only ever looked at the two named child rows directly. Structural: every plain-string entry on
+// the PARENT row, named explicitly by the caller (never inferred from the child names, since
+// nothing in a child row points back to its parent's name).
+function leadingProseFor(rows: any[], parentFeatureName: string, sourceCode: string): string[] {
+  const parent = rows.find((row) => row?.name === parentFeatureName && row?.source === sourceCode)
+  const entries: any[] = Array.isArray(parent?.entries) ? parent.entries : []
+  const leadIn: string[] = []
+  for (const entry of entries) {
+    if (typeof entry !== 'string') break
+    leadIn.push(entry)
+  }
+  return leadIn
+}
+
 // COMPLETE OPTION-DESCRIPTION COVERAGE -- Cleric's Divine Order (Protector/Thaumaturge) and
 // Druid's Primal Order (Magician/Warden). Structurally DIFFERENT from a Warlock invocation or a
 // species feature-option: each named option is ALREADY its own complete, independent
@@ -129,17 +148,25 @@ export function loadClassOptionCandidatesFor(
 // class-cleric.json/class-druid.json) -- nothing is synthesized from a table or list, so this
 // reuses `preview5eToolsClassOptions` exactly as the Warlock invocation loader does, just reading
 // `classFeature` rows from a class file instead of `optionalfeature` rows from
-// optionalfeatures.json.
+// optionalfeatures.json. `parentFeatureName`, when given, names the OWNING classFeature row
+// (e.g. 'Divine Order') whose own leading prose is prepended to every matched child's entries --
+// see leadingProseFor above.
 export function loadClassFeatureOptionCandidatesFor(
   classFileName: string,
   sourceCode: string,
   optionNames: readonly string[],
-  definitionIdFor: (optionName: string) => string
+  definitionIdFor: (optionName: string) => string,
+  parentFeatureName?: string
 ) {
   return async function loadClassFeatureOptionCandidates(_membership: (entry: any) => boolean): Promise<SourceCategoryLoadResult> {
     const allRows = await loadJsonArrayRows(`class/${classFileName}`, 'classFeature')
     const names = new Set(optionNames)
-    const rows = allRows.filter((row) => row?.source === sourceCode && names.has(row?.name))
+    const matched = allRows.filter((row) => row?.source === sourceCode && names.has(row?.name))
+
+    const leadIn = parentFeatureName ? leadingProseFor(allRows, parentFeatureName, sourceCode) : []
+    const rows = leadIn.length
+      ? matched.map((row) => ({ ...row, entries: [...leadIn, ...(Array.isArray(row?.entries) ? row.entries : [])] }))
+      : matched
 
     const preview = preview5eToolsClassOptions(rows, definitionIdFor)
     const candidates = toContentPublicationCandidates(preview)

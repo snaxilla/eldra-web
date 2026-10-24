@@ -145,6 +145,18 @@ export function preview5eToolsSpeciesFeatureOptions(
   const table = nested.find((entry: any) => entry?.type === 'table' && Array.isArray(entry?.rows))
   const list = nested.find((entry: any) => entry?.type === 'list' && Array.isArray(entry?.items))
 
+  // COMPLETE OPTION-DESCRIPTION COVERAGE -- FOLLOW-UP. A real reported gap, found by tracing the
+  // actual published text for Elf/Dragonborn: the named section's own LEADING prose -- e.g.
+  // Dragonborn's "Your lineage stems from a dragon progenitor..." or Elf's three sentences
+  // explaining what an Elven Lineage even is and how the Level 3/5 bonus spell works -- sits in
+  // `nested` BEFORE the table/list node, and was previously never read at all (only the
+  // table/list itself was). Every option got the bare per-color/per-lineage mechanics with none
+  // of the surrounding explanation, which is exactly the reported "mechanics-only, no plain-
+  // language context" symptom -- not an absence of source prose. Structural, not guessed: every
+  // plain-string entry preceding the table/list node, in order, verbatim.
+  const tableOrListIndex = nested.findIndex((entry) => entry === table || entry === list)
+  const leadInEntries = tableOrListIndex > 0 ? nested.slice(0, tableOrListIndex).filter((entry) => typeof entry === 'string') : []
+
   const sharedSections = (options.sharedSectionNames ?? [])
     .map((name) => entries.find((entry) => entry?.name === name))
     .filter(Boolean)
@@ -163,7 +175,7 @@ export function preview5eToolsSpeciesFeatureOptions(
 
         if (extraCells.length === 1) {
           const value = extraCells[0]
-          return { rawName, entries: sharedSections, facts: value != null ? [{ label: colLabels[1] || 'Detail', value: String(value) }] : [] }
+          return { rawName, entries: [...leadInEntries, ...sharedSections], facts: value != null ? [{ label: colLabels[1] || 'Detail', value: String(value) }] : [] }
         }
 
         const columnSections = extraCells.map((cell, index) => ({
@@ -171,14 +183,14 @@ export function preview5eToolsSpeciesFeatureOptions(
           name: colLabels[index + 1] || `Column ${index + 2}`,
           entries: cell
         }))
-        return { rawName, entries: [...sharedSections, ...columnSections], facts: [] }
+        return { rawName, entries: [...leadInEntries, ...sharedSections, ...columnSections], facts: [] }
       })
   } else if (list) {
     extracted = (list.items as any[])
       .filter((item) => item?.name)
       .map((item) => {
         const itemEntries = Array.isArray(item.entries) ? item.entries : item.entries != null ? [item.entries] : []
-        return { rawName: String(item.name).trim(), entries: [...sharedSections, ...itemEntries], facts: [] }
+        return { rawName: String(item.name).trim(), entries: [...leadInEntries, ...sharedSections, ...itemEntries], facts: [] }
       })
   }
 

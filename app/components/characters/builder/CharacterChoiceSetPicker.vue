@@ -281,10 +281,20 @@ function onSlotSelect(slotIndex: number, event: Event) {
       </label>
     </div>
 
-    <!-- CHARACTER CREATOR V3 -- inspector layout. -->
+    <!-- CHARACTER CREATOR V3 -- inspector layout.
+         RESPONSIVE BREAKPOINT FIX -- Identity/Class (`stableInspectorHeight`) raises the
+         side-by-side breakpoint from `md:` (768px) to `lg:` (1024px): at `md:`, this grid's own
+         2-column split activates purely by VIEWPORT width, with no awareness that the Identity/
+         Class stage ALSO reserves a left species/class rail outside this component -- at
+         real in-between widths that left the actual rendered column uncomfortably narrow for a
+         real reported problem ("do not force a side-by-side layout if it leaves the list too
+         narrow"). Spells has no such sibling rail squeezing it, so its own `md:` breakpoint is
+         unchanged -- see the aside's own comment for why `stableInspectorHeight` is the one
+         signal distinguishing the two. -->
     <div
       v-else-if="layout === 'inspector' && optionDetails"
-      class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:items-start"
+      class="mt-3 grid items-start gap-3"
+      :class="stableInspectorHeight ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'"
     >
       <ul class="grid min-w-0 gap-1.5">
         <li
@@ -334,26 +344,36 @@ function onSlotSelect(slotIndex: number, event: Event) {
            (`stableInspectorHeight`; see that prop's own header for why Spells is excluded). This
            aside used to be removed from the DOM entirely via `v-if="inspectorValue"`, and even
            once present its height was whatever that option's own prose happened to be. Because
-           the grid row's cross-axis height is the max of both columns (even with
-           `md:items-start`, which only controls alignment WITHIN the row, not the row's own
-           height), switching from nothing inspected to something, or between a short option
-           (Dragonborn: Black) and a long one (Elf: Drow, three sections), changed this row's
-           height and shoved everything below it (the next picker, the Class strip) up or down.
-           A fixed `h-*` + internal scroll makes this aside's footprint constant regardless of
-           inspection state or content length -- the row is always exactly this tall when
-           `stableInspectorHeight` is set; always rendered (never removed from the DOM) in that
-           case too, with a neutral placeholder when nothing is inspected -- this is NOT the
-           "defaults to the first offered option" behavior `requireSelectionOrInspection` still
-           gates (see inspectorValueFor); it never shows a specific option's content unsolicited,
-           only a generic instruction, so the "no empty panel pre-selection" rule this component
-           was built around still holds. When `stableInspectorHeight` is unset (Spells, every
-           caller before this phase), this is byte-identical old behavior: removed from the DOM
-           via `v-if`, sized to its own content, no reserved space on an unrelated stage/short
-           viewport. -->
+           the grid row's cross-axis height is the max of both columns (even with `items-start`,
+           which only controls alignment WITHIN the row, not the row's own height), switching
+           from nothing inspected to something, or between a short option (Dragonborn: Black) and
+           a long one (Elf: Drow, three sections), changed this row's height and shoved
+           everything below it (the next picker, the Class strip) up or down. A fixed `h-*` +
+           internal scroll makes this aside's footprint constant regardless of inspection state
+           or content length -- the row is always exactly this tall when `stableInspectorHeight`
+           is set; always rendered (never removed from the DOM) in that case too, with a neutral
+           placeholder when nothing is inspected -- this is NOT the "defaults to the first
+           offered option" behavior `requireSelectionOrInspection` still gates (see
+           inspectorValueFor); it never shows a specific option's content unsolicited, only a
+           generic instruction, so the "no empty panel pre-selection" rule this component was
+           built around still holds.
+
+           OVERLAP FIX -- a second real reported bug: `md:sticky md:top-20` made this aside stick
+           at a fixed viewport offset while the PAGE scrolled, so once a tall inspector (e.g. a
+           long Elf lineage entry) had been scrolled past, it could still be floating on screen
+           on top of the NEXT CharacterChoiceSetPicker stacked right after it (e.g. Elf's own
+           Innate Spellcasting Ability choice), hiding its Details buttons -- a real violation of
+           normal document flow, not merely a visual nitpick. `stableInspectorHeight` now drops
+           `sticky` entirely: the aside is a plain grid cell that scrolls away with the rest of
+           the page like any other content, so it can never cover a sibling choice group.
+
+           When `stableInspectorHeight` is unset (Spells, every caller before this phase), both
+           of the above are byte-identical old behavior: removed from the DOM via `v-if`, sized
+           to its own content, sticky, no reserved space on an unrelated stage/short viewport. -->
       <aside
         v-if="stableInspectorHeight || inspectorValue"
-        class="min-w-0 border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md md:sticky md:top-20"
-        :class="stableInspectorHeight ? 'h-[22rem] overflow-y-auto' : ''"
+        class="min-w-0 border border-eldra-accent/30 bg-eldra-ink/80 p-4 backdrop-blur-md"
+        :class="stableInspectorHeight ? 'h-[22rem] overflow-y-auto' : 'md:sticky md:top-20'"
         aria-live="polite"
       >
         <template v-if="inspectorValue">

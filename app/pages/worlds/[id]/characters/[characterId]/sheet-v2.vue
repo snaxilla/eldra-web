@@ -292,15 +292,16 @@
 // ---------------------------------------------------------------------------
 // ELDRA ROLL SYSTEM PHASE 2C: THE ROLL TRAY
 // ---------------------------------------------------------------------------
-// Phase 2's own temporary inline "latest roll" strip is gone -- `WorldRollTray`
-// (components/world/, §9) is now the one, permanent, canonical place a roll
-// result appears: a persistent, collapsible feed (tabletop notebook / combat
-// log, never a modal or a toast) docked bottom-right on desktop, a bottom
-// sheet on mobile. This page owns no roll DATA beyond its one
-// `useWorldRolls()` instance -- the Tray is purely a display component fed
-// by that composable's `history`/`pending`/`error`/pagination state; see
-// WorldRollTray.vue's own header for the full location/animation/pagination
-// design.
+// Phase 2's own temporary inline "latest roll" strip is gone. The permanent
+// place a roll result appears on THIS page is `CharacterSheetRollRail`
+// (components/characters/) -- a sheet-specific, full-height rail beside the
+// sheet's own content, redesigned from scratch rather than a resized copy of
+// `WorldRollTray`'s floating panel (see that component's own header for the
+// full reasoning and for why `WorldRollTray` itself stays floating-only).
+// This page still owns no roll DATA beyond its one `useWorldRolls()`
+// instance -- the rail is purely a display component fed by that
+// composable's `history`/`pending`/`error`/pagination state, the exact same
+// contract `WorldRollTray` used before this redesign.
 //
 // ---------------------------------------------------------------------------
 // CHARACTER SHEET BODY PHASE 1A: WEAPON/UNARMED ATTACK + DAMAGE ROLLS
@@ -331,7 +332,7 @@ import CharacterSheetHeader from '~/components/characters/CharacterSheetHeader.v
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
-import WorldRollTray from '~/components/world/WorldRollTray.vue'
+import CharacterSheetRollRail from '~/components/characters/CharacterSheetRollRail.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
@@ -1183,41 +1184,35 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
        queries. Nothing is reserved while it is closed. -->
   <div
     ref="workspaceEl"
-    class="h-full overflow-y-auto bg-transparent"
+    class="h-full overflow-hidden bg-transparent"
     :class="inspectorContractsSheet ? 'pr-[380px]' : ''"
   >
-    <!-- Roll Tray Rail milestone (correction) -- the previous round placed the Roll Tray as a
-         flex sibling to the RIGHT of the sheet column, which read as "far right of the sheet,"
-         not the required placement. The reference is CreationStageRail.vue's own placement in
-         create-v2.vue: `<CreationStageRail />` is the FIRST child of that page's own
-         `flex h-full min-w-0` row, immediately beside Eldra's global workspace navigation, with
-         the stage content as the flex-1 sibling AFTER it. This outer row mirrors that exactly --
-         the Roll Tray rail first, flush against the content column's own left edge, then the
-         sheet's centered box as the flex-1 sibling -- so the rail sits between the global nav
-         and the sheet, not beside the sheet's far edge. `@container/sheet` moves back onto the
-         centered sheet box itself (its original role, before the prior round's placement):
-         DesktopLayout/CompanionLayout's own `@container sheet` queries resolve to the NEAREST
-         ancestor carrying this name, and that box is once again the thing whose width actually
-         reflects what the sheet has left after the rail.
-
-         `h-full` HERE is required, not cosmetic: WorldRollTray.vue's own sidebar rail asks for
-         `h-full` so it spans the full workspace height (matching Stages) rather than collapsing
-         to its own dice-controls/history content height -- the bug this round corrects. A
-         percentage height only resolves against a DEFINITE ancestor height; without `h-full` on
-         THIS row, it would stay `auto` (sized to its tallest child, the sheet column), and the
-         rail's own `h-full` would resolve to nothing. `items-start` (unchanged) means the sheet
-         column itself keeps its own natural/auto height regardless -- taller sheet content still
-         simply overflows this row's bottom edge, exactly as before, and `workspaceEl`'s own
-         `overflow-y-auto` still scrolls it; only the rail is now forced to the full workspace
-         height no matter how short the sheet's own content is. -->
-    <div class="flex h-full min-w-0 items-start">
+    <!-- Roll Tray Rail milestone (full redesign) -- scroll ownership now matches
+         create-v2.vue's own ancestor chain exactly, not an approximation of it. The Creator's
+         outer shell (`absolute inset-0 overflow-hidden`) and its `relative z-10 flex h-full
+         min-w-0` row NEVER scroll as a block -- only the stage content column inside that row
+         (`min-h-0 flex-1 overflow-y-auto`) does, which is why CreationStageRail.vue can stay
+         full-height with a plain `relative h-full`, no `position: sticky` needed anywhere. The
+         previous round put `overflow-y-auto` on THIS element (`workspaceEl`) instead, one level
+         too high, and then reached for `sticky top-0` on the rail to compensate -- but a sticky
+         element can only stay stuck within its own containing block (this row), and that row was
+         itself only ever one viewport tall, so the whole row -- rail included -- scrolled out of
+         view on any sheet taller than one screen. That was the actual cause of "the tray scrolls
+         away": not a missing CSS property, but scroll ownership sitting one level too high up
+         this chain. The fix is structural, matching the Creator exactly: `workspaceEl` no longer
+         scrolls (`overflow-hidden`, not `overflow-y-auto`); this row stays non-scrolling and
+         `h-full`; the sheet's own content column below (`@container/sheet`) is now the ONE
+         scrolling region (`min-h-0 flex-1 overflow-y-auto`), exactly mirroring create-v2.vue's
+         stage content column. The rail is simply never inside anything that scrolls, so it never
+         needs to resist scrolling with `sticky` -- it is just an ordinary flex sibling at `h-full`,
+         default `stretch` (no `items-start` on this row, also matching the Creator's row, which
+         sets none either) alongside the content column. -->
+    <div class="flex h-full min-w-0">
       <!-- Roll Tray rail -- FIRST flex child, matching CreationStageRail.vue's own placement
-           relative to the global nav. `variant="sidebar"` (WorldRollTray.vue's own prop) renders
-           the SAME roll state/props/events/history this page already owns (useWorldRolls(),
-           unchanged) as a vertical rail-or-panel -- see that component's own header for the full
-           design. -->
-      <WorldRollTray
-        variant="sidebar"
+           relative to the global nav. A sheet-specific component (CharacterSheetRollRail.vue),
+           not WorldRollTray.vue with a sidebar mode -- see that component's own header for why.
+           Same roll state/props/events this page already owns (useWorldRolls(), unchanged). -->
+      <CharacterSheetRollRail
         :rolls="rollHistory"
         :pending="rollPending"
         :error="rollError"
@@ -1248,9 +1243,9 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             </button>
           </div>
         </template>
-      </WorldRollTray>
+      </CharacterSheetRollRail>
 
-      <div class="@container/sheet mx-auto min-w-0 max-w-[1880px] flex-1 px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
+      <div class="@container/sheet mx-auto min-h-0 min-w-0 max-w-[1880px] flex-1 overflow-y-auto px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
       <div
         v-if="pending"
         class="text-sm text-eldra-text-faint"

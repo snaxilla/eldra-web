@@ -26,19 +26,33 @@
 // own.
 //
 // ---------------------------------------------------------------------------
-// CHARACTER SHEET ROLL TRAY MILESTONE -- `inline` PROP
+// CHARACTER SHEET ROLL TRAY MILESTONE -- `variant` PROP
 // ---------------------------------------------------------------------------
-// The Character Sheet moved its own mounting of this component out of
-// viewport-fixed positioning and into its normal scrolling content column,
-// using the Creator's Stages panel (CreationStageRail.vue) as the
-// collapsed-bar/open-panel visual and interaction reference. Rather than
-// build a second tray, this component gained one opt-in prop (`inline`,
-// default false) that swaps ONLY the outer two wrapper divs' positioning
-// classes -- `fixed`/viewport-docked vs. a plain full-width block -- and
-// changes nothing else: same header, same reserved `dice-stage` slot, same
-// manual dice rack, same history feed/pagination, same props/events, same
-// roll data. AdminRollSandbox.vue never passes `inline`, so its own
-// floating presentation is byte-identical to before.
+// The Character Sheet mounts this component as a vertical SIDEBAR beside
+// its own content, matching the Creator's Stages panel (CreationStageRail.vue)
+// as the collapsed-rail/expanded-panel visual and interaction reference --
+// NOT a full-width horizontal row (a first attempt at this did exactly
+// that, by adding an `inline` boolean that only changed the outer wrapper's
+// WIDTH, not its AXIS; it produced a horizontal strip under the sheet
+// header and was rejected on review). Rather than build a second tray,
+// this component takes a `variant` prop (`'floating' | 'sidebar'`, default
+// `'floating'`) that changes ONLY the outer wrapper's shape and the
+// collapsed control's own markup -- same header, same reserved
+// `dice-stage` slot, same manual dice rack, same history feed/pagination,
+// same props/events, same roll data, for every variant.
+// `'sidebar'`: a narrow vertical rail when collapsed (mirrors
+// CreationStageRail.vue's own `w-14` collapsed rail width exactly, icon +
+// latest-roll total only, no visible label -- an accessible name carries
+// it instead, the same choice that rail makes for its own collapsed
+// stage buttons), a wider vertical panel when expanded (mirrors that
+// rail's `w-56` scale, slightly wider here since a roll entry carries
+// more text than a stage label). Normal document flow, `sticky top-0`
+// WITHIN the caller's own scroll container (never `fixed` to the
+// viewport), so it stays reachable while scrolling and reflows whatever
+// is beside it when its own width changes -- it never overlays content.
+// AdminRollSandbox.vue never passes `variant`, so its own floating
+// presentation (the ORIGINAL design this component shipped with) is
+// byte-identical to before.
 //
 // ---------------------------------------------------------------------------
 // LOCATION
@@ -130,19 +144,18 @@ const props = withDefaults(defineProps<{
   hasMore?: boolean
   defaultCollapsed?: boolean
   emptyMessage?: string
-  // CHARACTER SHEET ROLL TRAY MILESTONE. Default false: byte-identical old
-  // behavior (`fixed`, viewport-docked, bottom-right desktop / bottom sheet
-  // mobile) for every existing caller (AdminRollSandbox.vue included, which
-  // never passes this). `true` renders the SAME header/dice-stage slot/
-  // manual dice rack/history feed/pagination -- no roll state, no markup,
-  // nothing about this component's DATA duplicated -- inside a plain block
-  // element instead, so a caller that wants the Tray living in normal
-  // document flow (e.g. the Character Sheet's own collapsible Roll Tray
-  // section) can compose this component directly rather than building a
-  // second tray. Only the OUTER two wrapper divs' positioning/sizing
-  // classes change; everything from the collapsed-handle button down is
-  // unchanged.
-  inline?: boolean
+  // CHARACTER SHEET ROLL TRAY MILESTONE. Default `'floating'`: byte-identical
+  // old behavior (`fixed`, viewport-docked, bottom-right desktop / bottom
+  // sheet mobile) for every existing caller (AdminRollSandbox.vue included,
+  // which never passes this). `'sidebar'` renders the SAME header/
+  // dice-stage slot/manual dice rack/history feed/pagination -- no roll
+  // state, no markup, nothing about this component's DATA duplicated --
+  // inside a vertical rail-or-panel instead, so a caller that wants the
+  // Tray living beside its own content in normal document flow (the
+  // Character Sheet's own sidebar) can compose this component directly
+  // rather than building a second tray. See this file's own header for the
+  // full design.
+  variant?: 'floating' | 'sidebar'
 }>(), {
   rolls: () => [],
   pending: false,
@@ -152,7 +165,7 @@ const props = withDefaults(defineProps<{
   hasMore: false,
   defaultCollapsed: false,
   emptyMessage: 'No rolls yet. Click an ability, save, or skill to roll one.',
-  inline: false
+  variant: 'floating'
 })
 
 const emit = defineEmits<{
@@ -175,13 +188,18 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
 
 <template>
   <div
-    :class="inline
-      ? 'w-full'
-      : 'pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:justify-end sm:px-0 sm:pb-0'"
+    :class="[
+      variant === 'sidebar'
+        ? 'sticky top-0 z-10 shrink-0 self-start transition-[width] duration-200 motion-reduce:transition-none'
+        : 'pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:justify-end sm:px-0 sm:pb-0',
+      variant === 'sidebar' ? (collapsed ? 'w-14' : 'w-80') : ''
+    ]"
   >
-    <div :class="inline ? 'w-full' : 'pointer-events-auto w-full max-w-md sm:w-96'">
-      <!-- Collapsed handle -- "a compact Roll Tray handle with the latest
-           total" (this task's own BEHAVIOR section). -->
+    <div :class="variant === 'sidebar' ? 'w-full' : 'pointer-events-auto w-full max-w-md sm:w-96'">
+      <!-- Collapsed handle. SIDEBAR: a narrow square icon tile -- the SAME w-14 collapsed width
+           CreationStageRail.vue's own rail uses, icon + latest-roll total only, no visible label
+           (an accessible name carries it instead, exactly that rail's own choice for its collapsed
+           stage buttons). FLOATING: unchanged, the original horizontal pill bar. -->
       <Transition
         enter-from-class="opacity-0 translate-y-2"
         enter-active-class="transition duration-150 ease-out"
@@ -189,10 +207,26 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
         leave-active-class="transition duration-150 ease-in"
       >
         <button
-          v-if="collapsed"
+          v-if="collapsed && variant === 'sidebar'"
           type="button"
-          class="eldra-ornate-panel eldra-frame-corners flex w-full items-center gap-3 rounded-none border px-4 py-2.5 text-left backdrop-blur"
-          :class="inline ? '' : 'sm:ml-auto sm:w-auto'"
+          class="eldra-ornate-panel eldra-frame-corners flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-none border backdrop-blur"
+          title="Roll Tray"
+          aria-label="Expand Roll Tray"
+          @click="collapsed = false"
+        >
+          <UIcon
+            name="i-lucide-dices"
+            class="h-5 w-5 text-[#c9a45a]"
+          />
+          <span
+            v-if="latestRoll"
+            class="font-mono text-[0.6rem] font-semibold tabular-nums text-[#fff7df]"
+          >{{ latestRoll.total }}</span>
+        </button>
+        <button
+          v-else-if="collapsed"
+          type="button"
+          class="eldra-ornate-panel eldra-frame-corners flex w-full items-center gap-3 rounded-none border px-4 py-2.5 text-left backdrop-blur sm:ml-auto sm:w-auto"
           aria-label="Expand Roll Tray"
           @click="collapsed = false"
         >
@@ -208,7 +242,8 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
         </button>
       </Transition>
 
-      <!-- Expanded tray -->
+      <!-- Expanded tray -- SAME content for both variants, only the outer panel's own
+           width/height/positioning classes differ. -->
       <Transition
         enter-from-class="opacity-0 translate-y-4"
         enter-active-class="transition duration-200 ease-out"
@@ -217,7 +252,8 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
       >
         <div
           v-if="!collapsed"
-          class="eldra-ornate-panel eldra-frame-corners flex max-h-[70vh] w-full flex-col rounded-none border backdrop-blur sm:max-h-[32rem]"
+          class="eldra-ornate-panel eldra-frame-corners flex w-full flex-col rounded-none border backdrop-blur"
+          :class="variant === 'sidebar' ? 'max-h-[calc(100vh-2rem)]' : 'max-h-[70vh] sm:max-h-[32rem]'"
         >
           <header class="flex shrink-0 items-center justify-between gap-2 border-b border-[rgba(201,164,90,0.14)] px-4 py-2.5">
             <div class="flex items-center gap-2">
@@ -246,7 +282,7 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
                 @click="collapsed = true"
               >
                 <UIcon
-                  name="i-lucide-chevron-down"
+                  :name="variant === 'sidebar' ? 'i-lucide-panel-right-close' : 'i-lucide-chevron-down'"
                   class="h-4 w-4"
                 />
               </button>

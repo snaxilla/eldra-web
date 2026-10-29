@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { directusServiceRequest } from '../../../utils/directus'
+import { getCatalogueBackedEntityRows } from '../../../utils/catalogue-entity-bridge'
 
 const CLASS_DATA_DIR = '/opt/eldra/datasets/5etools-src/data/class'
 const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
@@ -503,8 +504,8 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  const rows = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
-  const entityIds = rows.map((row: any) => row.id).filter(Boolean)
+  const legacyRows = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
+  const entityIds = legacyRows.map((row: any) => row.id).filter(Boolean)
 
   let blocks: any[] = []
   if (entityIds.length) {
@@ -529,18 +530,40 @@ export default defineEventHandler(async (event) => {
     blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
   }
 
-  const blocksByEntityId = new Map<number, any[]>()
+  // Catalogue-backed pseudo rows -- the Content Pack Browsers Regression
+  // Repair. Content of these entity types now resolves through the World's
+  // bound/published Content Packs rather than (only) `entities`, since the
+  // content migration moved 5etools imports off this legacy path -- see
+  // catalogue-entity-bridge.ts's own header for the full root-cause trace.
+  // Additive only: homebrew-authored entities of the same types (still
+  // written into `entities`/`block_instances` by the Homebrew Forge) are
+  // untouched above and simply appear alongside these. A type this endpoint
+  // is asked for that has no catalogue-backed category (location, character,
+  // npc, ...) costs nothing extra -- getCatalogueBackedEntityRows filters to
+  // known categories itself.
+  const catalogueRows = await getCatalogueBackedEntityRows(worldId, typeFilter)
+
+  const blocksByEntityId = new Map<string, any[]>()
 
   for (const block of blocks) {
-    const entityId = Number(block.entity_id)
+    const entityId = String(block.entity_id)
     if (!blocksByEntityId.has(entityId)) {
       blocksByEntityId.set(entityId, [])
     }
     blocksByEntityId.get(entityId)!.push(block)
   }
 
+  for (const catalogueRow of catalogueRows) {
+    blocksByEntityId.set(catalogueRow.id, catalogueRow.blocks)
+  }
+
+  const rows = [
+    ...legacyRows.map((row: any) => ({ ...row, __source: 'legacy' as const })),
+    ...catalogueRows.map(({ blocks: _blocks, ...row }) => row)
+  ]
+
   return rows.map((row: any) => {
-    const entityBlocks = blocksByEntityId.get(Number(row.id)) || []
+    const entityBlocks = blocksByEntityId.get(String(row.id)) || []
     const derivedImageUrl =
       entityImageUrl(row) ||
       extractImageUrl(entityBlocks) ||
@@ -578,7 +601,8 @@ export default defineEventHandler(async (event) => {
         collection_meta_lines: collectionMetaLines,
         metaLines: collectionMetaLines,
         imageUrl: derivedImageUrl,
-        image_url: derivedImageUrl
+        image_url: derivedImageUrl,
+        __source: row.__source || 'legacy'
       }
     }
 

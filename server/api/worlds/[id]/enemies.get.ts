@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../utils/directus'
+import { getCatalogueBackedEnemyRows } from '../../../utils/catalogue-entity-bridge'
 
 function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {
@@ -47,8 +48,18 @@ export default defineEventHandler(async (event) => {
   const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
   const entityIds = entities.map((row: any) => row.id).filter(Boolean)
 
+  // Catalogue-backed rows (Content Pack Browsers Regression Repair) --
+  // fetched regardless of whether any legacy/homebrew `entities` rows
+  // exist, since a World whose enemies came entirely from an imported,
+  // published Content Pack has none of those and would otherwise still
+  // return zero results. See catalogue-entity-bridge.ts's own header for
+  // the root-cause trace and why `getCatalogueBackedEnemyRows` is safe to
+  // call unconditionally (it resolves to an empty list, never an error,
+  // for a World with no bound packs or no `enemy` entries in them).
+  const catalogueRows = await getCatalogueBackedEnemyRows(worldId)
+
   if (!entityIds.length) {
-    return []
+    return catalogueRows
   }
 
   const statblocksRes = await directusServiceRequest('/items/entity_statblocks', {
@@ -131,7 +142,7 @@ export default defineEventHandler(async (event) => {
     blocksByEntityId.get(entityId)!.push(row)
   }
 
-  return entities.map((entity: any) => {
+  const legacyEnemyRows = entities.map((entity: any) => {
     const entityId = Number(entity.id)
     const statblock = statblockByEntityId.get(entityId) || null
     const monsterProfile = monsterProfileByEntityId.get(entityId) || null
@@ -151,7 +162,13 @@ export default defineEventHandler(async (event) => {
       blocks: entityBlocks,
       statblock,
       actions: entityActions,
-      monsterProfile
+      monsterProfile,
+      __source: 'legacy' as const
     }
   })
+
+  // Merged, not replaced -- a homebrew-authored enemy (legacy `entities`
+  // row) and an imported-and-published-pack enemy (catalogue row) both
+  // belong in this list. See catalogue-entity-bridge.ts's own header.
+  return [...legacyEnemyRows, ...catalogueRows]
 })

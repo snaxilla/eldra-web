@@ -28,7 +28,7 @@ const deleting = ref(false)
 const deleteError = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: enemies, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/enemies`, {
+const { data: enemies, pending, error, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/enemies`, {
   default: () => []
 })
 
@@ -586,6 +586,16 @@ async function deleteEnemy() {
         </section>
 
         <section
+          v-else-if="error"
+          class="mt-6 eldra-empty rounded-none border border-red-500/30 bg-red-500/10 p-10 text-center shadow-xl"
+        >
+          <div class="text-lg font-medium text-red-100">Failed to load enemies</div>
+          <p class="mt-2 text-sm text-red-200">
+            {{ error?.data?.statusMessage || error?.data?.message || error?.message || 'Something went wrong loading this World\'s enemies.' }}
+          </p>
+        </section>
+
+        <section
           v-else-if="!filteredEnemies.length"
           class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
@@ -684,6 +694,7 @@ async function deleteEnemy() {
                   </button>
 
                   <NuxtLink
+                    v-if="enemy.__source !== 'catalogue'"
                     :to="`/worlds/${worldId}/entities/${enemy.entityId || enemy.entity_id || enemy.id}`"
                     class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
                     @click.stop
@@ -842,7 +853,11 @@ async function deleteEnemy() {
           </div>
 
           <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-            <div v-if="mode === 'build'" class="flex gap-3 mb-3">
+            <!-- Catalogue-sourced enemies (an imported, published Content Pack entry,
+                 not a World-authored/homebrew `entities` row) have nothing in `entities`
+                 to delete or link an article for -- see catalogue-entity-bridge.ts's own
+                 header. Delete and Open Article only apply to a legacy/homebrew row. -->
+            <div v-if="mode === 'build' && selectedEnemy.__source !== 'catalogue'" class="flex gap-3 mb-3">
               <button
                 v-if="!confirmDelete"
                 type="button"
@@ -864,11 +879,19 @@ async function deleteEnemy() {
             </div>
 
             <NuxtLink
+              v-if="selectedEnemy.__source !== 'catalogue'"
               :to="`/worlds/${worldId}/entities/${selectedEnemy.id}`"
               class="eldra-button block rounded-none px-4 py-3 text-center text-sm font-medium"
             >
               Open Article
             </NuxtLink>
+
+            <p
+              v-else
+              class="text-center text-xs uppercase tracking-[0.2em] text-[#9f9278]"
+            >
+              From a published Content Pack
+            </p>
           </div>
         </div>
       </aside>

@@ -112,12 +112,24 @@ const newLocationForm = reactive({
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=${encodeURIComponent(entitySummaryTypes.value)}`, {
+const { data: entities, pending, error, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=${encodeURIComponent(entitySummaryTypes.value)}`, {
   default: () => []
 })
 
+// Catalogue-sourced entities (an imported, published Content Pack entry --
+// see catalogue-entity-bridge.ts's own header) have no backing `entities`
+// row, so there is nothing at `/entities/:id` to fetch a richer detail view
+// from; the already-loaded summary entity (which already carries full
+// `.blocks`, unlike a legacy summary row) is all there is. Skip the fetch
+// entirely rather than let it 404 against a synthetic id.
+const selectedEntityIsCatalogueSourced = computed(() =>
+  (entities.value || []).find((entity: any) => String(entity.id) === String(selectedEntityId.value))?.__source === 'catalogue'
+)
+
 const { data: selectedEntityDetail, pending: selectedPending } = await useFetch(
-  () => selectedEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedEntityId.value}` : null,
+  () => (selectedEntityId.value && !selectedEntityIsCatalogueSourced.value)
+    ? `/api/worlds/${worldId.value}/entities/${selectedEntityId.value}`
+    : null,
   {
     default: () => null,
     watch: [selectedEntityId]
@@ -1099,7 +1111,11 @@ const selectedEntity = computed(() => {
 })
 
 const selectedSummary = computed(() => {
-  const detail = selectedEntityDetail.value
+  // Falls back to the already-loaded summary entity when there is no
+  // richer detail fetch (catalogue-sourced selection -- see
+  // selectedEntityIsCatalogueSourced above -- or still loading), mirroring
+  // the template's own `selectedEntityDetail || selectedEntity` pattern.
+  const detail = selectedEntityDetail.value || selectedEntity.value
   if (!detail) return ''
 
   const direct = String(detail?.summary || '').trim()
@@ -1303,6 +1319,16 @@ async function createLocationArticle() {
         </section>
 
         <section
+          v-else-if="error"
+          class="mt-6 eldra-empty rounded-none border border-red-500/30 bg-red-500/10 p-10 text-center shadow-xl"
+        >
+          <div class="text-lg font-medium text-red-100">Failed to load {{ title.toLowerCase() }}</div>
+          <p class="mt-2 text-sm text-red-200">
+            {{ error?.data?.statusMessage || error?.data?.message || error?.message || `Something went wrong loading this World's ${title.toLowerCase()}.` }}
+          </p>
+        </section>
+
+        <section
           v-else-if="!filteredEntities.length"
           class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
@@ -1411,6 +1437,7 @@ async function createLocationArticle() {
                   </button>
 
                   <button
+                    v-if="entity.__source !== 'catalogue'"
                     type="button"
                     class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/52 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-eldra-text-soft transition hover:border-eldra-accent/38 hover:text-eldra-text-strong"
                     @click.stop="openEntityArticle(entity)"
@@ -1668,8 +1695,12 @@ async function createLocationArticle() {
           </div>
 
           <div class="border-t border-eldra-accent/22 p-5 space-y-3">
+            <!-- A catalogue-sourced entity (an imported, published Content Pack entry --
+                 see catalogue-entity-bridge.ts's own header) has no backing `entities` row
+                 to delete or link an article for; a legacy/homebrew entity keeps both,
+                 unchanged. -->
             <button
-              v-if="mode === 'build'"
+              v-if="mode === 'build' && selectedEntity.__source !== 'catalogue'"
               type="button"
               class="block w-full rounded-none border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
               :disabled="deletingEntity"
@@ -1683,11 +1714,19 @@ async function createLocationArticle() {
             </div>
 
             <NuxtLink
+              v-if="selectedEntity.__source !== 'catalogue'"
               :to="`/worlds/${worldId}/entities/${selectedEntity.id}`"
               class="eldra-button block rounded-none px-4 py-3 text-center text-sm font-medium"
             >
               Open Article
             </NuxtLink>
+
+            <p
+              v-else
+              class="text-center text-xs uppercase tracking-[0.2em] text-eldra-text-faint"
+            >
+              From a published Content Pack
+            </p>
           </div>
         </div>
       </aside>

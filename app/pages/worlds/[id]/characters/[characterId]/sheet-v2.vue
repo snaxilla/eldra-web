@@ -1186,15 +1186,60 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
     class="h-full overflow-y-auto bg-transparent"
     :class="inspectorContractsSheet ? 'pr-[380px]' : ''"
   >
-    <!-- Roll Tray Sidebar milestone -- the `@container/sheet` name moved off this outer
-         wrapper and onto the NEW inner column directly wrapping CharacterSheetShell below
-         (the only two consumers, CharacterSheetDesktopLayout.vue's and
-         CharacterSheetCompanionLayout.vue's own `@container sheet` queries, always resolve to
-         the NEAREST ancestor carrying this name): once the Roll Tray sidebar is a flex sibling
-         of that column, THIS outer div's own width no longer reflects what the sheet actually
-         has available (the sidebar eats into it), so the container query needs to measure the
-         inner column directly, not this unchanged-width outer one. -->
-    <div class="mx-auto max-w-[1880px] px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
+    <!-- Roll Tray Rail milestone (correction) -- the previous round placed the Roll Tray as a
+         flex sibling to the RIGHT of the sheet column, which read as "far right of the sheet,"
+         not the required placement. The reference is CreationStageRail.vue's own placement in
+         create-v2.vue: `<CreationStageRail />` is the FIRST child of that page's own
+         `flex h-full min-w-0` row, immediately beside Eldra's global workspace navigation, with
+         the stage content as the flex-1 sibling AFTER it. This outer row mirrors that exactly --
+         the Roll Tray rail first, flush against the content column's own left edge, then the
+         sheet's centered box as the flex-1 sibling -- so the rail sits between the global nav
+         and the sheet, not beside the sheet's far edge. `@container/sheet` moves back onto the
+         centered sheet box itself (its original role, before the prior round's placement):
+         DesktopLayout/CompanionLayout's own `@container sheet` queries resolve to the NEAREST
+         ancestor carrying this name, and that box is once again the thing whose width actually
+         reflects what the sheet has left after the rail. -->
+    <div class="flex min-w-0 items-start">
+      <!-- Roll Tray rail -- FIRST flex child, matching CreationStageRail.vue's own placement
+           relative to the global nav. `variant="sidebar"` (WorldRollTray.vue's own prop) renders
+           the SAME roll state/props/events/history this page already owns (useWorldRolls(),
+           unchanged) as a vertical rail-or-panel -- see that component's own header for the full
+           design. -->
+      <WorldRollTray
+        variant="sidebar"
+        :rolls="rollHistory"
+        :pending="rollPending"
+        :error="rollError"
+        :history-pending="rollHistoryPending"
+        :history-error="rollHistoryError"
+        :has-more="Boolean(rollNextCursor)"
+        empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
+        @load-more="loadMoreRolls"
+        @roll-manual-die="rollManualDie"
+      >
+        <template #header-actions>
+          <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">
+            <button
+              type="button"
+              class="rounded-none px-2 py-1 transition"
+              :class="rollVisibility === 'private' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
+              @click="rollVisibility = 'private'"
+            >
+              Private
+            </button>
+            <button
+              type="button"
+              class="rounded-none px-2 py-1 transition"
+              :class="rollVisibility === 'table' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
+              @click="rollVisibility = 'table'"
+            >
+              Table
+            </button>
+          </div>
+        </template>
+      </WorldRollTray>
+
+      <div class="@container/sheet mx-auto min-w-0 max-w-[1880px] flex-1 px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
       <div
         v-if="pending"
         class="text-sm text-eldra-text-faint"
@@ -1232,20 +1277,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         <div class="eldra-sheet-panel h-64" />
       </div>
 
-      <!-- Roll Tray Sidebar milestone -- a plain flex row, the sheet's own layout boundary
-           (sheet-v2.vue itself), not a change to CharacterSheetShell/DesktopLayout/
-           CompanionLayout: the sheet column (`@container/sheet`, now here -- see this file's
-           own note above) and the Roll Tray sidebar are siblings, so widening/narrowing the
-           sidebar naturally reflows the sheet column beside it, with no absolute/fixed
-           positioning and nothing ever covering the other. See WorldRollTray.vue's own header
-           for why `variant="sidebar"` (not the earlier, rejected `inline` full-width row) is
-           correct here. -->
-      <div
-        v-else-if="blueprint"
-        class="flex min-w-0 items-start gap-4"
-      >
-        <div class="@container/sheet min-w-0 flex-1">
       <CharacterSheetShell
+        v-else-if="blueprint"
         :sections="sections"
         :active-section="activeTab"
         :main-section="mainSection"
@@ -1701,47 +1734,6 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </WorldEntityContextDrawer>
         </template>
       </CharacterSheetShell>
-        </div>
-
-        <!-- Roll Tray sidebar -- flex sibling of the sheet column above, not inside any
-             CharacterSheetShell slot. `variant="sidebar"` (WorldRollTray.vue's own new prop)
-             renders the SAME roll state/props/events/history this page already owns
-             (useWorldRolls(), unchanged) as a vertical rail-or-panel instead of floating or a
-             horizontal row -- see that component's own header for the full design, and this
-             file's own note above the sheet column for why the reflow actually works. -->
-        <WorldRollTray
-          variant="sidebar"
-          :rolls="rollHistory"
-          :pending="rollPending"
-          :error="rollError"
-          :history-pending="rollHistoryPending"
-          :history-error="rollHistoryError"
-          :has-more="Boolean(rollNextCursor)"
-          empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
-          @load-more="loadMoreRolls"
-          @roll-manual-die="rollManualDie"
-        >
-          <template #header-actions>
-            <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">
-              <button
-                type="button"
-                class="rounded-none px-2 py-1 transition"
-                :class="rollVisibility === 'private' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
-                @click="rollVisibility = 'private'"
-              >
-                Private
-              </button>
-              <button
-                type="button"
-                class="rounded-none px-2 py-1 transition"
-                :class="rollVisibility === 'table' ? 'eldra-well text-eldra-text-strong' : 'text-eldra-text-faint hover:text-eldra-text-soft'"
-                @click="rollVisibility = 'table'"
-              >
-                Table
-              </button>
-            </div>
-          </template>
-        </WorldRollTray>
       </div>
     </div>
   </div>

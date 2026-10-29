@@ -1198,8 +1198,19 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
          centered sheet box itself (its original role, before the prior round's placement):
          DesktopLayout/CompanionLayout's own `@container sheet` queries resolve to the NEAREST
          ancestor carrying this name, and that box is once again the thing whose width actually
-         reflects what the sheet has left after the rail. -->
-    <div class="flex min-w-0 items-start">
+         reflects what the sheet has left after the rail.
+
+         `h-full` HERE is required, not cosmetic: WorldRollTray.vue's own sidebar rail asks for
+         `h-full` so it spans the full workspace height (matching Stages) rather than collapsing
+         to its own dice-controls/history content height -- the bug this round corrects. A
+         percentage height only resolves against a DEFINITE ancestor height; without `h-full` on
+         THIS row, it would stay `auto` (sized to its tallest child, the sheet column), and the
+         rail's own `h-full` would resolve to nothing. `items-start` (unchanged) means the sheet
+         column itself keeps its own natural/auto height regardless -- taller sheet content still
+         simply overflows this row's bottom edge, exactly as before, and `workspaceEl`'s own
+         `overflow-y-auto` still scrolls it; only the rail is now forced to the full workspace
+         height no matter how short the sheet's own content is. -->
+    <div class="flex h-full min-w-0 items-start">
       <!-- Roll Tray rail -- FIRST flex child, matching CreationStageRail.vue's own placement
            relative to the global nav. `variant="sidebar"` (WorldRollTray.vue's own prop) renders
            the SAME roll state/props/events/history this page already owns (useWorldRolls(),

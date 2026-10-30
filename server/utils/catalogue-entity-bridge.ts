@@ -62,7 +62,7 @@
 // catalogue content has no backing `entities` row, so "Delete" and "Open
 // Article" (which both operate on a real entities/:id) do not apply to it.
 
-import { resolveWorldContent } from './world-content-runtime'
+import { resolveWorldContent, type WorldContentEntry } from './world-content-runtime'
 import { preview5eToolsSpecies } from '../../app/lib/importers/5etools-species'
 import { preview5eToolsClasses } from '../../app/lib/importers/5etools-classes'
 import { preview5eToolsFeats } from '../../app/lib/importers/5etools-feats'
@@ -120,6 +120,76 @@ function toCatalogueBlocks(rawBlocks: any[] | undefined): CatalogueBridgeBlock[]
   }))
 }
 
+// The stable, opaque identifier used everywhere a catalogue-backed row needs
+// a unique id that is NOT a Directus `entities.id` -- callers must never
+// `Number()` this (there is no numeric id to parse out of it; see this
+// module's own header on why catalogue content has no backing `entities`
+// row at all). Exported so every caller composes it identically rather than
+// re-deriving the format ad hoc (Homebrew Forge Content Pack Restoration --
+// server/utils/homebrew/index.ts is the second caller after this module's
+// own two row-builders below).
+export function catalogueTemplateId(packageId: string, slug: string): string {
+  return `catalogue:${packageId}:${slug}`
+}
+
+// Single-entry version of getCatalogueBackedEntityRows's per-entry
+// conversion -- extracted so a caller that already has ONE specific entry
+// in hand (e.g. the Homebrew Forge resolving a client-selected template by
+// identity, not listing a whole browser) can reuse the exact same
+// previewer dispatch and degrade-on-malformed-data behavior without going
+// through the list-building loop. `getCatalogueBackedEntityRows` below now
+// calls this too, so there is exactly one place that knows how to turn a
+// catalogue entry's raw `data` into `.blocks` per entity type.
+export function catalogueEntryToBlocks(entityType: string, entry: WorldContentEntry): CatalogueBridgeBlock[] {
+  const previewer = PREVIEWER_BY_ENTITY_TYPE[entityType]
+  if (!previewer) return []
+
+  try {
+    const preview = previewer([entry.data])
+    return toCatalogueBlocks(preview.items[0]?.blocks)
+  } catch {
+    return []
+  }
+}
+
+export type CatalogueEnemyStructured = {
+  blocks: CatalogueBridgeBlock[]
+  statblock: Record<string, any> | null
+  actions: CatalogueBridgeEnemyAction[]
+  monsterProfile: Record<string, any> | null
+  summary: string
+}
+
+// Single-entry version of getCatalogueBackedEnemyRows's per-entry
+// conversion -- same extraction rationale as catalogueEntryToBlocks above,
+// for the one entity type (enemy) whose importer produces a bespoke
+// statblock/actions/monsterProfile shape rather than `.blocks` alone.
+export function catalogueEnemyEntryToStructured(entry: WorldContentEntry): CatalogueEnemyStructured | null {
+  try {
+    const preview = preview5eToolsMonsters([entry.data])
+    const item = preview.items[0]
+    const monsterData = item?._monsterData
+
+    const actions: CatalogueBridgeEnemyAction[] = (monsterData?.actions ?? []).map((action: any, index: number) => ({
+      id: `catalogue:${entry.packageId}:${entry.slug}:${action.actionType}:${index}`,
+      action_type: action.actionType,
+      name: action.name,
+      text: action.text,
+      sort_order: typeof action.sort === 'number' ? action.sort : index
+    }))
+
+    return {
+      blocks: toCatalogueBlocks(item?.blocks),
+      statblock: monsterData?.statblock ?? null,
+      actions,
+      monsterProfile: monsterData?.monsterProfile ?? null,
+      summary: item?.summary || ''
+    }
+  } catch {
+    return null
+  }
+}
+
 // Catalogue-backed pseudo rows for species/classes/feats/items/spells --
 // the five browser entity types sharing the `preview5eTools*` -> `.blocks`
 // shape. `entityTypes` is the caller's own already-normalized type filter;
@@ -146,17 +216,13 @@ export async function getCatalogueBackedEntityRows(
       // One malformed published entry must never take down the whole
       // browser -- the same per-entry degrade world-content-catalogue.ts's
       // own `toCatalogueEntry` already applies to `presentation`/
-      // `spellMechanics`/`featMechanics`/`itemMechanics`.
-      let blocks: CatalogueBridgeBlock[] = []
-      try {
-        const preview = previewer([entry.data])
-        blocks = toCatalogueBlocks(preview.items[0]?.blocks)
-      } catch {
-        blocks = []
-      }
+      // `spellMechanics`/`featMechanics`/`itemMechanics`. Delegated to
+      // catalogueEntryToBlocks so this exact degrade behavior has one
+      // implementation shared with the Homebrew Forge's template resolver.
+      const blocks = catalogueEntryToBlocks(entityType, entry)
 
       rows.push({
-        id: `catalogue:${entry.packageId}:${entry.slug}`,
+        id: catalogueTemplateId(entry.packageId, entry.slug),
         title: entry.title,
         slug: entry.slug,
         world_id: String(worldId),
@@ -215,38 +281,27 @@ export async function getCatalogueBackedEnemyRows(worldId: string | number): Pro
   const rows: CatalogueBridgeEnemyRow[] = []
 
   for (const entry of entries) {
-    try {
-      const preview = preview5eToolsMonsters([entry.data])
-      const item = preview.items[0]
-      const monsterData = item?._monsterData
+    // Delegated to catalogueEnemyEntryToStructured -- same per-entry
+    // degrade-on-malformed-data behavior, now shared with the Homebrew
+    // Forge's template resolver instead of duplicated.
+    const structured = catalogueEnemyEntryToStructured(entry)
+    if (!structured) continue
 
-      const actions: CatalogueBridgeEnemyAction[] = (monsterData?.actions ?? []).map((action: any, index: number) => ({
-        id: `catalogue:${entry.packageId}:${entry.slug}:${action.actionType}:${index}`,
-        action_type: action.actionType,
-        name: action.name,
-        text: action.text,
-        sort_order: typeof action.sort === 'number' ? action.sort : index
-      }))
-
-      rows.push({
-        id: `catalogue:${entry.packageId}:${entry.slug}`,
-        title: entry.title,
-        slug: entry.slug,
-        summary: item?.summary || '',
-        entityType: 'enemy',
-        image: null,
-        imageUrl: null,
-        image_url: null,
-        blocks: toCatalogueBlocks(item?.blocks),
-        statblock: monsterData?.statblock ?? null,
-        actions,
-        monsterProfile: monsterData?.monsterProfile ?? null,
-        __source: 'catalogue'
-      })
-    } catch {
-      // Degrade this one entry, not the whole roster -- matches the
-      // per-entry try/catch above exactly.
-    }
+    rows.push({
+      id: catalogueTemplateId(entry.packageId, entry.slug),
+      title: entry.title,
+      slug: entry.slug,
+      summary: structured.summary,
+      entityType: 'enemy',
+      image: null,
+      imageUrl: null,
+      image_url: null,
+      blocks: structured.blocks,
+      statblock: structured.statblock,
+      actions: structured.actions,
+      monsterProfile: structured.monsterProfile,
+      __source: 'catalogue'
+    })
   }
 
   return rows

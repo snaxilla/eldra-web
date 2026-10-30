@@ -71,6 +71,16 @@ const homebrewTemplateSearch = ref('')
 const homebrewTemplates = ref<any[]>([])
 const homebrewTemplatesPending = ref(false)
 const homebrewSelectedTemplateId = ref('')
+// Homebrew Forge Content Pack Restoration -- which half of the discriminated
+// template contract the currently-selected template belongs to, plus the
+// stable package/slug identity createHomebrewDraft needs for the catalogue
+// half. Never derived by parsing homebrewSelectedTemplateId (that id is an
+// opaque picker key only, never a parseable identifier -- see
+// catalogue-entity-bridge.ts's own catalogueTemplateId for why), always
+// read straight off the selected template row's own `source`/`packageId`/
+// `packageVersion` fields.
+const homebrewSelectedTemplateSource = ref<'legacy' | 'catalogue'>('legacy')
+const homebrewSelectedTemplateCatalogueRef = ref<{ packageId: string; packageVersion: string; slug: string } | null>(null)
 const homebrewTitle = ref('')
 const homebrewCreating = ref(false)
 const homebrewError = ref('')
@@ -781,6 +791,7 @@ function defaultHomebrewTitle(template: any) {
 
 function homebrewTemplateSubtitle(template: any) {
   return [
+    template?.source === 'catalogue' ? 'Content Pack' : 'Homebrew / Imported',
     template?.sourceBook,
     template?.sourcePage ? `p.${template.sourcePage}` : '',
     template?.entityType,
@@ -790,6 +801,14 @@ function homebrewTemplateSubtitle(template: any) {
 
 function selectHomebrewTemplate(template: any) {
   homebrewSelectedTemplateId.value = String(template?.id || '')
+  homebrewSelectedTemplateSource.value = template?.source === 'catalogue' ? 'catalogue' : 'legacy'
+  homebrewSelectedTemplateCatalogueRef.value = template?.source === 'catalogue'
+    ? {
+        packageId: String(template?.packageId || ''),
+        packageVersion: String(template?.packageVersion || ''),
+        slug: String(template?.slug || '')
+      }
+    : null
   homebrewSuccess.value = ''
   homebrewError.value = ''
 
@@ -830,6 +849,8 @@ async function loadHomebrewTemplates() {
       !homebrewTemplates.value.some((template: any) => String(template.id) === String(homebrewSelectedTemplateId.value))
     ) {
       homebrewSelectedTemplateId.value = ''
+      homebrewSelectedTemplateSource.value = 'legacy'
+      homebrewSelectedTemplateCatalogueRef.value = null
     }
   } catch (error: any) {
     homebrewError.value =
@@ -1100,7 +1121,18 @@ async function createHomebrewDraft() {
       method: 'POST',
       body: {
         type: homebrewType.value,
-        templateEntityId: homebrewSelectedTemplateId.value,
+        templateSource: homebrewSelectedTemplateSource.value,
+        // Discriminated per source -- never send a synthetic catalogue id
+        // where the server expects a numeric legacy entity id (or vice
+        // versa). The server re-resolves the catalogue reference against
+        // this World's own published content; it never trusts a client-sent
+        // id as a persisted entity id.
+        templateEntityId: homebrewSelectedTemplateSource.value === 'legacy'
+          ? homebrewSelectedTemplateId.value
+          : undefined,
+        catalogueTemplateRef: homebrewSelectedTemplateSource.value === 'catalogue'
+          ? homebrewSelectedTemplateCatalogueRef.value
+          : undefined,
         imageFileId: homebrewImageFileId.value || undefined,
         title: homebrewType.value === 'spell'
           ? (homebrewTitle.value || spellBuilderForm.name || defaultHomebrewTitle(selectedHomebrewTemplate.value))
@@ -1138,6 +1170,8 @@ watch(
   () => [worldId.value, homebrewType.value],
   () => {
     homebrewSelectedTemplateId.value = ''
+    homebrewSelectedTemplateSource.value = 'legacy'
+    homebrewSelectedTemplateCatalogueRef.value = null
     homebrewTitle.value = ''
     homebrewTemplateSearch.value = ''
     homebrewCreatedEntity.value = null

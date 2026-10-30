@@ -23,8 +23,13 @@ const searchModel = computed({
   set: (value: string) => emit('update:search', value)
 })
 
+function templateOriginLabel(template: any) {
+  return template?.source === 'catalogue' ? 'Content Pack' : 'Homebrew / Imported'
+}
+
 function templateSubtitle(template: any) {
   return [
+    templateOriginLabel(template),
     template?.sourceBook,
     template?.sourcePage ? `p.${template.sourcePage}` : '',
     template?.entityType,

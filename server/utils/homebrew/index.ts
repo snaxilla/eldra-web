@@ -1,5 +1,11 @@
 import { createError } from 'h3'
 import { directusServiceRequest } from '../directus'
+import { resolveWorldContent, type WorldContentEntry } from '../world-content-runtime'
+import {
+  catalogueEntryToBlocks,
+  catalogueEnemyEntryToStructured,
+  catalogueTemplateId
+} from '../catalogue-entity-bridge'
 import {
   applyHomebrewEnemyPatch,
   homebrewEnemyCoreForBuilder,
@@ -67,6 +73,50 @@ const TYPE_CONFIGS: Record<HomebrewType, TypeConfig> = {
     entityTypes: ['background'],
     coreBlocks: ['background_core']
   }
+}
+
+// Homebrew Forge Content Pack Restoration -- which canonical catalogue
+// entityType key (world-content-runtime.ts's WorldContentCatalogue.byEntityType)
+// backs each Homebrew type, matching catalogue-entity-bridge.ts's own
+// PREVIEWER_BY_ENTITY_TYPE keys exactly (species/class/feat/item/spell + the
+// dedicated enemy path) -- NOT TYPE_CONFIGS.entityTypes above, which also
+// carries legacy-only aliases ('race', 'monster') that published Content
+// Pack entries never use. `background` has no Content Pack equivalent
+// (confirmed by catalogue-entity-bridge.ts's own test fixtures treating it
+// as "not a catalogue-backed category") and is omitted here on purpose --
+// background homebrew templates remain legacy-entity-only.
+const CATALOGUE_ENTITY_TYPE_BY_HOMEBREW_TYPE: Partial<Record<HomebrewType, string>> = {
+  spell: 'spell',
+  item: 'item',
+  class: 'class',
+  feat: 'feat',
+  species: 'species',
+  enemy: 'enemy'
+}
+
+// Either half of the "which template did the player pick" contract, kept
+// as one discriminated shape rather than overloading `templateEntityId`
+// with a synthetic string (this task's own explicit requirement). A legacy
+// template is a real `entities` row; a catalogue template is identified by
+// stable package/slug metadata only -- resolved fresh against the World's
+// OWN currently-bound catalogue at creation time (never trusting whatever
+// mechanical `data` the client might otherwise have echoed back).
+type ResolvedHomebrewTemplate = {
+  // `id`/`title`/`entity_type`/`system_key`/`image` match exactly the subset
+  // of a legacy `entities` row the rest of createHomebrewDraft already
+  // reads (homebrewImportSourceData/homebrewMetaData/retitleCoreBlockData
+  // only ever treat `template.id` as opaque provenance text, never a second
+  // foreign key -- see those functions' own bodies), so a catalogue-origin
+  // template can satisfy the same shape with a non-numeric `id`.
+  template: {
+    id: string | number
+    title: string
+    entity_type: string
+    system_key?: string
+    image?: string | null
+  }
+  templateBlocks: any[]
+  source: 'legacy' | 'catalogue'
 }
 
 const ENTITY_FALLBACK_FIELDS = new Set([
@@ -1054,6 +1104,86 @@ async function loadEnemyTemplateStructuredRows(entityIds: any[]) {
   return map
 }
 
+// Catalogue-backed templates for the picker -- the "A. Template listing"
+// half of Homebrew Forge Content Pack Restoration. Reuses
+// catalogue-entity-bridge.ts's own per-entry conversion helpers (the same
+// ones Content Pack Browsers Regression Repair already proved against
+// real 5etools payloads) rather than re-deriving `.blocks`/statblock shape
+// here. Builds `core` with the SAME builder-hydration functions legacy
+// templates already use (templateCoreForBuilder /
+// homebrewEnemyCoreFromStructuredRows) so AdminHomebrewForgePanel.vue's
+// existing hydrateSpellBuilderFromTemplate/hydrateItemBuilderFromTemplate/
+// hydrateEnemyBuilderFromTemplate need no changes at all -- they only ever
+// read `template.core.*`, never anything about where the template came
+// from. Each row additionally carries `source: 'catalogue'` plus the
+// stable `packageId`/`packageVersion` identity the client must echo back
+// (never the opaque `id`) when creating a draft from it.
+async function buildCatalogueHomebrewTemplates(worldId: string | number, type: HomebrewType, config: TypeConfig) {
+  const catalogueEntityType = CATALOGUE_ENTITY_TYPE_BY_HOMEBREW_TYPE[type]
+  if (!catalogueEntityType) return []
+
+  const resolved = await resolveWorldContent(worldId)
+  const entries = resolved.byEntityType[catalogueEntityType] || []
+
+  if (type === 'enemy') {
+    return entries.flatMap((entry) => {
+      const structured = catalogueEnemyEntryToStructured(entry)
+      if (!structured) return []
+
+      const core = homebrewEnemyCoreFromStructuredRows(
+        { title: entry.title },
+        structured.blocks,
+        structured.statblock,
+        structured.actions,
+        structured.monsterProfile
+      )
+
+      return [{
+        id: catalogueTemplateId(entry.packageId, entry.slug),
+        title: entry.title || 'Untitled Template',
+        slug: entry.slug,
+        entityType: catalogueEntityType,
+        systemKey: entry.systemKey,
+        summary: structured.summary,
+        sourceBook: entry.sourceBook || '',
+        sourcePage: entry.sourcePage || '',
+        provider: entry.provider || '',
+        metaLine: [entry.sourceBook, core.challenge_rating ? `CR ${core.challenge_rating}` : ''].filter(Boolean).join(' · '),
+        blockCount: structured.blocks.length,
+        coreBlockKeys: structured.blocks.map((block) => block.blockKey).filter(Boolean),
+        core,
+        source: 'catalogue' as const,
+        packageId: entry.packageId,
+        packageVersion: entry.packageVersion
+      }]
+    })
+  }
+
+  return entries.map((entry) => {
+    const blocks = catalogueEntryToBlocks(catalogueEntityType, entry)
+    const core = templateCoreForBuilder(config, blocks)
+
+    return {
+      id: catalogueTemplateId(entry.packageId, entry.slug),
+      title: entry.title || 'Untitled Template',
+      slug: entry.slug,
+      entityType: catalogueEntityType,
+      systemKey: entry.systemKey,
+      summary: templateSummary({ summary: '' }, config, blocks),
+      sourceBook: entry.sourceBook || '',
+      sourcePage: entry.sourcePage || '',
+      provider: entry.provider || '',
+      metaLine: templateMetaLine(config, blocks),
+      blockCount: blocks.length,
+      coreBlockKeys: blocks.map((block) => block.blockKey).filter(Boolean),
+      core,
+      source: 'catalogue' as const,
+      packageId: entry.packageId,
+      packageVersion: entry.packageVersion
+    }
+  })
+}
+
 export async function listHomebrewTemplates(worldId: string | number, rawType: any) {
   const type = normalizeHomebrewType(rawType || 'spell')
   const config = TYPE_CONFIGS[type]
@@ -1141,21 +1271,38 @@ export async function listHomebrewTemplates(worldId: string | number, rawType: a
       metaLine: templateMetaLine(config, rowBlocks),
       blockCount: templateBlockCount,
       coreBlockKeys: templateCoreBlockKeys,
-      core: templateCore
+      core: templateCore,
+      source: 'legacy' as const
     }
   })
+
+  // Additive merge, not a replacement -- a World whose spells/items/etc.
+  // came from a published Content Pack gets its templates here; a World
+  // whose content is still homebrew-authored keeps working exactly as
+  // before. Mirrors Content Pack Browsers Regression Repair's own
+  // "legacy query still runs unchanged, catalogue rows are appended"
+  // precedent.
+  const catalogueTemplates = await buildCatalogueHomebrewTemplates(worldId, type, config)
 
   return {
     ok: true,
     type,
     label: config.label,
-    templates
+    templates: [...templates, ...catalogueTemplates]
   }
 }
 
-export async function createHomebrewDraft(worldId: string | number, body: any = {}) {
-  const type = normalizeHomebrewType(body?.type || 'spell')
-  const config = TYPE_CONFIGS[type]
+// Legacy half of template resolution -- lifted out of createHomebrewDraft
+// verbatim (same query, same validation, same error shapes) so the two
+// branches read as one dispatch rather than one function trying to do
+// both. "For legacy templates, preserve the current behavior" (this
+// task's own instruction) means exactly this: nothing below changed from
+// what createHomebrewDraft itself used to do inline.
+async function resolveLegacyHomebrewTemplate(
+  worldId: string | number,
+  config: TypeConfig,
+  body: any
+): Promise<ResolvedHomebrewTemplate> {
   const templateEntityId = Number(body?.templateEntityId ?? body?.template_entity_id ?? 0)
 
   if (!templateEntityId) {
@@ -1188,6 +1335,78 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
       statusMessage: 'Template entity was not found for this world/type'
     })
   }
+
+  const templateBlocks = await loadBlocksForEntityIds([template.id])
+
+  return { template, templateBlocks, source: 'legacy' }
+}
+
+// Content Pack half of template resolution -- "B. Draft creation from a
+// selected template" in this task's own spec. The client sends ONLY
+// stable identity (`packageId` + `slug`); the entityType bucket to search
+// is derived server-side from the already-validated Homebrew `type`, never
+// from client input, so there is no way for a request to ask this World's
+// catalogue for the wrong bucket. `resolveWorldContent(worldId)` is called
+// fresh here -- not reused from whatever the picker saw -- so a client
+// cannot submit stale or fabricated mechanical `data`; only the entry this
+// World's OWN current package bindings actually resolve to is ever used.
+// A reference to a pack this World no longer binds, a slug that pack no
+// longer publishes, or another World's catalogue entry all fail the same
+// way: the entry simply is not found, exactly like the legacy branch's
+// unknown-id 404 above.
+async function resolveCatalogueHomebrewTemplate(
+  worldId: string | number,
+  type: HomebrewType,
+  config: TypeConfig,
+  ref: any
+): Promise<ResolvedHomebrewTemplate> {
+  const packageId = cleanText(ref?.packageId)
+  const slug = cleanText(ref?.slug)
+  const catalogueEntityType = CATALOGUE_ENTITY_TYPE_BY_HOMEBREW_TYPE[type]
+
+  if (!packageId || !slug || !catalogueEntityType) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Content Pack template reference is required'
+    })
+  }
+
+  const resolved = await resolveWorldContent(worldId)
+  const entries: WorldContentEntry[] = resolved.byEntityType[catalogueEntityType] || []
+  const entry = entries.find((candidate) => candidate.packageId === packageId && candidate.slug === slug)
+
+  if (!entry) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Content Pack template was not found in this World\'s published content'
+    })
+  }
+
+  const template = {
+    id: catalogueTemplateId(entry.packageId, entry.slug),
+    title: entry.title || config.label,
+    entity_type: catalogueEntityType,
+    system_key: entry.systemKey,
+    image: null
+  }
+
+  if (type === 'enemy') {
+    const structured = catalogueEnemyEntryToStructured(entry)
+    return { template, templateBlocks: structured?.blocks || [], source: 'catalogue' }
+  }
+
+  const templateBlocks = catalogueEntryToBlocks(catalogueEntityType, entry)
+  return { template, templateBlocks, source: 'catalogue' }
+}
+
+export async function createHomebrewDraft(worldId: string | number, body: any = {}) {
+  const type = normalizeHomebrewType(body?.type || 'spell')
+  const config = TYPE_CONFIGS[type]
+  const templateSource = cleanText(body?.templateSource).toLowerCase() === 'catalogue' ? 'catalogue' : 'legacy'
+
+  const { template, templateBlocks } = templateSource === 'catalogue'
+    ? await resolveCatalogueHomebrewTemplate(worldId, type, config, body?.catalogueTemplateRef || {})
+    : await resolveLegacyHomebrewTemplate(worldId, config, body)
 
   const title = cleanText(body?.title) ||
     (type === 'spell' ? cleanText(body?.spell?.name) : '') ||
@@ -1229,7 +1448,11 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
     })
   }
 
-  const templateBlocks = await loadBlocksForEntityIds([template.id])
+  // `templateBlocks` was already resolved above by whichever branch
+  // (legacy/catalogue) matched this request -- re-fetching by `template.id`
+  // here would silently break the catalogue branch, since a catalogue
+  // template's id is not a Directus entity id `loadBlocksForEntityIds`
+  // could look up.
   const cloneBlocks = cloneableBlocksForType(config, templateBlocks)
 
   const blocksToCreate: Array<{
@@ -1292,7 +1515,8 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
     template: {
       id: cleanText(template.id),
       title: cleanText(template.title),
-      entityType: cleanText(template.entity_type)
+      entityType: cleanText(template.entity_type),
+      source: templateSource
     },
     entity: {
       ...created,

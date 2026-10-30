@@ -3,6 +3,7 @@
 // here (see that component's own header for why the World layout, not any
 // individual page, is its home).
 import WorldDiceOverlay from '~/components/world/WorldDiceOverlay.vue'
+import { resolveWorldWorkspacePageKey } from '~/lib/eldra/world-workspace-page-key'
 
 const route = useRoute()
 
@@ -182,36 +183,13 @@ watch(canBuild, (allowed) => {
   }
 }, { immediate: true })
 
-const pageKey = computed(() => {
-  const parts = String(route.path || '').split('/').filter(Boolean)
-  const worldIndex = parts.findIndex(p => p === 'worlds')
-
-  if (worldIndex === -1) return 'global'
-
-  const maybePage = parts[worldIndex + 2]
-  const maybeChild = parts[worldIndex + 3]
-  const maybeGrandchild = parts[worldIndex + 4]
-
-  if (maybePage === 'entities' && maybeChild) {
-    return 'entity-article'
-  }
-
-  // Game Admin Page Setup correction: the Character Sheet (canonical
-  // `/characters/:characterId/sheet`, and the pre-canonical-routing
-  // `/sheet-v2`) is a different product concept from the Characters
-  // roster/browsing page it happens to be nested under -- see
-  // eldra-design-language.md's own "Identity Block"/"Command Center"
-  // vocabulary, which treats the Sheet as its own artifact. Every other
-  // `/characters/**` route (the roster itself, and Builder-context pages
-  // like `abilities`/`proficiencies`/`builder`/`create-v2`) still falls
-  // through to the generic `maybePage` return below and keeps the
-  // `characters` page key -- only the sheet itself splits out.
-  if (maybePage === 'characters' && maybeChild && (maybeGrandchild === 'sheet' || maybeGrandchild === 'sheet-v2')) {
-    return 'character-sheet'
-  }
-
-  return maybePage || 'world-map'
-})
+// Resolution logic itself now lives in resolveWorldWorkspacePageKey
+// (app/lib/eldra/world-workspace-page-key.ts) -- extracted, not rewritten,
+// so the Map-Only Navigation Controls fix can unit-test it directly and so
+// WorldWorkspaceSidebar.vue can check the SAME route-identity rule this
+// computed already used for full-bleed map styling, rather than a second,
+// independently-derived pathname check.
+const pageKey = computed(() => resolveWorldWorkspacePageKey(route.path))
 
 // Theming Phase 3A: the World Map (and only the World Map) is full-bleed --
 // at `md`+ the map extends behind the workspace sidebar, which floats over
@@ -421,6 +399,7 @@ const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.valu
           :collapsed="leftCollapsed"
           :mode="mode"
           :can-build="canBuild"
+          :is-map-page="isFullBleedMap"
           @toggle-collapse="toggleWorkspaceSidebar"
           @set-mode="mode = $event"
         />

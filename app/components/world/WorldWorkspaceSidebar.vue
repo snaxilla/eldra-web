@@ -9,6 +9,21 @@ const props = defineProps<{
   // from world-workspace.vue -- this component makes no permission decision
   // of its own, it only renders what it is told).
   canBuild: boolean
+  // Map-Only Navigation Controls fix: whether the CURRENT route is the
+  // actual interactive World Map (app/pages/worlds/[id]/index.vue) -- the
+  // one surface that both places/edits pins (`mode === 'build'`) and
+  // renders them (`showPins`). Passed down from world-workspace.vue's own
+  // `isFullBleedMap` (`pageKey.value === 'world-map'`), the SAME route-type
+  // abstraction the layout already uses for its full-bleed map styling --
+  // not re-derived here from the raw pathname, which previously also
+  // matched `/worlds/:id/maps` (the map GALLERY/upload page: no pins, and
+  // its own `mode` state is read nowhere, confirmed by tracing
+  // maps.vue), wrongly showing Play/Build and Hide/Show Pins there too.
+  // Every OTHER world page (Classes, Spells, Enemies, ...) is `false` here;
+  // Play/Build itself still works exactly as before once the player
+  // reaches the World Map -- this only hides the REDUNDANT toggle
+  // elsewhere, it never changes what `mode`/`canBuild` mean or do.
+  isMapPage: boolean
 }>()
 
 const emit = defineEmits<{
@@ -16,14 +31,9 @@ const emit = defineEmits<{
   (e: 'set-mode', mode: 'play' | 'build'): void
 }>()
 
-const route = useRoute()
 const showPins = useState<boolean>('world-map-show-pins', () => true)
 
 const worldId = computed(() => String(props.world?.id || ''))
-const isMapPage = computed(() => {
-  const path = String(route.path || '')
-  return path === `/worlds/${worldId.value}` || path.startsWith(`/worlds/${worldId.value}/maps`)
-})
 
 const navItems = computed(() => [
   { label: 'World Map', icon: 'i-lucide-map', to: `/worlds/${worldId.value}` },
@@ -74,7 +84,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div class="flex flex-col items-center gap-2 px-2 pb-4">
+      <div v-if="isMapPage" class="flex flex-col items-center gap-2 px-2 pb-4">
         <button
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'play'
@@ -127,6 +137,7 @@ const navItems = computed(() => [
 
       <div class="border-t border-eldra-accent/22 p-2">
         <button
+          v-if="isMapPage"
           type="button"
           class="mb-2 flex h-10 w-full items-center justify-center rounded-none border text-sm transition"
           :class="showPins
@@ -144,14 +155,21 @@ const navItems = computed(() => [
           <EldraAccessibilityMenu compact fill />
         </div>
 
-        <NuxtLink
-          to="/"
-          class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
-          title="Switch World"
-          aria-label="Switch World"
-        >
-          <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
-        </NuxtLink>
+        <!-- Exactly one Switch World action, now wrapped the same way every
+             nav item above it is (`<UTooltip>`, not a native `title`) --
+             the one real inconsistency found while tracing a reported
+             "shown twice" (no second rendered control exists anywhere in
+             this file, the layout, or git history; see this task's own
+             final report for the investigation). -->
+        <UTooltip text="Switch World" :content="{ side: 'right' }">
+          <NuxtLink
+            to="/"
+            class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong"
+            aria-label="Switch World"
+          >
+            <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
+          </NuxtLink>
+        </UTooltip>
       </div>
     </template>
 
@@ -181,7 +199,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div class="px-4 pb-4">
+      <div v-if="isMapPage" class="px-4 pb-4">
         <div class="flex gap-2">
           <button
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"

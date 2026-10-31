@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
 import { renderMarkdown } from '~/utils/renderMarkdown'
+import { buildHomebrewForgeRoute, shouldShowSpellHomebrewActions } from '~/components/world/worldEntityHomebrewActions'
 
 const props = defineProps<{
   entityType: string
@@ -99,6 +100,7 @@ const LOCATION_TYPE_OPTIONS = [
 ]
 
 const isLocationPage = computed(() => normalizeEntityType(props.entityType) === 'location')
+
 const showNewLocationForm = ref(false)
 const creatingLocation = ref(false)
 const newLocationError = ref('')
@@ -115,6 +117,22 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: entities, pending, error, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=${encodeURIComponent(entitySummaryTypes.value)}`, {
   default: () => []
 })
+
+// Contextual Homebrew Authoring Entry Points -- gating/route-building logic
+// lives in the sibling worldEntityHomebrewActions.ts (pure, unit-tested
+// there) since this component has no DOM/browser test harness. `world`
+// here is the same per-World fetch world-workspace.vue's own `canBuild`
+// already reads `capabilities` from. UI convenience only -- the server's
+// own requireCapability('world.homebrew.manage') check on
+// POST /api/worlds/:id/homebrew/create remains authoritative regardless of
+// what this computed returns.
+const canShowSpellHomebrewActions = computed(() =>
+  shouldShowSpellHomebrewActions(props.entityType, world.value?.capabilities)
+)
+
+function openHomebrewSpellForge(templateId?: string) {
+  router.push(buildHomebrewForgeRoute(worldId.value, templateId))
+}
 
 // Catalogue-sourced entities (an imported, published Content Pack entry --
 // see catalogue-entity-bridge.ts's own header) have no backing `entities`
@@ -1244,13 +1262,24 @@ async function createLocationArticle() {
               </p>
             </div>
 
-            <button
-              type="button"
-              class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
-              @click="refresh()"
-            >
-              Refresh
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="canShowSpellHomebrewActions"
+                type="button"
+                class="eldra-button rounded-none px-4 py-2.5 text-sm font-semibold"
+                @click="openHomebrewSpellForge()"
+              >
+                Create New Spell from Template
+              </button>
+
+              <button
+                type="button"
+                class="rounded-none border border-eldra-accent/22 bg-eldra-panel/72 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+                @click="refresh()"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div class="mt-5">
@@ -1443,6 +1472,15 @@ async function createLocationArticle() {
                     @click.stop="openEntityArticle(entity)"
                   >
                     Open Article
+                  </button>
+
+                  <button
+                    v-if="canShowSpellHomebrewActions"
+                    type="button"
+                    class="rounded-none border border-dashed border-eldra-accent/20 bg-transparent px-3 py-2 text-[11px] font-medium uppercase tracking-[0.1em] text-eldra-text-faint transition hover:border-eldra-accent/44 hover:text-eldra-text-soft"
+                    @click.stop="openHomebrewSpellForge(entity.id)"
+                  >
+                    Create New Spell From: {{ entity.title }}
                   </button>
                 </div>
               </div>

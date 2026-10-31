@@ -6,9 +6,24 @@ import AdminHomebrewItemBuilder from '~/components/admin/homebrew/AdminHomebrewI
 import AdminHomebrewDraftReview from '~/components/admin/homebrew/AdminHomebrewDraftReview.vue'
 import AdminHomebrewDraftImagePicker from '~/components/admin/homebrew/AdminHomebrewDraftImagePicker.vue'
 import AdminHomebrewEnemyBuilder from '~/components/admin/homebrew/AdminHomebrewEnemyBuilder.vue'
+import {
+  deriveHomebrewTemplateSelection,
+  findInitialHomebrewTemplate,
+  resolveInitialHomebrewType
+} from '~/components/admin/homebrew/homebrewTemplateSelection'
 
+// Contextual Homebrew Authoring Entry Points -- `initialType`/
+// `initialTemplateId` are the entire deep-link contract a caller (e.g. the
+// Homebrew Forge create page, which in turn is reached from the Spells
+// list's header/per-card actions) uses to preselect this panel. They are
+// read once, on this component's own setup, never watched -- a page that
+// wants a different preselection after the fact simply remounts this
+// component (new route navigation), matching how every other caller of
+// this panel already works.
 const props = defineProps<{
   worldId: string | number
+  initialType?: string
+  initialTemplateId?: string
 }>()
 
 const router = useRouter()
@@ -66,7 +81,16 @@ const homebrewTypes: Array<{
   }
 ]
 
-const homebrewType = ref<HomebrewForgeType>('spell')
+const homebrewType = ref<HomebrewForgeType>(
+  resolveInitialHomebrewType(props.initialType, homebrewTypes.map((type) => type.key), 'spell')
+)
+
+// One-shot: consumed by the very first loadHomebrewTemplates() call (fired
+// by the watch(..., {immediate:true}) below) and then cleared, so a later
+// manual type switch or reload never re-forces a selection the user may
+// have since changed away from.
+let pendingInitialTemplateId = props.initialTemplateId ? String(props.initialTemplateId) : ''
+
 const homebrewTemplateSearch = ref('')
 const homebrewTemplates = ref<any[]>([])
 const homebrewTemplatesPending = ref(false)
@@ -784,15 +808,10 @@ function homebrewTemplateSubtitle(template: any) {
 }
 
 function selectHomebrewTemplate(template: any) {
-  homebrewSelectedTemplateId.value = String(template?.id || '')
-  homebrewSelectedTemplateSource.value = template?.source === 'catalogue' ? 'catalogue' : 'legacy'
-  homebrewSelectedTemplateCatalogueRef.value = template?.source === 'catalogue'
-    ? {
-        packageId: String(template?.packageId || ''),
-        packageVersion: String(template?.packageVersion || ''),
-        slug: String(template?.slug || '')
-      }
-    : null
+  const selection = deriveHomebrewTemplateSelection(template)
+  homebrewSelectedTemplateId.value = selection.id
+  homebrewSelectedTemplateSource.value = selection.source
+  homebrewSelectedTemplateCatalogueRef.value = selection.catalogueRef
   homebrewSuccess.value = ''
   homebrewError.value = ''
 
@@ -831,6 +850,23 @@ async function loadHomebrewTemplates() {
     })
 
     homebrewTemplates.value = Array.isArray(res?.templates) ? res.templates : []
+
+    // Contextual Homebrew Authoring Entry Points -- deep-link preselection.
+    // `pendingInitialTemplateId` matches a template's `id` verbatim (either
+    // a legacy numeric id or a `catalogue:<packageId>:<slug>` string), the
+    // same way the picker itself keys templates -- so this works identically
+    // for a legacy row or a Content Pack catalogue row with no extra
+    // lookup. Going through the normal selectHomebrewTemplate() path keeps
+    // this indistinguishable from the user picking it by hand: same source
+    // detection, same builder-form hydration, same "can still choose a
+    // different template" behavior afterward.
+    if (pendingInitialTemplateId) {
+      const initialMatch = findInitialHomebrewTemplate(homebrewTemplates.value, pendingInitialTemplateId)
+      pendingInitialTemplateId = ''
+      if (initialMatch) {
+        selectHomebrewTemplate(initialMatch)
+      }
+    }
 
     if (
       homebrewSelectedTemplateId.value &&

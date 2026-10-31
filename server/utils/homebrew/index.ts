@@ -264,6 +264,12 @@ async function findHomebrewNameConflict(
   const candidateSlug = slugify(title)
   if (!candidateSlug) return null
 
+  // Directus list responses aren't typed at the directusServiceRequest()
+  // boundary itself (see CLAUDE.md's "Loose typing at the Directus
+  // boundary") -- every other call site in this file already hits the same
+  // "Property 'data' does not exist" diagnostic. Rather than widen that
+  // shared helper's signature (a repo-wide typecheck-count change) or cast
+  // broadly, this one local annotation types only this call's own result.
   const existingRes = await directusServiceRequest('/items/entities', {
     method: 'GET',
     query: {
@@ -276,7 +282,7 @@ async function findHomebrewNameConflict(
       limit: -1,
       fields: 'id,title,slug'
     }
-  })
+  }) as { data?: Array<{ id?: any; title?: any; slug?: any }> }
 
   for (const row of Array.isArray(existingRes?.data) ? existingRes.data : []) {
     if (slugify(row?.title) === candidateSlug || cleanText(row?.slug) === candidateSlug) {

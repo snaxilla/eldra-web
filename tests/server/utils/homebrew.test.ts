@@ -488,3 +488,56 @@ describe('Homebrew Entity Name and Provenance', () => {
     expect(result.entity.title).toBe('Greater Fireball')
   })
 })
+
+// Contextual Homebrew Authoring Entry Points -- the per-card "Create New
+// Spell From: ..." action starts a NEW draft using the clicked spell as the
+// template; this must never edit or mutate that source spell itself. These
+// tests prove it for both a legacy row (a real persisted entities row the
+// fake Directus store can snapshot) and a catalogue row (resolved, never
+// written to at all by createHomebrewDraft).
+describe('Contextual Homebrew Authoring Entry Points -- draft creation never mutates the source template', () => {
+  it('leaves the legacy template entity row byte-for-byte unchanged after creating a draft from it, and persists the draft as a distinct new entity', async () => {
+    const store = createFakeDirectusStore(
+      [{ id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null }],
+      [{ id: 1, entity_id: 20, block_key: 'spell_core', label: 'Spell Core', repeatable: false, sort: 20, data: { name: 'Aid', level: 2, school: 'A' } }]
+    )
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    const templateSnapshotBefore = JSON.parse(JSON.stringify(store.entities.find((e) => e.id === 20)))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Greater Aid' }
+    })
+
+    const templateAfter = store.entities.find((e) => e.id === 20)
+    expect(templateAfter).toEqual(templateSnapshotBefore)
+    expect(result.entity.id).not.toBe(20)
+    expect(typeof result.entity.id).toBe('number')
+    expect(store.entities.filter((e) => e.entity_type === 'spell')).toHaveLength(2)
+  })
+
+  it('creates a separate, real entity from a Content Pack catalogue template without writing back to the resolved catalogue entry', async () => {
+    createFakeDirectusStore([])
+    const catalogueEntry = entry({ entityType: 'spell', title: 'Aid', slug: 'aid-phb', data: { name: 'Aid', level: 2, school: 'A' } })
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([catalogueEntry]))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateSource: 'catalogue',
+      catalogueTemplateRef: { packageId: 'eldra.content.srd-5.1', packageVersion: '1.0.0', slug: 'aid-phb' },
+      spell: { name: 'Greater Aid' }
+    })
+
+    // createHomebrewDraft has no write path to a Content Pack at all (it
+    // only ever POSTs to /items/entities and /items/block_instances); the
+    // strongest available proof the catalogue entry itself was never
+    // touched is that the object this test constructed is still identical,
+    // and the draft came back as its own distinct, real persisted entity.
+    expect(catalogueEntry).toEqual(entry({ entityType: 'spell', title: 'Aid', slug: 'aid-phb', data: { name: 'Aid', level: 2, school: 'A' } }))
+    expect(result.ok).toBe(true)
+    expect(typeof result.entity.id).toBe('number')
+    expect(result.template.id).toBe('catalogue:eldra.content.srd-5.1:aid-phb')
+  })
+})

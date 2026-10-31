@@ -244,6 +244,61 @@ function pickSupported(fields: Set<string>, payload: Record<string, any>) {
   return picked
 }
 
+// Homebrew Entity Name and Provenance -- authoritative duplicate-name guard.
+// Checks the World's effective content: world-owned entities of the same
+// Homebrew kind (legacy templates AND prior homebrew drafts both live in
+// `entities`, so this one query already covers both) plus, separately,
+// this World's currently-resolved published Content Pack catalogue for the
+// matching entityType. Comparison uses the same `slugify()` normalization
+// this module already applies everywhere else (case-insensitive, whitespace/
+// punctuation-collapsed), rather than inventing a second name-normalization
+// rule. A match is reported, never silently resolved by renaming -- the
+// caller turns this into a clear 409, matching "do not weaken duplicate
+// protection to unique-within-legacy-entities-only" and "no silent rename".
+async function findHomebrewNameConflict(
+  worldId: string | number,
+  type: HomebrewType,
+  config: TypeConfig,
+  title: string
+): Promise<{ source: 'world' | 'content-pack'; title: string } | null> {
+  const candidateSlug = slugify(title)
+  if (!candidateSlug) return null
+
+  const existingRes = await directusServiceRequest('/items/entities', {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { world_id: { _eq: worldValue(worldId) } },
+          { entity_type: { _in: config.entityTypes } }
+        ]
+      },
+      limit: -1,
+      fields: 'id,title,slug'
+    }
+  })
+
+  for (const row of Array.isArray(existingRes?.data) ? existingRes.data : []) {
+    if (slugify(row?.title) === candidateSlug || cleanText(row?.slug) === candidateSlug) {
+      return { source: 'world', title: cleanText(row?.title) || title }
+    }
+  }
+
+  const catalogueEntityType = CATALOGUE_ENTITY_TYPE_BY_HOMEBREW_TYPE[type]
+  if (catalogueEntityType) {
+    const resolved = await resolveWorldContent(worldId)
+    const entries = resolved.byEntityType[catalogueEntityType] || []
+
+    for (const entry of entries) {
+      if (slugify(entry?.title) === candidateSlug || cleanText(entry?.slug) === candidateSlug) {
+        return { source: 'content-pack', title: cleanText(entry?.title) || title }
+      }
+    }
+  }
+
+  return null
+}
+
 async function entitySlugExists(worldId: string | number, slug: string) {
   const res = await directusServiceRequest('/items/entities', {
     method: 'GET',
@@ -1408,11 +1463,28 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
     ? await resolveCatalogueHomebrewTemplate(worldId, type, config, body?.catalogueTemplateRef || {})
     : await resolveLegacyHomebrewTemplate(worldId, config, body)
 
+  // Homebrew Entity Name and Provenance -- the authored name is the
+  // entity's canonical player-facing name; it is never prefixed with
+  // "Homebrew:" here (provenance lives in the homebrew_meta/import_source
+  // blocks below, not in the display title). `template.title` is only a
+  // fallback for the rare case nothing else named the draft at all.
   const title = cleanText(body?.title) ||
     (type === 'spell' ? cleanText(body?.spell?.name) : '') ||
     (type === 'item' ? cleanText(body?.item?.name) : '') ||
     (type === 'enemy' ? cleanText(body?.enemy?.name) : '') ||
-    `Homebrew: ${template.title || config.label}`
+    cleanText(template.title) ||
+    config.label
+
+  const nameConflict = await findHomebrewNameConflict(worldId, type, config, title)
+  if (nameConflict) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: nameConflict.source === 'content-pack'
+        ? `A published Content Pack already has a ${config.label.toLowerCase()} named "${nameConflict.title}". Choose a different name for this draft.`
+        : `This World already has a ${config.label.toLowerCase()} named "${nameConflict.title}". Choose a different name for this draft.`
+    })
+  }
+
   const slug = await uniqueEntitySlug(worldId, title)
   const summary = cleanText(body?.summary) ||
     (type === 'spell' ? homebrewSpellSummary(body?.spell) : '') ||

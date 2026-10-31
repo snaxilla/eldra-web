@@ -360,3 +360,131 @@ describe('createHomebrewDraft -- Content Pack templates', () => {
     })).rejects.toMatchObject({ statusCode: 404 })
   })
 })
+
+// Homebrew Entity Name and Provenance -- the deployed-bug repro: a spell
+// authored as "Aids", built from a template named "Aid", was persisted and
+// displayed as "Homebrew: Aid". These tests follow the authored name
+// through the server boundary (template resolution -> title computation ->
+// duplicate check -> persisted entity), which is where the article's title
+// ultimately comes from -- server/api/worlds/[id]/entities/[entityId].get.ts
+// reads the entity row verbatim and performs no further title
+// transformation, so proving the persisted title here is sufficient to
+// prove what the article displays.
+describe('Homebrew Entity Name and Provenance', () => {
+  it('keeps a unique authored name ("Aids") exactly as submitted, never falling back to the template\'s own name ("Aid")', async () => {
+    const store = createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      // No explicit `title` -- matches what the client now sends once the
+      // Draft Title field is no longer eagerly seeded from the template.
+      spell: { name: 'Aids', level: 2, school: 'A', description: 'A unique variant.' }
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.entity.title).toBe('Aids')
+    expect(store.entities.find((e) => e.id === result.entity.id)?.title).toBe('Aids')
+  })
+
+  it('never prepends "Homebrew:" to the persisted title or slug', async () => {
+    const store = createFakeDirectusStore(
+      [{ id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null }],
+      [{ id: 1, entity_id: 20, block_key: 'spell_core', label: 'Spell Core', repeatable: false, sort: 20, data: { name: 'Aid', level: 2, school: 'A' } }]
+    )
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Aids', level: 2, school: 'A' }
+    })
+
+    const createdRow = store.entities.find((e) => e.id === result.entity.id)
+    expect(result.entity.title).not.toMatch(/^Homebrew:/)
+    expect(createdRow?.slug).not.toContain('homebrew')
+
+    const spellCore = result.entity.blocks.find((b: any) => b.block_key === 'spell_core')
+    expect(spellCore?.data?.name).toBe('Aids')
+  })
+
+  it('selecting a template named "Aid" does not overwrite a distinct authored name "Aids"', async () => {
+    createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Aids' }
+    })
+
+    expect(result.entity.title).toBe('Aids')
+    expect(result.entity.title).not.toBe('Aid')
+    expect(result.template.title).toBe('Aid')
+  })
+
+  it('rejects a duplicate name that exists only in the published Content Pack catalogue', async () => {
+    createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([
+      entry({ entityType: 'spell', title: 'Fireball', slug: 'fireball-phb' })
+    ]))
+
+    await expect(createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Fireball' }
+    })).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rejects a duplicate name that exists only as an existing world-owned/homebrew entity', async () => {
+    createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null },
+      { id: 21, title: 'Fireball', slug: 'fireball', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'draft', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    await expect(createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Fireball' }
+    })).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('applies case/whitespace normalization consistent with this module\'s own slugify rules when detecting duplicates', async () => {
+    createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null },
+      { id: 21, title: 'Fireball', slug: 'fireball', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'draft', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    await expect(createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: '  FIREBALL  ' }
+    })).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('does not block renaming to a genuinely unique name, and a previously-rejected duplicate succeeds once renamed', async () => {
+    createFakeDirectusStore([
+      { id: 20, title: 'Aid', slug: 'aid', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'published', visibility: 'world', summary: '', image: null },
+      { id: 21, title: 'Fireball', slug: 'fireball', world_id: 5, system_key: 'dnd5e', entity_type: 'spell', status: 'draft', visibility: 'world', summary: '', image: null }
+    ])
+    resolveWorldContentMock.mockResolvedValue(resolvedCatalogue([]))
+
+    const result = await createHomebrewDraft(5, {
+      type: 'spell',
+      templateEntityId: '20',
+      spell: { name: 'Greater Fireball' }
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.entity.title).toBe('Greater Fireball')
+  })
+})

@@ -239,12 +239,6 @@ function hydrateSpellBuilderFromTemplate(template: any) {
   spellBuilderForm.classes = spellBuilderText(core.classes || '')
   spellBuilderForm.description = spellBuilderText(core.description || template?.summary || '')
   spellBuilderForm.higherLevel = spellBuilderText(core.higher_level || core.higherLevel || '')
-
-  if (!homebrewTitle.value.trim()) {
-    homebrewTitle.value = spellBuilderForm.name
-      ? `Homebrew: ${spellBuilderForm.name}`
-      : defaultHomebrewTitle(template)
-  }
 }
 
 function spellBuilderPayload() {
@@ -476,12 +470,6 @@ function hydrateItemBuilderFromTemplate(template: any) {
   itemBuilderForm.grantedActionDetail = itemBuilderText(core.grantedActionDetail || '')
   itemBuilderForm.grantedActionUses = itemBuilderText(core.grantedActionUses || '')
   itemBuilderForm.grantedActionRecharge = itemBuilderText(core.grantedActionRecharge || '')
-
-  if (!homebrewTitle.value.trim()) {
-    homebrewTitle.value = itemBuilderForm.name
-      ? `Homebrew: ${itemBuilderForm.name}`
-      : defaultHomebrewTitle(template)
-  }
 }
 
 function resetItemBuilderForm() {
@@ -696,12 +684,6 @@ function hydrateEnemyBuilderFromTemplate(template: any) {
   enemyBuilderForm.bonusActions = enemyBuilderText(core.bonusActions || core.bonus_actions || '')
   enemyBuilderForm.reactions = enemyBuilderText(core.reactions || '')
   enemyBuilderForm.legendaryActions = enemyBuilderText(core.legendaryActions || core.legendary_actions || '')
-
-  if (!homebrewTitle.value.trim()) {
-    homebrewTitle.value = enemyBuilderForm.name
-      ? `Homebrew: ${enemyBuilderForm.name}`
-      : defaultHomebrewTitle(template)
-  }
 }
 
 function resetEnemyBuilderForm() {
@@ -782,11 +764,13 @@ const enemyBuilderSummaryLine = computed(() => {
   ].filter(Boolean).join(' - ')
 })
 
+// Homebrew Entity Name and Provenance -- the template's own name is only a
+// starting point/fallback for the Draft Title field, never a prefixed
+// "Homebrew: X" display name. "Homebrew" is provenance (carried in the
+// homebrew_meta/import_source blocks persisted by createHomebrewDraft), not
+// part of the player-facing title.
 function defaultHomebrewTitle(template: any) {
-  const title = String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
-  return title.startsWith('Homebrew:')
-    ? title
-    : `Homebrew: ${title}`
+  return String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
 }
 
 function homebrewTemplateSubtitle(template: any) {
@@ -812,19 +796,23 @@ function selectHomebrewTemplate(template: any) {
   homebrewSuccess.value = ''
   homebrewError.value = ''
 
+  // Spell/item/enemy each have their own live "name" field on the builder
+  // form -- that field (not this generic Draft Title field) is the
+  // canonical authored name for those types, so Draft Title is left blank
+  // here and only ever resolved lazily (see homebrewDraftTitlePreview) from
+  // whichever is non-empty at submit time. Pre-seeding it from the
+  // template's name here was the root cause of a later, distinct authored
+  // name being silently shadowed by a stale snapshot taken at selection
+  // time. Types without a builder form (species/class/feat/background)
+  // have no other name source, so Draft Title still defaults from the
+  // template there.
   if (homebrewType.value === 'spell') {
     hydrateSpellBuilderFromTemplate(template)
-  }
-
-  if (homebrewType.value === 'item') {
+  } else if (homebrewType.value === 'item') {
     hydrateItemBuilderFromTemplate(template)
-  }
-
-  if (homebrewType.value === 'enemy') {
+  } else if (homebrewType.value === 'enemy') {
     hydrateEnemyBuilderFromTemplate(template)
-  }
-
-  if (!homebrewTitle.value.trim()) {
+  } else if (!homebrewTitle.value.trim()) {
     homebrewTitle.value = defaultHomebrewTitle(template)
   }
 }
@@ -1134,9 +1122,11 @@ async function createHomebrewDraft() {
           ? homebrewSelectedTemplateCatalogueRef.value
           : undefined,
         imageFileId: homebrewImageFileId.value || undefined,
-        title: homebrewType.value === 'spell'
-          ? (homebrewTitle.value || spellBuilderForm.name || defaultHomebrewTitle(selectedHomebrewTemplate.value))
-          : (homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)),
+        // Same priority the Draft Setup preview already shows the user
+        // (Draft Title override -> this type's live name field -> template
+        // default) -- one source of truth, so what gets submitted always
+        // matches what was previewed.
+        title: homebrewDraftTitlePreview.value,
         spell: homebrewType.value === 'spell'
           ? spellBuilderPayload()
           : undefined,

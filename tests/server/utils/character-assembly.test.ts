@@ -4,6 +4,15 @@
 // file is about resolution/reporting logic, not catalogue composition.
 // directusServiceRequest (the entities/block_instances reads) is mocked as
 // the Directus I/O boundary, mirroring create-v2.post.test.ts's own split.
+//
+// Character Sheet Homebrew Spell Picker: assembleCharacter now reads its
+// catalogue through getWorldGameplayCatalogueWithHomebrewSpells
+// (homebrew-spell-catalogue.ts), which itself calls getWorldContentCatalogue
+// (mocked below, so it still returns exactly what every existing test in
+// this file already sets up) plus a Homebrew-entities lookup that degrades
+// to an empty list on any Directus error -- including this file's own
+// strict directusServiceRequestMock, which throws for any path it doesn't
+// recognize. No separate mock of homebrew-spell-catalogue.ts is needed.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -820,6 +829,53 @@ describe('assembleCharacter -- spellcasting', () => {
     withSpellcasting({
       spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: true }]
     })
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    expect(spell).toMatchObject({ status: 'resolved', title: 'Fireball', known: true, prepared: true })
+    expect(spell?.entry?.sourceBook).toBe('XPHB')
+  })
+
+  // Character Sheet Homebrew Spell Picker -- a Homebrew spell added through
+  // the Add Spell dialog is stored as an ordinary {packageId, slug} ref,
+  // exactly like a published spell (HOMEBREW_SPELL_PACKAGE_ID is just
+  // another value resolveSlot's plain equality match treats the same way).
+  // getWorldGameplayCatalogueWithHomebrewSpells is what puts a matching
+  // entry into `catalogue.spells` in production; here the fullCatalogue
+  // fixture stands in for that merged result directly, since
+  // getWorldContentCatalogue itself is mocked in this file.
+  it('resolves a Homebrew spell reference exactly like a published one -- authored name intact, "Homebrew" as the source label', async () => {
+    const HOMEBREW_SPELL = catalogueEntry({
+      packageId: 'eldra.homebrew', // mirrors HOMEBREW_SPELL_PACKAGE_ID (homebrew-spell-catalogue.ts) -- not imported here since this file fully mocks that module
+      title: 'Aids 2: The Squeakquel',
+      slug: 'aids-2-the-squeakquel',
+      sourceBook: 'Homebrew'
+    })
+
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: HOMEBREW_SPELL.packageId, slug: 'aids-2-the-squeakquel' }, known: true, prepared: false }]
+    }, [FIREBALL, HOMEBREW_SPELL])
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    expect(spell).toMatchObject({ status: 'resolved', title: 'Aids 2: The Squeakquel', known: true, prepared: false })
+    expect(spell?.title.startsWith('Homebrew')).toBe(false)
+    expect(spell?.entry?.sourceBook).toBe('Homebrew')
+  })
+
+  it('still resolves a published spell correctly when the catalogue also contains a Homebrew entry -- published behavior unchanged', async () => {
+    const HOMEBREW_SPELL = catalogueEntry({
+      packageId: 'eldra.homebrew', // mirrors HOMEBREW_SPELL_PACKAGE_ID (homebrew-spell-catalogue.ts) -- not imported here since this file fully mocks that module
+      title: 'Aids 2: The Squeakquel',
+      slug: 'aids-2-the-squeakquel',
+      sourceBook: 'Homebrew'
+    })
+
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: true }]
+    }, [FIREBALL, HOMEBREW_SPELL])
 
     const result = await assembleCharacter('5', '42')
     const spell = result.available ? result.blueprint.spells[0] : null

@@ -67,7 +67,8 @@
 //    gated the way writing it is.
 
 import { directusServiceRequest } from './directus'
-import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-content-catalogue'
+import { type ContentCatalogueEntry } from './world-content-catalogue'
+import { getWorldGameplayCatalogueWithHomebrewSpells } from './homebrew-spell-catalogue'
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
 import { INVENTORY_BLOCK_KEY } from './character-inventory'
@@ -432,7 +433,9 @@ function resolveFeats(
 }
 
 // The canonical entry point for this module. Composes one entity read, one
-// block_instances read, and getWorldContentCatalogue -- no other I/O.
+// block_instances read, and getWorldGameplayCatalogueWithHomebrewSpells
+// (itself getWorldContentCatalogue plus this World's Homebrew spells,
+// additively merged -- see homebrew-spell-catalogue.ts) -- no other I/O.
 export async function assembleCharacter(
   worldId: string | number,
   characterId: string | number,
@@ -583,7 +586,13 @@ export async function assembleCharacter(
     }
   }
 
-  const catalogue = await getWorldContentCatalogue(worldId)
+  // Character Sheet Homebrew Spell Picker: `catalogue.spells` here must be
+  // the SAME merged (published + Homebrew) list GET /api/worlds/:id/catalogue
+  // hands the Add Spell dialog's options -- otherwise a Homebrew spell
+  // would appear in search but resolve as 'missing' right after it's
+  // added, since resolveSpells below matches purely against this array.
+  // See homebrew-spell-catalogue.ts's own header.
+  const catalogue = await getWorldGameplayCatalogueWithHomebrewSpells(worldId)
   const classRef = extractRef(selection.class)
   const classPackageId = typeof classRef?.packageId === 'string' ? classRef.packageId : ''
   const classSlug = typeof classRef?.slug === 'string' ? classRef.slug : ''

@@ -60,3 +60,15 @@ export function resolveInitialHomebrewType<T extends string>(
 ): T {
   return (knownTypeKeys as readonly string[]).includes(initialType) ? (initialType as T) : fallback
 }
+
+// Game Admin Refresh / Homebrew editor repair -- the route a successfully
+// created (or revisited) Homebrew draft's entity article lives at. Pulled
+// out to a plain function, rather than left as an inline template literal
+// at each of this panel's two call sites (the auto-navigate after create,
+// and the "Open Draft" button), only so the one thing actually worth
+// asserting about it -- that it is the SAME generic entity editor route
+// every other entity already opens at, not a second/duplicated editor --
+// has somewhere to be asserted from without a DOM harness.
+export function homebrewDraftArticlePath(worldId: string | number, entityId: string | number): string {
+  return `/worlds/${String(worldId)}/entities/${String(entityId)}`
+}

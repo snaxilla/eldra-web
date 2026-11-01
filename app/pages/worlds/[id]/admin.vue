@@ -8,6 +8,7 @@ definePageMeta({
 })
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import AdminSectionRail from '~/components/admin/AdminSectionRail.vue'
 import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewForgePanel.vue'
 import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
@@ -530,83 +531,78 @@ async function refreshAdmin() {
 </script>
 
 <template>
-  <div class="game-admin-space relative isolate h-full overflow-y-auto text-[#efe2bd]">
-    <div
-      class="relative z-10 mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
-      :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
-    >
-      <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgb(var(--eldra-panel-rgb)/var(--eldra-surface-reading-alpha)),rgb(var(--eldra-ink-rgb)/var(--eldra-surface-reading-alpha)))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] [backdrop-filter:blur(var(--eldra-panel-blur))]">
-        <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-              World Control
+  <div class="game-admin-space relative isolate h-full overflow-hidden text-[#efe2bd]">
+    <!-- Game Admin Refresh -- scroll ownership matches the Stages/Roll Tray
+         ancestor chain exactly (see sheet-v2.vue's own comment at its outer
+         flex row): this row never scrolls as a block, so the rail can stay
+         `h-full` with no `position: sticky`. Only the content column below
+         (`min-h-0 flex-1 overflow-y-auto`) scrolls. -->
+    <div class="flex h-full min-w-0">
+      <AdminSectionRail
+        :sections="panels"
+        :active-key="activePanel"
+        @select="activePanel = $event as typeof activePanel"
+      />
+
+      <div class="relative z-10 min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <div
+          class="mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
+          :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
+        >
+          <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgb(var(--eldra-panel-rgb)/var(--eldra-surface-reading-alpha)),rgb(var(--eldra-ink-rgb)/var(--eldra-surface-reading-alpha)))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] [backdrop-filter:blur(var(--eldra-panel-blur))]">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+                  World Control
+                </div>
+
+                <h1 class="mt-2 text-4xl font-semibold text-white">
+                  Game Admin
+                </h1>
+
+                <p class="mt-3 max-w-3xl text-sm leading-6 text-[#d8ceb8]">
+                  DM cockpit for party state, grants, transfers, relationships, and campaign cleanup.
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.12)]"
+                  @click="refreshAdmin"
+                >
+                  Refresh Admin
+                </button>
+
+                <NuxtLink
+                  :to="`/worlds/${worldId}/characters`"
+                  class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.58)] px-4 py-3 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+                >
+                  Characters
+                </NuxtLink>
+              </div>
             </div>
 
-            <h1 class="mt-2 text-4xl font-semibold text-white">
-              Game Admin
-            </h1>
+            <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <article
+                v-for="card in healthCards"
+                :key="card.label"
+                class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.42)] p-4"
+              >
+                <div class="text-xs uppercase tracking-[0.24em] text-[#9f9278]">
+                  {{ card.label }}
+                </div>
 
-            <p class="mt-3 max-w-3xl text-sm leading-6 text-[#d8ceb8]">
-              DM cockpit for party state, grants, transfers, relationships, and campaign cleanup.
-            </p>
-          </div>
+                <div class="mt-2 text-3xl font-semibold text-white">
+                  {{ card.value }}
+                </div>
 
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.12)]"
-              @click="refreshAdmin"
-            >
-              Refresh Admin
-            </button>
-
-            <NuxtLink
-              :to="`/worlds/${worldId}/characters`"
-              class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.58)] px-4 py-3 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
-            >
-              Characters
-            </NuxtLink>
-          </div>
-        </div>
-
-        <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <article
-            v-for="card in healthCards"
-            :key="card.label"
-            class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.42)] p-4"
-          >
-            <div class="text-xs uppercase tracking-[0.24em] text-[#9f9278]">
-              {{ card.label }}
+                <div class="mt-1 text-xs text-[#d8ceb8]">
+                  {{ card.sub }}
+                </div>
+              </article>
             </div>
-
-            <div class="mt-2 text-3xl font-semibold text-white">
-              {{ card.value }}
-            </div>
-
-            <div class="mt-1 text-xs text-[#d8ceb8]">
-              {{ card.sub }}
-            </div>
-          </article>
-        </div>
-
-        <div class="mt-6 overflow-x-auto">
-          <div class="flex min-w-max gap-2">
-            <button
-              v-for="panel in panels"
-              :key="panel.key"
-              type="button"
-              class="inline-flex items-center gap-2 rounded-none border px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] transition"
-              :class="activePanel === panel.key
-                ? 'border-[rgba(201,164,90,0.64)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]'"
-              @click="activePanel = panel.key"
-            >
-              <UIcon :name="panel.icon" class="h-4 w-4" />
-              <span>{{ panel.label }}</span>
-            </button>
-          </div>
-        </div>
-      </section>
+          </section>
 
       <section
         v-if="activePanel === 'overview'"
@@ -1392,6 +1388,8 @@ async function refreshAdmin() {
           </div>
         </div>
       </section>
+        </div>
+      </div>
     </div>
 
     <WorldEntityContextDrawer

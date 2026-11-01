@@ -9,6 +9,7 @@ import AdminHomebrewEnemyBuilder from '~/components/admin/homebrew/AdminHomebrew
 import {
   deriveHomebrewTemplateSelection,
   findInitialHomebrewTemplate,
+  homebrewDraftArticlePath,
   resolveInitialHomebrewType
 } from '~/components/admin/homebrew/homebrewTemplateSelection'
 
@@ -28,6 +29,32 @@ const props = defineProps<{
 
 const router = useRouter()
 const worldId = computed(() => String(props.worldId || ''))
+
+// Homebrew editor repair -- the entity article page (the "existing entity
+// editor" every created draft opens into, see that page's own `index.vue`)
+// gates ALL of its edit controls -- title/slug, image upload, the body
+// editor, sidebar notes -- behind the workspace's global `world-workspace-
+// mode` being 'build', defaulting to 'play'. Nothing on this panel, or on
+// the entity editor page itself, ever set it: a GM who opened Game Admin
+// (or the standalone Homebrew Forge page) while still in Play mode would
+// create a draft, get navigated straight to its article, and land on what
+// looks like a read-only page with no visible way to edit the thing they
+// just authored -- the actual "Homebrew editor is broken" failure this
+// task names. The fix is this one assignment, made right before each of
+// this panel's two navigations into that editor (the auto-navigate below,
+// and the "Open Draft" button): by the time either fires, the server has
+// already enforced `world.homebrew.manage` for this request (create.post.ts),
+// and every role holding that capability also holds `world.entity.edit`
+// (authorization.ts's GM_CAPABILITIES/WORLDBUILDER_CAPABILITIES bundles),
+// so switching this principal's OWN already-open workspace into Build mode
+// introduces no new access. Nothing about draft persistence, the editor's
+// own contract, or any other route's behavior changes.
+const workspaceMode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+
+function openCreatedDraftArticle(entityId: string | number) {
+  workspaceMode.value = 'build'
+  router.push(homebrewDraftArticlePath(worldId.value, entityId))
+}
 
 type HomebrewForgeType = 'spell' | 'item' | 'enemy' | 'species' | 'class' | 'feat' | 'background'
 
@@ -1179,7 +1206,7 @@ async function createHomebrewDraft() {
     homebrewSuccess.value = `Created ${res?.entity?.title || 'homebrew draft'}.`
 
     if (res?.entity?.id) {
-      router.push(`/worlds/${worldId.value}/entities/${res.entity.id}`)
+      openCreatedDraftArticle(res.entity.id)
     }
   } catch (error: any) {
     homebrewError.value =
@@ -1338,7 +1365,7 @@ watch(
                   v-if="homebrewCreatedEntity?.id"
                   type="button"
                   class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df]"
-                  @click="router.push(`/worlds/${worldId}/entities/${homebrewCreatedEntity.id}`)"
+                  @click="openCreatedDraftArticle(homebrewCreatedEntity.id)"
                 >
                   Open Draft
                 </button>

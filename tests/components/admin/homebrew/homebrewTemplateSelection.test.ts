@@ -1,15 +1,24 @@
 // Unit tests for app/components/admin/homebrew/homebrewTemplateSelection.ts
 // -- the pure discriminated-identity and deep-link preselection/type-
 // fallback helpers behind AdminHomebrewForgePanel.vue, added for
-// Contextual Homebrew Authoring Entry Points. No DOM/browser harness exists
-// in this repo (see worldEntityHomebrewActions.test.ts's header for the
-// same note) -- these tests prove the extracted selection logic directly,
-// not that the Forge panel's actual UI preselects visually in a browser.
+// Contextual Homebrew Authoring Entry Points, plus (Game Admin Refresh /
+// Homebrew editor repair) homebrewDraftArticlePath, the route helper behind
+// the panel's fix for landing a freshly created draft on a read-only
+// article. No DOM/browser harness exists in this repo (see
+// worldEntityHomebrewActions.test.ts's header for the same note) -- these
+// tests prove the extracted logic directly, not that the Forge panel's
+// actual UI preselects or navigates visually in a browser. The other half
+// of that fix -- switching `world-workspace-mode` to 'build' before
+// navigating -- is a single, unconditional state assignment with no
+// branching logic of its own to isolate into a pure function; it is
+// verified by reading the panel's own code (see its header comment at
+// `workspaceMode`), not by a unit test here.
 
 import { describe, expect, it } from 'vitest'
 import {
   deriveHomebrewTemplateSelection,
   findInitialHomebrewTemplate,
+  homebrewDraftArticlePath,
   resolveInitialHomebrewType
 } from '../../../../app/components/admin/homebrew/homebrewTemplateSelection'
 
@@ -81,5 +90,15 @@ describe('resolveInitialHomebrewType', () => {
 
   it('falls back for an unrecognized/garbage type rather than erroring', () => {
     expect(resolveInitialHomebrewType('monster-truck', knownTypes, 'spell')).toBe('spell')
+  })
+})
+
+describe('homebrewDraftArticlePath', () => {
+  it('builds the exact route the generic entity editor page is served at -- no second/duplicated editor route', () => {
+    expect(homebrewDraftArticlePath('42', 1017)).toBe('/worlds/42/entities/1017')
+  })
+
+  it('stringifies numeric world/entity ids identically to a string id', () => {
+    expect(homebrewDraftArticlePath(42, '1017')).toBe(homebrewDraftArticlePath('42', 1017))
   })
 })

@@ -208,3 +208,110 @@ describe('POST /api/auth/login', () => {
     expect(setSessionCookiesMock).toHaveBeenCalledWith(expect.anything(), 'access-xyz', 'refresh-xyz')
   })
 })
+
+// ---------------------------------------------------------------------------
+// COOKIE ORDERING (deployment blocker).
+//
+// setSessionCookies used to run immediately after Directus accepted the
+// password, before any Eldra resolution. A failure in the identity store or
+// the grant read then returned an error WITH a valid `eldra_session`
+// already set -- after which /api/auth/me stopped short-circuiting on "no
+// cookie", started failing the same way, and took every unguarded
+// `await fetchMe()` down with it during SSR, including the one on /login.
+// The user had no in-app route back.
+//
+// These pin the invariant that fixes it: no required resolution failure may
+// leave a cookie behind.
+// ---------------------------------------------------------------------------
+
+describe('POST /api/auth/login -- session cookies are set only after every required resolution succeeds', () => {
+  function directusAuthenticates() {
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') return directusLoginSuccess()
+      return { data: { id: 'account-1', email: 'sam@example.com', first_name: 'Sam' } }
+    })
+  }
+
+  it('sets NO cookie when the Eldra Account cannot be resolved', async () => {
+    directusAuthenticates()
+    resolveAccountForIdentityMock.mockRejectedValue(
+      Object.assign(new Error('Identity store unavailable'), { statusCode: 503 })
+    )
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'pw' }))).rejects.toMatchObject({
+      statusCode: 503
+    })
+
+    expect(setSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('sets NO cookie when the platform-grant read fails', async () => {
+    directusAuthenticates()
+    listPlatformGrantsMock.mockRejectedValue(
+      Object.assign(new Error('Identity store unavailable'), { statusCode: 503 })
+    )
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'pw' }))).rejects.toMatchObject({
+      statusCode: 503
+    })
+
+    expect(setSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('sets NO cookie when the post-login /users/me read fails', async () => {
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') return directusLoginSuccess()
+      throw Object.assign(new Error('Directus unavailable'), { statusCode: 502 })
+    })
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'pw' }))).rejects.toMatchObject({
+      statusCode: 502
+    })
+
+    expect(setSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('still sets no cookie when Directus rejects the password (unchanged behaviour)', async () => {
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') return { data: {} } // no access_token
+      return {}
+    })
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'wrong' }))).rejects.toMatchObject({
+      statusCode: 401
+    })
+
+    expect(setSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('a successful login still sets both tokens -- and does so only after resolution completed', async () => {
+    const order: string[] = []
+
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') return directusLoginSuccess('access-1', 'refresh-1')
+      order.push('users/me')
+      return { data: { id: 'account-1', email: 'sam@example.com', first_name: 'Sam' } }
+    })
+    resolveAccountForIdentityMock.mockImplementation(async () => {
+      order.push('resolveAccount')
+      return { id: ELDRA_ACCOUNT_ID, displayName: 'Sam', status: 'active' }
+    })
+    listPlatformGrantsMock.mockImplementation(async () => {
+      order.push('listGrants')
+      return ['platform.settings.manage']
+    })
+    setSessionCookiesMock.mockImplementation(() => {
+      order.push('setCookies')
+    })
+
+    const result = await handler(fakeEvent({ username: 'sam', password: 'pw' }))
+
+    expect(setSessionCookiesMock).toHaveBeenCalledWith(expect.anything(), 'access-1', 'refresh-1')
+    expect(order).toEqual(['users/me', 'resolveAccount', 'listGrants', 'setCookies'])
+    expect(result).toMatchObject({
+      ok: true,
+      accountId: ELDRA_ACCOUNT_ID,
+      platformCapabilities: ['platform.settings.manage']
+    })
+  })
+})

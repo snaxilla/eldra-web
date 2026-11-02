@@ -73,7 +73,37 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  setSessionCookies(event, accessToken, refreshToken)
+  // COOKIES ARE SET LAST, AND THAT ORDERING IS THE POINT.
+  //
+  // This handler used to call setSessionCookies HERE, immediately after
+  // Directus accepted the password and before any Eldra resolution had
+  // run. Every step below it can fail -- the Eldra Account lookup and the
+  // platform-grant read both talk to the identity store -- and when one
+  // did, the response was an error but the browser had ALREADY been given
+  // a valid `eldra_session`. That combination is worse than either
+  // failure alone:
+  //
+  //   1. Login returns an error, so the user believes they are signed out.
+  //   2. They are not: `eldra_session` is set, so /api/auth/me stops
+  //      short-circuiting on "no cookie" and starts calling the identity
+  //      store too -- where it fails the same way.
+  //   3. `await fetchMe()` is unguarded in app/middleware/auth.ts,
+  //      app/middleware/admin.ts, app/pages/index.vue and
+  //      app/pages/login.vue, all of which run during SSR -- so every
+  //      page errors, INCLUDING /login.
+  //   4. There is no in-app way out: reaching the login form to retry is
+  //      itself one of the broken pages, and nothing clears the cookie.
+  //
+  // Setting cookies only once every required resolution has succeeded
+  // turns that dead end into an ordinary failed login: an error, no
+  // cookie, /login still renders, the app still usable as signed-out. It
+  // matters most in the window before the identity collections are
+  // provisioned, but the ordering is correct independent of that -- a
+  // session should not outlive the request that was supposed to establish
+  // it.
+  //
+  // Nothing below needs the cookie to run: the /users/me call authorizes
+  // with the access token explicitly, from the login response in hand.
 
   // `fields` is REQUIRED here: without it Directus returns `role` as a bare
   // id string, which useAuth's normalizeUser silently reduces to
@@ -99,6 +129,10 @@ export default defineEventHandler(async (event) => {
     displayName: formatAccountDisplayName(row)
   })
   const platformCapabilities = await listPlatformGrants(account.id)
+
+  // Everything required has resolved -- only now does the browser get a
+  // session.
+  setSessionCookies(event, accessToken, refreshToken)
 
   return {
     ok: true,

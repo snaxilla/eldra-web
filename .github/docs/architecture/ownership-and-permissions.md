@@ -1010,16 +1010,66 @@ columns. A direct-`pg` adapter — following the bounded-pool, least-privilege, 
 precedent already in `character-resource-atomic.ts` — remains available and would mean rewriting one
 module's adapter section.
 
-### Deployment prerequisite
+### Deployment runbook
 
 Phase 1 removes the implicit "Directus Administrator ⇒ Eldra platform administrator" grant. Until
-`bootstrap-eldra-platform-admin.mjs` runs, the existing administrator signs in successfully and holds
-**no** platform capability: fail-closed, not broken, but the admin workspace is unreachable. The
-deployment order is therefore `bootstrap.mjs` (provision collections) →
-`bootstrap-eldra-platform-admin.mjs --directus-user-id=<uuid> --apply` (grant, and backfill owner
-rows for Worlds that have no membership row at all) → verify. Both are idempotent. `--revoke --apply`
-is the rollback for the grant; reverting the code alone also restores prior behavior, because Phase 1
-rewrites no pre-existing row.
+`bootstrap-eldra-platform-admin.mjs` runs, the administrator signs in successfully and holds **no**
+platform capability — fail-closed, and the admin workspace is unreachable. Every step below is
+idempotent.
+
+**Step 1 — provision the collections.** `node scripts/directus/bootstrap.mjs`.
+
+**Step 2 — verify the schema actually exists.** Directus answers an *unprovisioned* collection and an
+*inaccessible* one with the byte-identical `403 FORBIDDEN` (verified against 11.12.0 with an
+`admin_access` token, against a control collection that does not exist), so a 403 proves neither.
+Confirm instead that `GET /collections` lists `eldra_accounts`, `eldra_identity_links` and
+`eldra_platform_grants`, **and** that an item read against each succeeds. Collection *schema* access
+and collection *item* access are separate Directus concerns.
+
+**Step 3 — confirm the subject, read-only, before granting anything.** This is mandatory, not
+advisory. `--directus-user-id` is never inferred, and the specific mistake to rule out is granting
+Eldra platform administration to the **service account whose token the script itself authenticates
+with** — which would make the two permission systems Phase 1 just separated share a principal again.
+Run `--list-users` and confirm the chosen id:
+
+- **has an email and a non-null `last_access`** — i.e. it is a human who interactively signs in; and
+- **is not the id that `GET /users/me` returns for `DIRECTUS_TOKEN`** — that one is the service
+  account, and on this instance it has no email and has never signed in.
+
+The script prints a `SUBJECT CHECK` block and warns loudly when the subject has no email, but the
+operator confirms it.
+
+*Verified read-only for this instance:* `12dbac5d-476b-4933-819a-c83de299239a` is
+`sam@theledouxs.com` / "Admin User" / `Administrator` / last access 2026-11-02 — the interactive
+administrator. The service token resolves to `04523cf3-7953-4b6a-b924-509c865228ad` /
+"Eldra Automation" / no email / never accessed. They are different accounts.
+
+**Step 4 — grant, dry-run first.**
+`bootstrap-eldra-platform-admin.mjs --directus-user-id=<uuid>` prints the full plan and writes
+nothing; re-run with `--apply`. This writes **only** to the three Phase 1 collections: the Account,
+its IdentityLink, and one grant row per capability.
+
+**Step 5 — restore access to ownerless Worlds, as a separate decision.** `--apply` deliberately does
+*not* create World memberships. A World with no membership rows at all (on this instance: World 1
+"Varin") was reachable only through the removed fallback, so it now grants nothing to anyone and
+needs a real owner — but that write lands in live shared data, assigns ownership of a World that
+currently has none, and is **not** undone by `--revoke`. It therefore requires
+`--backfill-ownerless-worlds` passed explicitly. The plan always lists the candidates, marked out of
+scope, so the separation costs no visibility.
+
+**Step 6 — deploy the application, then verify** that a real sign-in works and the admin workspace
+loads.
+
+**Rollback.** `--revoke --apply` deletes exactly the grant rows; the Account and IdentityLink remain
+and are inert without grants. Backfilled memberships are *not* removed — they are listed for manual
+removal, which is the main reason step 5 is separate. Reverting the code alone also restores prior
+behaviour, because Phase 1 rewrites no pre-existing row.
+
+**Ordering note.** Steps 1–2 before step 6 is strongly preferred but no longer load-bearing for
+recoverability: `/api/auth/login` sets session cookies only after every required identity resolution
+succeeds, so a deploy that reaches users before the schema exists produces an ordinary failed login
+(error, no cookie, `/login` still renders) rather than a cookie-bearing session that breaks every
+page including the login form.
 
 **Running in parallel:**
 

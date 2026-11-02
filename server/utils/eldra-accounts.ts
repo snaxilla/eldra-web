@@ -143,10 +143,14 @@ export async function resolveAccountForIdentity(input: ResolveAccountInput): Pro
     // than silently minting a second Account for an identity that already
     // claims one -- a silent re-mint would orphan that identity's
     // memberships and look like data loss.
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Identity link ${identityKey} references a missing Eldra Account`
-    })
+    //
+    // The identity key names a provider's subject (a Directus user id),
+    // so it belongs in the log and not in a response body -- same split
+    // as identityStoreError's.
+    identityStoreError(
+      `resolveAccountForIdentity: link ${identityKey} references missing account ${existingLink.accountId}`,
+      new Error('Orphaned identity link')
+    )
   }
 
   const account = await insertAccount({
@@ -170,11 +174,17 @@ export async function resolveAccountForIdentity(input: ResolveAccountInput): Pro
     // trade than leaving one inert row behind.
     const winner = await findIdentityLinkByKey(identityKey)
     if (!winner) {
-      throw error
+      // Not a lost race -- the insert failed for some other reason, and
+      // `error` is still a raw Directus failure. Translate it rather than
+      // letting Directus's own status and wording reach the browser.
+      identityStoreError('insertIdentityLink', error)
     }
     const winningAccount = await findAccountById(winner.accountId)
     if (!winningAccount) {
-      throw error
+      identityStoreError(
+        `insertIdentityLink: race winner ${winner.accountId} has no account row`,
+        error
+      )
     }
     return winningAccount
   }
@@ -206,7 +216,7 @@ export async function listIdentitySubjectsForAccount(accountId: string): Promise
 // recognize, so a stale or hand-edited row can never widen the capability
 // set -- see resolvePlatformCapabilities in authorization.ts.
 export async function listPlatformGrants(accountId: string): Promise<string[]> {
-  const res: any = await directusServiceRequest(`/items/${PLATFORM_GRANTS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('listPlatformGrants', `/items/${PLATFORM_GRANTS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { account_id: { _eq: accountId } },
@@ -231,7 +241,7 @@ export async function resolveAccountDisplayNames(accountIds: string[]): Promise<
     return new Map()
   }
 
-  const res: any = await directusServiceRequest(`/items/${ACCOUNTS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('resolveAccountDisplayNames', `/items/${ACCOUNTS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { id: { _in: ids } },
@@ -257,8 +267,74 @@ export async function resolveAccountDisplayNames(accountIds: string[]): Promise<
 // rewriting only this section.
 // ---------------------------------------------------------------------------
 
+// THE ERROR BOUNDARY. Every identity-store read and write goes through
+// here, and nothing about the store's own failure shape is allowed past
+// it.
+//
+// WHY. Directus answers an unprovisioned collection and a collection the
+// token may not read with the BYTE-IDENTICAL response: HTTP 403,
+// `{"code":"FORBIDDEN","message":"You don't have permission to access
+// this."}`. Verified directly against the deployed instance (11.12.0) with
+// a token holding admin_access, against a control collection that
+// definitely does not exist -- /items, /collections and /fields all answer
+// 403 for both cases. So:
+//
+//   * This boundary must NOT claim "the collection is missing". It cannot
+//     know that, and saying so would be a guess dressed as a diagnosis.
+//   * It must NOT pass Directus's own 403 through either. Propagated
+//     unchanged, a missing identity store reaches the browser as "You
+//     don't have permission to access this" -- which reads as a statement
+//     about the SIGNED-IN USER's permissions and is the single most
+//     misleading interpretation available. (Before this boundary existed
+//     that is exactly what happened: the FetchError carries statusCode
+//     403, so it travelled resolvePrincipal -> authorize.ts -> client
+//     untouched.)
+//   * It must NOT probe `/collections` to disambiguate. That would add a
+//     second Directus round-trip to every authenticated request to
+//     diagnose a condition that is either permanent or absent, and
+//     request-time schema introspection is not something to pay for per
+//     user.
+//
+// So the client is told one honest, unhelpful-on-purpose thing -- the
+// identity store is unavailable, 503, try later -- while the information
+// that actually identifies the cause (status, Directus's own message, the
+// operation attempted) goes to the server log, where an operator can see
+// it and the browser cannot. 503 rather than 403/500 because the condition
+// is genuinely "this dependency is not answering", which is what an
+// operator needs to hear and what a client should retry.
+const IDENTITY_STORE_UNAVAILABLE = 'Identity store unavailable'
+
+function identityStoreError(operation: string, error: any): never {
+  const status = error?.response?.status ?? error?.statusCode ?? error?.status ?? 'unknown'
+  const directusMessage =
+    error?.data?.errors?.[0]?.message ??
+    error?.response?._data?.errors?.[0]?.message ??
+    error?.message ??
+    String(error)
+
+  // Server-side only. Tagged like server/utils/character-sheet-safe.ts's
+  // own diagnostics so it is greppable alongside the rest of this app's
+  // server logging.
+  console.error(
+    `[eldra-accounts] identity store request failed (operation=${operation}, status=${status}): ${directusMessage}`,
+    error
+  )
+
+  throw createError({ statusCode: 503, statusMessage: IDENTITY_STORE_UNAVAILABLE })
+}
+
+// Wraps one identity-store call. `operation` names what was attempted and
+// appears only in the log, never in the response.
+async function identityStoreRequest(operation: string, path: string, options: any): Promise<any> {
+  try {
+    return await directusServiceRequest(path, options)
+  } catch (error: any) {
+    identityStoreError(operation, error)
+  }
+}
+
 async function findAccountById(accountId: string): Promise<EldraAccount | null> {
-  const res: any = await directusServiceRequest(`/items/${ACCOUNTS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('findAccountById', `/items/${ACCOUNTS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { id: { _eq: accountId } },
@@ -272,7 +348,7 @@ async function findAccountById(accountId: string): Promise<EldraAccount | null> 
 }
 
 async function findIdentityLinkByKey(identityKey: string): Promise<EldraIdentityLink | null> {
-  const res: any = await directusServiceRequest(`/items/${IDENTITY_LINKS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('findIdentityLinkByKey', `/items/${IDENTITY_LINKS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { identity_key: { _eq: identityKey } },
@@ -286,7 +362,7 @@ async function findIdentityLinkByKey(identityKey: string): Promise<EldraIdentity
 }
 
 async function findIdentityLinksByAccount(accountId: string): Promise<EldraIdentityLink[]> {
-  const res: any = await directusServiceRequest(`/items/${IDENTITY_LINKS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('findIdentityLinksByAccount', `/items/${IDENTITY_LINKS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { account_id: { _eq: accountId } },
@@ -301,7 +377,7 @@ async function findIdentityLinksByAccount(accountId: string): Promise<EldraIdent
 async function insertAccount(input: { displayName: string }): Promise<EldraAccount> {
   const now = new Date().toISOString()
 
-  const res: any = await directusServiceRequest(`/items/${ACCOUNTS_COLLECTION}`, {
+  const res: any = await identityStoreRequest('insertAccount', `/items/${ACCOUNTS_COLLECTION}`, {
     method: 'POST',
     query: { fields: ACCOUNT_FIELDS },
     body: {
@@ -324,6 +400,12 @@ async function insertAccount(input: { displayName: string }): Promise<EldraAccou
   return account
 }
 
+// Deliberately NOT routed through identityStoreRequest. Its caller
+// inspects this failure to recover from the `identity_key` unique-index
+// race (two concurrent first-logins), and a benign lost race is not an
+// "identity store unavailable" condition -- translating it here would log
+// every race as a dependency failure and discard the signal the caller
+// needs. resolveAccountForIdentity owns the translation for this one path.
 async function insertIdentityLink(input: {
   accountId: string
   provider: string

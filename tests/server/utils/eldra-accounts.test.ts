@@ -247,13 +247,22 @@ describe('resolveAccountForIdentity', () => {
       ]
     })
 
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
     await expect(
       resolveAccountForIdentity({
         provider: 'directus',
         providerSubject: DIRECTUS_USER_ID,
         displayName: 'Admin User'
       })
-    ).rejects.toMatchObject({ statusCode: 500 })
+    ).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Identity store unavailable' })
+
+    // The orphaned key names a Directus user id, so it goes to the log and
+    // not to the caller.
+    const line = String(logged.mock.calls[0]?.[0] ?? '')
+    expect(line).toContain('deleted-account')
+    expect(line).toContain(DIRECTUS_USER_ID)
+    logged.mockRestore()
   })
 
   it('falls back to the subject as a display name rather than storing a blank one', async () => {
@@ -326,5 +335,165 @@ describe('resolveAccountDisplayNames', () => {
 
     expect(await resolveAccountDisplayNames([])).toEqual(new Map())
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The identity-store error boundary.
+//
+// Directus answers an unprovisioned collection and an inaccessible one with
+// the SAME 403 FORBIDDEN body (verified against the deployed instance with
+// an admin token, against a control collection that does not exist). These
+// tests pin both halves of the split that fact forces: the caller is told
+// something generic and honest, and the detail that actually identifies the
+// cause goes only to the server log.
+// ---------------------------------------------------------------------------
+
+describe('identity-store error boundary', () => {
+  const directusForbidden = () =>
+    Object.assign(new Error('Directus request failed'), {
+      response: { status: 403, _data: { errors: [{ message: "You don't have permission to access this." }] } },
+      statusCode: 403,
+      data: { errors: [{ message: "You don't have permission to access this." }] }
+    })
+
+  function failingStore(error: unknown) {
+    directusServiceRequestMock.mockImplementation(async () => {
+      throw error
+    })
+    return vi.spyOn(console, 'error').mockImplementation(() => {})
+  }
+
+  it('never reports a 403 as "collection missing" -- it cannot know that, and does not guess', async () => {
+    const logged = failingStore(directusForbidden())
+
+    await expect(
+      resolveAccountForIdentity({ provider: 'directus', providerSubject: DIRECTUS_USER_ID, displayName: 'X' })
+    ).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Identity store unavailable' })
+
+    const everything = JSON.stringify(logged.mock.calls)
+    expect(everything.toLowerCase()).not.toContain('collection missing')
+    expect(everything.toLowerCase()).not.toContain('not provisioned')
+    logged.mockRestore()
+  })
+
+  it('does not pass Directus\'s own 403 or its wording to the caller', async () => {
+    const logged = failingStore(directusForbidden())
+
+    const caught = await resolveAccountForIdentity({
+      provider: 'directus',
+      providerSubject: DIRECTUS_USER_ID,
+      displayName: 'X'
+    }).catch((error: any) => error)
+
+    // 403 would read to the browser as a statement about the signed-in
+    // user's permissions, which is the one interpretation that is certainly
+    // wrong here.
+    expect(caught.statusCode).toBe(503)
+    expect(String(caught.statusMessage)).toBe('Identity store unavailable')
+    expect(JSON.stringify(caught)).not.toContain("don't have permission")
+    logged.mockRestore()
+  })
+
+  it('keeps the status, Directus message and attempted operation in the server log', async () => {
+    const logged = failingStore(directusForbidden())
+
+    await resolveAccountForIdentity({
+      provider: 'directus',
+      providerSubject: DIRECTUS_USER_ID,
+      displayName: 'X'
+    }).catch(() => {})
+
+    const line = String(logged.mock.calls[0]?.[0] ?? '')
+    expect(line).toContain('[eldra-accounts]')
+    expect(line).toContain('status=403')
+    expect(line).toContain("You don't have permission to access this.")
+    expect(line).toContain('findIdentityLinkByKey')
+    // The original error object is passed through for the stack.
+    expect(logged.mock.calls[0]?.[1]).toBeInstanceOf(Error)
+    logged.mockRestore()
+  })
+
+  it('makes no extra schema request to disambiguate -- one failed call, not two', async () => {
+    const logged = failingStore(directusForbidden())
+
+    await resolveAccountForIdentity({
+      provider: 'directus',
+      providerSubject: DIRECTUS_USER_ID,
+      displayName: 'X'
+    }).catch(() => {})
+
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+    const paths = directusServiceRequestMock.mock.calls.map(([path]) => path)
+    expect(paths.some((path: string) => path.includes('/collections') || path.includes('/fields'))).toBe(false)
+    logged.mockRestore()
+  })
+
+  it('applies to grant reads too, so a failed grant read is never mistaken for "no grants"', async () => {
+    const logged = failingStore(directusForbidden())
+
+    await expect(listPlatformGrants(ELDRA_ACCOUNT_ID)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Identity store unavailable'
+    })
+
+    expect(String(logged.mock.calls[0]?.[0] ?? '')).toContain('listPlatformGrants')
+    logged.mockRestore()
+  })
+
+  it('applies to display-name reads and subject lookups', async () => {
+    const logged = failingStore(directusForbidden())
+
+    await expect(resolveAccountDisplayNames([ELDRA_ACCOUNT_ID])).rejects.toMatchObject({ statusCode: 503 })
+    await expect(listIdentitySubjectsForAccount(ELDRA_ACCOUNT_ID)).rejects.toMatchObject({ statusCode: 503 })
+    logged.mockRestore()
+  })
+
+  it('reports an unknown status rather than inventing one', async () => {
+    const logged = failingStore(new Error('socket hang up'))
+
+    await expect(listPlatformGrants(ELDRA_ACCOUNT_ID)).rejects.toMatchObject({ statusCode: 503 })
+
+    const line = String(logged.mock.calls[0]?.[0] ?? '')
+    expect(line).toContain('status=unknown')
+    expect(line).toContain('socket hang up')
+    logged.mockRestore()
+  })
+
+  it('a benign lost unique-index race is NOT logged as a store failure', async () => {
+    // The race path must keep working and must not be translated: a lost
+    // race is a normal outcome, not a dependency being unavailable.
+    const store = installStore()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    let preChecked = false
+    const base = directusServiceRequestMock.getMockImplementation()!
+    directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
+      if (path === '/items/eldra_identity_links' && opts.method === 'GET' && !preChecked) {
+        preChecked = true
+        return { data: [] }
+      }
+      if (path === '/items/eldra_accounts' && opts.method === 'POST' && preChecked && store.links.length === 0) {
+        store.accounts.push({ id: 'winner-account', display_name: 'X', status: 'active' })
+        store.links.push({
+          id: 'link-winner',
+          account_id: 'winner-account',
+          provider: 'directus',
+          provider_subject: DIRECTUS_USER_ID,
+          identity_key: `directus|${DIRECTUS_USER_ID}`
+        })
+      }
+      return base(path, opts)
+    })
+
+    const account = await resolveAccountForIdentity({
+      provider: 'directus',
+      providerSubject: DIRECTUS_USER_ID,
+      displayName: 'X'
+    })
+
+    expect(account.id).toBe('winner-account')
+    expect(logged).not.toHaveBeenCalled()
+    logged.mockRestore()
   })
 })

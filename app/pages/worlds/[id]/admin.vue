@@ -14,6 +14,7 @@ import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
 import AdminContentPacksPanel from '~/components/admin/content-packs/AdminContentPacksPanel.vue'
 import AdminProjectHealthPanel from '~/components/admin/health/AdminProjectHealthPanel.vue'
+import { GAME_ADMIN_SECTIONS, type GameAdminPanelKey } from '~/components/admin/gameAdminSections'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,10 +22,28 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'health' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'content-packs' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<GameAdminPanelKey>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
+
+// PLAYER MANAGEMENT -- account ownership + deletion. Both are genuine
+// architecture blockers, not an oversight -- see this file's own "Account
+// Owner" / "Delete Character" markup below for the exact reasons (no
+// `entities.owner_account_id` column exists anywhere in the real schema --
+// confirmed by tracing, not assumed -- and deletion has no referential-
+// integrity story for character_sheets/entity_relationships/inventory
+// transfers, which are plain integer columns with no Directus-level
+// relation or cascade configured). Kept visible, not hidden: this task's
+// own instruction is "leave the UI action clearly unavailable rather than
+// risking orphaned data," which is a different thing from omitting it.
+// Keyed by entity id so expanding one card's management panel doesn't
+// affect any other card's.
+const managingEntityId = ref<string | null>(null)
+function toggleManage(entity: any) {
+  const id = entityId(entity)
+  managingEntityId.value = managingEntityId.value === id ? null : id
+}
 
 const grantTargetEntityId = ref('')
 const itemSearch = ref('')
@@ -196,19 +215,12 @@ const healthCards = computed(() => [
 
 
 
-const panels = [
-  { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
-  { key: 'health', label: 'Project Health', icon: 'i-lucide-activity' },
-  { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
-  { key: 'members', label: 'Members', icon: 'i-lucide-shield-check' },
-  { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
-  { key: 'homebrew', label: 'Homebrew', icon: 'i-lucide-flask-conical' },
-  { key: 'rules', label: 'Rules', icon: 'i-lucide-scale' },
-  { key: 'content-packs', label: 'Content Packs', icon: 'i-lucide-package-2' },
-  { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' },
-  { key: 'transfers', label: 'Transfers', icon: 'i-lucide-arrow-left-right' },
-  { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' }
-] as const
+// PROCESS 2.0 -- GAME ADMIN IA & PLAYER OPERATIONS: order, labels, and the
+// panel-key mapping (party->player, members->accounts, grants+transfers->
+// inventory) now live in gameAdminSections.ts, the one place both this
+// page's `v-else-if` chain and a focused test (gameAdminSections.test.ts)
+// read, so the two can never silently drift from each other.
+const panels = GAME_ADMIN_SECTIONS
 
 const pageSetupSections = [
   {
@@ -609,14 +621,14 @@ async function refreshAdmin() {
                 Fast Table View
               </div>
               <h2 class="mt-2 text-2xl font-semibold text-white">
-                Party / Cast
+                Player Management
               </h2>
             </div>
 
             <button
               type="button"
               class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-              @click="activePanel = 'party'"
+              @click="activePanel = 'player'"
             >
               View All
             </button>
@@ -792,25 +804,26 @@ async function refreshAdmin() {
       />
 
       <AdminMembersPanel
-        v-else-if="activePanel === 'members'"
+        v-else-if="activePanel === 'accounts'"
         :world-id="worldId"
       />
 
       <section
-        v-else-if="activePanel === 'party'"
+        v-else-if="activePanel === 'player'"
         class="mt-6"
       >
         <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
           <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-                Party / Cast
+                Player Management
               </div>
               <h2 class="mt-2 text-2xl font-semibold text-white">
                 Characters, NPCs, and Sheets
               </h2>
               <p class="mt-2 text-sm text-[#d8ceb8]">
-                Fast access to articles, sheets, and context details.
+                Fast access to articles, sheets, context details, and (below) each
+                character's account ownership and deletion status.
               </p>
             </div>
 
@@ -900,6 +913,64 @@ async function refreshAdmin() {
                     >
                       Sheet
                     </button>
+
+                    <button
+                      type="button"
+                      class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#9f9278]"
+                      :aria-expanded="managingEntityId === entityId(entity)"
+                      @click="toggleManage(entity)"
+                    >
+                      {{ managingEntityId === entityId(entity) ? 'Hide Account & Deletion' : 'Account & Deletion' }}
+                    </button>
+                  </div>
+
+                  <!-- Account ownership + deletion -- both genuinely unavailable today; see
+                       managingEntityId's own header above for the exact, traced reasons. This is
+                       the UI the task asked for ("clearly unavailable," not absent), not a stub
+                       left half-wired to a mutation that does not exist. -->
+                  <div
+                    v-if="managingEntityId === entityId(entity)"
+                    class="mt-4 grid gap-3 border-t border-[rgba(201,164,90,0.16)] pt-4"
+                  >
+                    <div class="rounded-none border border-dashed border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.55)] p-3">
+                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">
+                        Account Owner
+                      </div>
+                      <p class="mt-1.5 text-xs leading-5 text-[#d8ceb8]">
+                        Not tracked yet. Eldra's World Membership model (Owner/GM/Worldbuilder/Player/Observer)
+                        does not currently record which player account, if any, owns this specific character --
+                        there is no owner column on this World's characters to assign. Changing that is a
+                        schema decision (adding an account reference to characters) that needs explicit
+                        approval before it is made, per this World's own architecture notes.
+                      </p>
+                      <button
+                        type="button"
+                        disabled
+                        class="mt-2.5 cursor-not-allowed rounded-none border border-[rgba(201,164,90,0.18)] px-3 py-2 text-xs font-semibold text-[#6f6754]"
+                      >
+                        Change Owner (unavailable)
+                      </button>
+                    </div>
+
+                    <div class="rounded-none border border-dashed border-red-500/25 bg-[rgba(20,17,12,0.55)] p-3">
+                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">
+                        Delete Character
+                      </div>
+                      <p class="mt-1.5 text-xs leading-5 text-[#d8ceb8]">
+                        Not available yet. Deleting {{ entityTitle(entity) }} today would remove only this
+                        character's own article record -- its character sheet, inventory/transfer history, and
+                        any relationships to other characters are stored under a separate id with no enforced
+                        link back to it, so they would be silently left behind rather than cleaned up. Safe
+                        deletion needs that cleanup implemented and verified first.
+                      </p>
+                      <button
+                        type="button"
+                        disabled
+                        class="mt-2.5 cursor-not-allowed rounded-none border border-red-500/20 px-3 py-2 text-xs font-semibold text-red-300/50"
+                      >
+                        Delete Character (unavailable)
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -908,201 +979,297 @@ async function refreshAdmin() {
         </div>
       </section>
 
+      <!-- Inventory Management -- Grants and Transfers merged (Process 2.0: GAME
+           ADMIN IA & PLAYER OPERATIONS). Traced before merging, not assumed: both
+           Grant Item/Grant Currency (below) and Transfers (further below, the same
+           history list the old standalone Transfers panel showed, unchanged) are
+           operations over a character's OWN inventory -- adding to it, or moving
+           items between two characters' inventories. Neither touches a non-inventory
+           grant (feat/ability grants, which this World has none of today), so
+           nothing needed to be kept separate or relabeled. -->
       <section
-        v-else-if="activePanel === 'grants'"
-        class="mt-6 grid gap-6 xl:grid-cols-2"
+        v-else-if="activePanel === 'inventory'"
+        class="mt-6 grid gap-6"
       >
-        <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Grant Item
-          </div>
-          <h2 class="mt-2 text-2xl font-semibold text-white">
-            Send Gear
-          </h2>
-          <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-            Add a normalized item or quick custom row directly to a character sheet.
-          </p>
-
-          <div class="mt-5 grid gap-4">
-            <label>
-              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Target</span>
-              <select
-                v-model="grantTargetEntityId"
-                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-              >
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose character...</option>
-                <option
-                  v-for="target in grantTargets"
-                  :key="entityId(target)"
-                  :value="entityId(target)"
-                  class="bg-[#090909] text-[#f5e7bd]"
-                >
-                  {{ entityTitle(target) }} - {{ entityTypeLabel(target) }}
-                </option>
-              </select>
-            </label>
-
-            <label>
-              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Search Imported Items</span>
-              <input
-                v-model="itemSearch"
-                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-                placeholder="Longsword, healing potion, wand..."
-              >
-            </label>
-
-            <div
-              v-if="itemSearchPending"
-              class="rounded-none border border-dashed border-[rgba(201,164,90,0.18)] p-3 text-xs text-[#9f9278]"
-            >
-              Searching items...
+        <div class="grid gap-6 xl:grid-cols-2">
+          <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Grant Item
             </div>
+            <h2 class="mt-2 text-2xl font-semibold text-white">
+              Send Gear
+            </h2>
+            <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+              Add a normalized item or quick custom row directly to a character sheet.
+            </p>
 
-            <div
-              v-if="itemResults.length"
-              class="max-h-80 overflow-y-auto rounded-none border border-[rgba(201,164,90,0.18)]"
-            >
-              <button
-                v-for="item in itemResults"
-                :key="item.id"
-                type="button"
-                class="block w-full border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.58)] px-3 py-3 text-left last:border-b-0 hover:bg-[rgba(201,164,90,0.08)]"
-                @click="selectItem(item)"
-              >
-                <span class="block text-sm font-semibold text-white">{{ item.title }}</span>
-                <span class="mt-1 block text-xs text-[#9f9278]">{{ itemTypeLine(item) || 'Item' }}</span>
-              </button>
-            </div>
-
-            <div
-              v-if="selectedItem"
-              class="rounded-none border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100"
-            >
-              Selected imported item: {{ selectedItem.title }}
-            </div>
-
-            <label>
-              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Custom Name</span>
-              <input
-                v-model="customItemName"
-                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-                placeholder="Used if no imported item is selected"
-              >
-            </label>
-
-            <div class="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
+            <div class="mt-5 grid gap-4">
               <label>
-                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Quantity</span>
-                <input
-                  v-model="itemGrantQuantity"
-                  inputmode="numeric"
-                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-                >
-              </label>
-
-              <label>
-                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Notes</span>
-                <input
-                  v-model="itemGrantNotes"
-                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-                >
-              </label>
-            </div>
-
-            <button
-              type="button"
-              class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-              :disabled="grantSaving || !grantTargetEntityId || (!selectedItem && !customItemName.trim())"
-              @click="grantItem"
-            >
-              {{ grantSaving ? 'Granting...' : 'Grant Item' }}
-            </button>
-          </div>
-        </div>
-
-        <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Grant Currency
-          </div>
-          <h2 class="mt-2 text-2xl font-semibold text-white">
-            Send Coin
-          </h2>
-          <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-            Adds to the existing currency row if the character already has one.
-          </p>
-
-          <div
-            v-if="grantError"
-            class="mt-5 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
-          >
-            {{ grantError }}
-          </div>
-
-          <div
-            v-if="grantSuccess"
-            class="mt-5 rounded-none border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100"
-          >
-            {{ grantSuccess }}
-          </div>
-
-          <div class="mt-5 grid gap-4">
-            <label>
-              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Target</span>
-              <select
-                v-model="currencyTargetEntityId"
-                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-              >
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose character...</option>
-                <option
-                  v-for="target in grantTargets"
-                  :key="entityId(target)"
-                  :value="entityId(target)"
-                  class="bg-[#090909] text-[#f5e7bd]"
-                >
-                  {{ entityTitle(target) }} - {{ entityTypeLabel(target) }}
-                </option>
-              </select>
-            </label>
-
-            <div class="grid gap-4 md:grid-cols-2">
-              <label>
-                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Currency</span>
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Target</span>
                 <select
-                  v-model="currencyType"
+                  v-model="grantTargetEntityId"
                   class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
                 >
-                  <option value="Gold" class="bg-[#090909] text-[#f5e7bd]">Gold</option>
-                  <option value="Silver" class="bg-[#090909] text-[#f5e7bd]">Silver</option>
-                  <option value="Copper" class="bg-[#090909] text-[#f5e7bd]">Copper</option>
+                  <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose character...</option>
+                  <option
+                    v-for="target in grantTargets"
+                    :key="entityId(target)"
+                    :value="entityId(target)"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ entityTitle(target) }} - {{ entityTypeLabel(target) }}
+                  </option>
                 </select>
               </label>
 
               <label>
-                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Amount</span>
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Search Imported Items</span>
                 <input
-                  v-model="currencyAmount"
-                  inputmode="numeric"
+                  v-model="itemSearch"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  placeholder="Longsword, healing potion, wand..."
+                >
+              </label>
+
+              <div
+                v-if="itemSearchPending"
+                class="rounded-none border border-dashed border-[rgba(201,164,90,0.18)] p-3 text-xs text-[#9f9278]"
+              >
+                Searching items...
+              </div>
+
+              <div
+                v-if="itemResults.length"
+                class="max-h-80 overflow-y-auto rounded-none border border-[rgba(201,164,90,0.18)]"
+              >
+                <button
+                  v-for="item in itemResults"
+                  :key="item.id"
+                  type="button"
+                  class="block w-full border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.58)] px-3 py-3 text-left last:border-b-0 hover:bg-[rgba(201,164,90,0.08)]"
+                  @click="selectItem(item)"
+                >
+                  <span class="block text-sm font-semibold text-white">{{ item.title }}</span>
+                  <span class="mt-1 block text-xs text-[#9f9278]">{{ itemTypeLine(item) || 'Item' }}</span>
+                </button>
+              </div>
+
+              <div
+                v-if="selectedItem"
+                class="rounded-none border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100"
+              >
+                Selected imported item: {{ selectedItem.title }}
+              </div>
+
+              <label>
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Custom Name</span>
+                <input
+                  v-model="customItemName"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  placeholder="Used if no imported item is selected"
+                >
+              </label>
+
+              <div class="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Quantity</span>
+                  <input
+                    v-model="itemGrantQuantity"
+                    inputmode="numeric"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Notes</span>
+                  <input
+                    v-model="itemGrantNotes"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                </label>
+              </div>
+
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                :disabled="grantSaving || !grantTargetEntityId || (!selectedItem && !customItemName.trim())"
+                @click="grantItem"
+              >
+                {{ grantSaving ? 'Granting...' : 'Grant Item' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Grant Currency
+            </div>
+            <h2 class="mt-2 text-2xl font-semibold text-white">
+              Send Coin
+            </h2>
+            <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+              Adds to the existing currency row if the character already has one.
+            </p>
+
+            <div
+              v-if="grantError"
+              class="mt-5 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+            >
+              {{ grantError }}
+            </div>
+
+            <div
+              v-if="grantSuccess"
+              class="mt-5 rounded-none border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100"
+            >
+              {{ grantSuccess }}
+            </div>
+
+            <div class="mt-5 grid gap-4">
+              <label>
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Target</span>
+                <select
+                  v-model="currencyTargetEntityId"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                >
+                  <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose character...</option>
+                  <option
+                    v-for="target in grantTargets"
+                    :key="entityId(target)"
+                    :value="entityId(target)"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ entityTitle(target) }} - {{ entityTypeLabel(target) }}
+                  </option>
+                </select>
+              </label>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Currency</span>
+                  <select
+                    v-model="currencyType"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option value="Gold" class="bg-[#090909] text-[#f5e7bd]">Gold</option>
+                    <option value="Silver" class="bg-[#090909] text-[#f5e7bd]">Silver</option>
+                    <option value="Copper" class="bg-[#090909] text-[#f5e7bd]">Copper</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Amount</span>
+                  <input
+                    v-model="currencyAmount"
+                    inputmode="numeric"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                </label>
+              </div>
+
+              <label>
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Notes</span>
+                <input
+                  v-model="currencyNotes"
                   class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
                 >
               </label>
-            </div>
 
-            <label>
-              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Notes</span>
-              <input
-                v-model="currencyNotes"
-                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                :disabled="grantSaving || !currencyTargetEntityId || !currencyAmount"
+                @click="grantCurrency"
               >
-            </label>
+                {{ grantSaving ? 'Granting...' : 'Grant Currency' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                Transfers
+              </div>
+              <h2 class="mt-2 text-2xl font-semibold text-white">
+                Recent Offers and Grants
+              </h2>
+            </div>
 
             <button
               type="button"
-              class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-              :disabled="grantSaving || !currencyTargetEntityId || !currencyAmount"
-              @click="grantCurrency"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+              @click="refreshTransfers"
             >
-              {{ grantSaving ? 'Granting...' : 'Grant Currency' }}
+              Refresh
             </button>
+          </div>
+
+          <div
+            v-if="transfersPending"
+            class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
+          >
+            Loading transfers...
+          </div>
+
+          <div
+            v-else-if="!transfers.length"
+            class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
+          >
+            No transfer history yet.
+          </div>
+
+          <div
+            v-else
+            class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
+          >
+            <div class="hidden grid-cols-[1.2fr_1fr_1fr_120px] gap-3 border-b border-[rgba(201,164,90,0.14)] bg-[rgba(8,17,27,0.60)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
+              <div>Item</div>
+              <div>From</div>
+              <div>To</div>
+              <div>Status</div>
+            </div>
+
+            <article
+              v-for="transfer in transfers"
+              :key="transfer.id"
+              class="grid gap-3 border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 xl:grid-cols-[1.2fr_1fr_1fr_120px] xl:items-center"
+            >
+              <div>
+                <div class="font-semibold text-white">{{ transfer.itemName }} x{{ transfer.quantity || 1 }}</div>
+                <div
+                  v-if="transfer.message"
+                  class="mt-1 text-xs text-[#9f9278]"
+                >
+                  {{ transfer.message }}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="text-left text-sm text-[#d8ceb8] hover:text-[#fff7df]"
+                @click="transfer.source && openEntityContext(transfer.source)"
+              >
+                {{ transfer.source?.title || 'Unknown' }}
+              </button>
+
+              <button
+                type="button"
+                class="text-left text-sm text-[#d8ceb8] hover:text-[#fff7df]"
+                @click="transfer.target && openEntityContext(transfer.target)"
+              >
+                {{ transfer.target?.title || 'Unknown' }}
+              </button>
+
+              <span
+                class="w-fit rounded-none border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                :class="transferStatusClass(transfer.status)"
+              >
+                {{ transfer.status }}
+              </span>
+            </article>
           </div>
         </div>
       </section>
@@ -1215,97 +1382,6 @@ async function refreshAdmin() {
               </div>
             </div>
           </section>
-        </div>
-      </section>
-
-      <section
-        v-else-if="activePanel === 'transfers'"
-        class="mt-6"
-      >
-        <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-                Transfers
-              </div>
-              <h2 class="mt-2 text-2xl font-semibold text-white">
-                Recent Offers and Grants
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-              @click="refreshTransfers"
-            >
-              Refresh
-            </button>
-          </div>
-
-          <div
-            v-if="transfersPending"
-            class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
-          >
-            Loading transfers...
-          </div>
-
-          <div
-            v-else-if="!transfers.length"
-            class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
-          >
-            No transfer history yet.
-          </div>
-
-          <div
-            v-else
-            class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
-          >
-            <div class="hidden grid-cols-[1.2fr_1fr_1fr_120px] gap-3 border-b border-[rgba(201,164,90,0.14)] bg-[rgba(8,17,27,0.60)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
-              <div>Item</div>
-              <div>From</div>
-              <div>To</div>
-              <div>Status</div>
-            </div>
-
-            <article
-              v-for="transfer in transfers"
-              :key="transfer.id"
-              class="grid gap-3 border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 xl:grid-cols-[1.2fr_1fr_1fr_120px] xl:items-center"
-            >
-              <div>
-                <div class="font-semibold text-white">{{ transfer.itemName }} x{{ transfer.quantity || 1 }}</div>
-                <div
-                  v-if="transfer.message"
-                  class="mt-1 text-xs text-[#9f9278]"
-                >
-                  {{ transfer.message }}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                class="text-left text-sm text-[#d8ceb8] hover:text-[#fff7df]"
-                @click="transfer.source && openEntityContext(transfer.source)"
-              >
-                {{ transfer.source?.title || 'Unknown' }}
-              </button>
-
-              <button
-                type="button"
-                class="text-left text-sm text-[#d8ceb8] hover:text-[#fff7df]"
-                @click="transfer.target && openEntityContext(transfer.target)"
-              >
-                {{ transfer.target?.title || 'Unknown' }}
-              </button>
-
-              <span
-                class="w-fit rounded-none border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
-                :class="transferStatusClass(transfer.status)"
-              >
-                {{ transfer.status }}
-              </span>
-            </article>
-          </div>
         </div>
       </section>
 

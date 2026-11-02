@@ -143,7 +143,7 @@ describe('the middleware itself', () => {
       accountId: 'admin-1',
       platformCapabilities: new Set(),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: true
+      accountLookupKeys: []
     }
     resolvePrincipalMock.mockResolvedValue(principal)
     const event = fakeEvent('/api/worlds/1/rules/activate')

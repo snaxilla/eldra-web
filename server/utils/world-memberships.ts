@@ -42,6 +42,7 @@
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
 import { formatAccountDisplayName } from './accounts'
+import { resolveAccountDisplayNames } from './eldra-accounts'
 
 // The five roles ownership-and-permissions.md §8.5/§8.7 defines. Kept as a
 // plain union (not a Directus enum) matching this project's existing
@@ -124,11 +125,29 @@ export async function createOwnerMembership(worldId: string | number, accountId:
 // Account, across every World -- there is no per-world lookup here because
 // resolvePrincipal needs the whole set to build the Principal once per
 // request, not once per world.
-export async function listMembershipsForAccount(accountId: string): Promise<WorldMembershipRecord[]> {
+// Takes the Principal's accountLookupKeys (server/utils/authorization.ts),
+// not a single id: rows written before the Eldra Account id existed key an
+// Account by its DIRECTUS user id, and Phase 1 deliberately does not
+// re-key live membership rows. Matching on `_in` is what keeps every
+// existing membership resolving to the same person with the same role
+// after the account-id change -- see Principal.accountLookupKeys for why
+// the set is assembled once per request rather than here.
+//
+// Writes are unaffected and still take one id (addMember,
+// createOwnerMembership): new rows always carry the Eldra Account id, so
+// the legacy half of the lookup set only ever shrinks.
+export async function listMembershipsForAccount(
+  accountLookupKeys: readonly string[]
+): Promise<WorldMembershipRecord[]> {
+  const keys = accountLookupKeys.map((key) => String(key ?? '').trim()).filter(Boolean)
+  if (keys.length === 0) {
+    return []
+  }
+
   const res = await directusServiceRequest('/items/world_memberships', {
     method: 'GET',
     query: {
-      filter: { account_id: { _eq: accountId } },
+      filter: { account_id: { _in: keys } },
       limit: -1,
       fields: MEMBERSHIP_FIELDS
     }
@@ -185,16 +204,29 @@ export async function resolveDisplayNames(accountIds: string[]): Promise<Map<str
     return new Map()
   }
 
+  // Eldra Accounts first (Phase 1): an id written after the Account
+  // foundation landed is an eldra_accounts.id and resolves here. Only the
+  // ids that do NOT resolve -- rows written earlier, which carry a
+  // Directus user id -- fall through to the Directus lookup below, so the
+  // two shapes coexist without either call site knowing which it is
+  // looking at. As legacy rows are re-keyed, the second query's input list
+  // shrinks to empty and the lookup stops happening at all.
+  const names = await resolveAccountDisplayNames(accountIds)
+
+  const unresolved = accountIds.filter((id) => !names.has(id))
+  if (unresolved.length === 0) {
+    return names
+  }
+
   const res = await directusServiceRequest('/users', {
     method: 'GET',
     query: {
-      filter: { id: { _in: accountIds } },
+      filter: { id: { _in: unresolved } },
       limit: -1,
       fields: 'id,email,first_name,last_name'
     }
   })
 
-  const names = new Map<string, string>()
   for (const row of Array.isArray(res?.data) ? res.data : []) {
     names.set(String(row?.id ?? ''), formatAccountDisplayName(row))
   }

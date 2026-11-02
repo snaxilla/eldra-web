@@ -145,24 +145,100 @@ export async function directusServiceRequest(path: string, options: any = {}) {
   })
 }
 
-export async function directusRequest(path: string, options: any = {}, event?: H3Event) {
-  const { baseUrl, serviceToken } = getRuntimeDirectusConfig()
+// The USER-SCOPED Directus client: it sends the caller's own session token
+// and nothing else. `directusServiceRequest` above is the service-token
+// client, and the separation between the two is now absolute.
+//
+// FAIL-CLOSED (Phase 1 authorization preflight, finding A). This function
+// used to end with `const tokenToUse = sessionToken || serviceToken` -- so
+// a request that was meant to run as the logged-in user, but reached here
+// with no `event` (or with an expired/absent `eldra_session` cookie),
+// silently ran with the *service* token instead: full Directus privileges,
+// bypassing every per-user permission, with no error and nothing in the
+// response to distinguish it. Confirmed reachable today, and a trap for
+// every future caller that forgets the third argument.
+//
+// Now: an absent user token is an error, not a downgrade to a stronger
+// credential. Three cases, in order:
+//   1. The caller supplied its own Authorization header -> use it verbatim
+//      (server/api/auth/login.post.ts does this with the access token it
+//      just received, before any cookie exists).
+//   2. A session token is resolvable from `event` -> use it.
+//   3. Neither -> throw 401, UNLESS the caller passed
+//      `unauthenticated: true`, which is the explicit opt-in for Directus
+//      endpoints that take no credential at all (`/auth/login`,
+//      `/auth/logout`, which authenticate by request body). Opting in
+//      sends NO Authorization header -- it never substitutes the service
+//      token either.
+//
+// Anything that genuinely wants service-token privileges must say so by
+// calling directusServiceRequest. That is the whole point: privilege is
+// now something a call site states, never something it inherits by
+// omission.
+export type UserRequestCredential = {
+  // The Authorization header value to send, or null to send none.
+  authorization: string | null
+  // True when the request must not be sent at all.
+  denied: boolean
+}
 
-  const headers: Record<string, string> = {
-    ...(options.headers || {})
+// The credential decision, extracted as a pure function with no
+// auto-imported Nitro globals so it is directly unit-testable under plain
+// Vitest (the same reason server/utils/authorization.ts imports createError
+// explicitly). `directusRequest` below does nothing with credentials that
+// is not decided here -- which is what makes "a user-scoped request can
+// never fall back to the service token" a property that is tested rather
+// than merely reviewed.
+export function resolveUserRequestCredential(input: {
+  authorizationHeader?: string
+  sessionToken?: string
+  unauthenticated?: boolean
+}): UserRequestCredential {
+  if (input.authorizationHeader) {
+    return { authorization: input.authorizationHeader, denied: false }
   }
 
-  if (!headers.Authorization) {
-    const sessionToken = event ? getSessionToken(event) : ''
-    const tokenToUse = sessionToken || serviceToken
+  if (input.sessionToken) {
+    return { authorization: `Bearer ${input.sessionToken}`, denied: false }
+  }
 
-    if (tokenToUse) {
-      headers.Authorization = `Bearer ${tokenToUse}`
-    }
+  if (input.unauthenticated) {
+    return { authorization: null, denied: false }
+  }
+
+  return { authorization: null, denied: true }
+}
+
+export async function directusRequest(path: string, options: any = {}, event?: H3Event) {
+  const { baseUrl } = getRuntimeDirectusConfig()
+
+  const { unauthenticated, ...fetchOptions } = options as { unauthenticated?: boolean } & Record<string, any>
+
+  const headers: Record<string, string> = {
+    ...(fetchOptions.headers || {})
+  }
+
+  const credential = resolveUserRequestCredential({
+    authorizationHeader: headers.Authorization,
+    sessionToken: event ? getSessionToken(event) : '',
+    unauthenticated
+  })
+
+  if (credential.denied) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Directus request requires an authenticated session'
+    })
+  }
+
+  if (credential.authorization) {
+    headers.Authorization = credential.authorization
+  } else {
+    delete headers.Authorization
   }
 
   return await $fetch(`${baseUrl}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers
   })
 }

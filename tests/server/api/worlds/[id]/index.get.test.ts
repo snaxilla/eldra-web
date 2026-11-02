@@ -21,12 +21,12 @@ function directusWorldsResponse() {
   }
 }
 
-function principal(worldCapabilities: [string, string[]][], temporarySingleUserMode = false): Principal {
+function principal(worldCapabilities: [string, string[]][], platformCapabilities: string[] = []): Principal {
   return {
     accountId: 'account-1',
-    platformCapabilities: new Set(),
+    platformCapabilities: new Set(platformCapabilities as any),
     worldCapabilities: new Map(worldCapabilities.map(([worldId, caps]) => [worldId, new Set(caps as any)])),
-    temporarySingleUserMode
+    accountLookupKeys: ['account-1']
   }
 }
 
@@ -64,15 +64,22 @@ describe('GET /api/worlds/:id -- capabilities', () => {
     expect(result.capabilities).toEqual([])
   })
 
-  it('the legacy migration-gap fallback still grants world.entity.edit for the admin fallback on a World with no membership row', async () => {
-    const result = await handler(fakeEvent('5', principal([], true)))
+  // PHASE 1 BEHAVIOR CHANGE: this previously asserted that the admin
+  // fallback granted world.entity.edit on a World with no membership row.
+  // No membership row now means no capabilities, full stop.
+  it('a World with no membership row grants nothing, even to a fully-granted platform administrator', async () => {
+    const result = await handler(fakeEvent('5', principal([], [
+      'platform.settings.manage',
+      'platform.world.list',
+      'platform.world.delete'
+    ])))
 
-    expect(result.capabilities).toContain('world.entity.edit')
+    expect(result.capabilities).toEqual([])
   })
 
-  it('a real membership row is authoritative even under temporarySingleUserMode -- a Player membership does not get the admin fallback', async () => {
-    const result = await handler(fakeEvent('5', principal([['5', ['world.read']]], true)))
+  it('a real membership row is authoritative for a platform administrator too -- a Player membership stays a Player membership', async () => {
+    const result = await handler(fakeEvent('5', principal([['5', ['world.read']]], ['platform.settings.manage'])))
 
-    expect(result.capabilities).not.toContain('world.entity.edit')
+    expect(result.capabilities).toEqual(['world.read'])
   })
 })

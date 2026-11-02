@@ -251,7 +251,7 @@ function fakeEvent(body: unknown): H3Event {
         accountId: 'player-1',
         platformCapabilities: new Set(),
         worldCapabilities: new Map([[WORLD_ID, new Set(['world.read', 'world.character.create'])]]),
-        temporarySingleUserMode: false
+        accountLookupKeys: []
       },
       params: { id: WORLD_ID }
     },

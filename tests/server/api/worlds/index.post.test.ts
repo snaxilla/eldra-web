@@ -23,12 +23,17 @@ vi.mock('../../../../server/utils/worlds', () => ({
 import handler from '../../../../server/api/worlds/index.post'
 import type { Principal } from '../../../../server/utils/authorization'
 
-function temporarySingleUserPrincipal(accountId = 'admin-1'): Principal {
+// Phase 1: this fixture used to set `temporarySingleUserMode: true` and
+// rely on can()'s platform-scope short-circuit to grant everything. That
+// short-circuit is gone, so the capability this route actually checks is
+// now stated outright -- which is the point of the change: a platform
+// capability is something an Account was granted, never something it is.
+function platformAdminPrincipal(accountId = 'admin-1'): Principal {
   return {
     accountId,
-    platformCapabilities: new Set(),
+    platformCapabilities: new Set(['platform.world.create']),
     worldCapabilities: new Map(),
-    temporarySingleUserMode: true
+    accountLookupKeys: [accountId]
   }
 }
 
@@ -37,7 +42,7 @@ function powerlessPrincipal(accountId = 'player-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map(),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -89,7 +94,7 @@ describe('POST /api/worlds', () => {
 
   it('succeeds for temporary single-user mode', async () => {
     createWorldMock.mockResolvedValue({ id: 1, name: 'New World', slug: 'new-world' })
-    const event = fakeEvent({ name: 'New World' }, temporarySingleUserPrincipal('admin-1'))
+    const event = fakeEvent({ name: 'New World' }, platformAdminPrincipal('admin-1'))
 
     const result = await handler(event)
 
@@ -98,7 +103,7 @@ describe('POST /api/worlds', () => {
   })
 
   it('rejects an empty or missing name with 400, before ever calling createWorld', async () => {
-    const event = fakeEvent({ name: '   ' }, temporarySingleUserPrincipal())
+    const event = fakeEvent({ name: '   ' }, platformAdminPrincipal())
 
     await expect(handler(event)).rejects.toMatchObject({ statusCode: 400 })
     expect(createWorldMock).not.toHaveBeenCalled()
@@ -106,7 +111,7 @@ describe('POST /api/worlds', () => {
 
   it('passes the resolved principal accountId as ownerAccountId, not anything client-supplied', async () => {
     createWorldMock.mockResolvedValue({ id: 2, name: 'World' })
-    const event = fakeEvent({ name: 'World', ownerAccountId: 'attacker-supplied-id' }, temporarySingleUserPrincipal('real-admin'))
+    const event = fakeEvent({ name: 'World', ownerAccountId: 'attacker-supplied-id' }, platformAdminPrincipal('real-admin'))
 
     await handler(event)
 

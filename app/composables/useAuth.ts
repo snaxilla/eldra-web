@@ -18,12 +18,24 @@ type EldraUser = {
 type AuthMeResponse = {
   authenticated?: boolean
   user?: EldraUser | null
+  accountId?: string | null
+  platformCapabilities?: string[]
 }
 
 type LoginResponse = {
   ok?: boolean
   user?: EldraUser | null
+  accountId?: string | null
+  platformCapabilities?: string[]
 }
+
+// The capability that means "administers this Eldra platform" for the
+// purposes of showing administrative UI (app/middleware/admin.ts, the
+// Game Admin workspace). One capability out of the platform set rather
+// than "holds any" -- a future Account granted only, say,
+// platform.contentpack.publish is not an administrator and must not be
+// shown an administrator's workspace.
+const PLATFORM_ADMIN_CAPABILITY = 'platform.settings.manage'
 
 function normalizeUser(input: any): EldraUser | null {
   if (!input) {
@@ -67,19 +79,44 @@ export const useAuthState = () =>
     ready: boolean
     authenticated: boolean
     user: EldraUser | null
+    // The Eldra Account id (server/utils/eldra-accounts.ts) -- NOT the
+    // Directus user id `user.id` carries. Held so the UI can name the
+    // signed-in Account without inventing an identity of its own.
+    accountId: string | null
+    // The Account's explicitly granted platform capabilities, exactly as
+    // the server resolved them from eldra_platform_grants.
+    platformCapabilities: string[]
   }>('eldra-auth', () => ({
     ready: false,
     authenticated: false,
-    user: null
+    user: null,
+    accountId: null,
+    platformCapabilities: []
   }))
 
 export function useAuth() {
   const state = useAuthState()
 
-  const isAdmin = computed(() => {
-    const role = state.value.user?.role
-    return !!role?.admin_access || role?.name === 'Administrator'
-  })
+  // PHASE 1: now reads Eldra's own explicit platform grants, not Directus's
+  // `admin_access` policy flag / "Administrator" role name.
+  //
+  // This is the client half of removing "Directus Administrator means Eldra
+  // administrator" (server/utils/authorization.ts's can() dropped the
+  // server half). The two must agree: left on the old derivation, a
+  // Directus Administrator holding no Eldra grant would still be SHOWN the
+  // admin workspace and then get 403 from every request inside it.
+  //
+  // `user.role.admin_access` is still normalized and still present on the
+  // user object -- it describes the Directus account, which is a separate
+  // system with separately granted permissions, and nothing in Eldra's
+  // authorization reads it any more.
+  const platformCapabilities = computed(() => state.value.platformCapabilities || [])
+
+  function hasPlatformCapability(capability: string) {
+    return platformCapabilities.value.includes(capability)
+  }
+
+  const isAdmin = computed(() => hasPlatformCapability(PLATFORM_ADMIN_CAPABILITY))
 
   const displayName = computed(() => {
     const user = state.value.user
@@ -111,6 +148,8 @@ export function useAuth() {
     state.value.ready = true
     state.value.authenticated = !!response?.authenticated
     state.value.user = user
+    state.value.accountId = response?.accountId ?? null
+    state.value.platformCapabilities = response?.platformCapabilities ?? []
 
     return state.value
   }
@@ -131,6 +170,8 @@ export function useAuth() {
     state.value.ready = true
     state.value.authenticated = true
     state.value.user = user
+    state.value.accountId = response?.accountId ?? null
+    state.value.platformCapabilities = response?.platformCapabilities ?? []
 
     return {
       ok: !!response?.ok,
@@ -147,6 +188,8 @@ export function useAuth() {
     state.value.ready = true
     state.value.authenticated = false
     state.value.user = null
+    state.value.accountId = null
+    state.value.platformCapabilities = []
 
     await navigateTo('/login')
   }
@@ -154,6 +197,8 @@ export function useAuth() {
   return {
     state,
     isAdmin,
+    platformCapabilities,
+    hasPlatformCapability,
     displayName,
     fetchMe,
     login,

@@ -48,7 +48,7 @@ function playerPrincipal(worldId: string, accountId = 'account-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.roll.execute'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -57,7 +57,7 @@ function observerPrincipal(worldId: string, accountId = 'observer-1'): Principal
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read'])]]), // no world.roll.execute
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 

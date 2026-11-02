@@ -47,7 +47,7 @@ function principal(worldId: string, caps: string[]): Principal {
     accountId: 'account-1',
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(caps as any)]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 

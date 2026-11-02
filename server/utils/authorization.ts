@@ -4,29 +4,45 @@
 // (Authorization), §11 (Enforcement), §12 Phase 0, and §8.5/§12 Phase 2 for
 // the design this implements.
 //
-// TEMPORARY SINGLE-USER MODE, NOW A FALLBACK (architecture doc §12 Phase 2):
-// Accounts, IdentityLinks, and Invitations still do not exist (§5, §12
-// Phase 1/3+ -- out of scope for this task). WorldMembership now does.
-// resolvePrincipal populates Principal.worldCapabilities from REAL
-// world_memberships rows (server/utils/world-memberships.ts), and can()
-// prefers that data whenever a membership row exists for the World in
-// question -- including when it grants LESS than an admin would otherwise
-// get, which is the point (architecture doc §8.1: Platform Admin must not
-// be a world superuser). `temporarySingleUserMode` now only fires as a
-// fallback for a World that has NO membership row at all for this Account
-// -- i.e. a World created before this collection existed. That gap closes
-// world-by-world as worlds are (re)created through server/utils/worlds.ts,
-// and closes entirely only once a future, explicitly-scoped migration
-// backfills membership rows from worlds.owner_id for every pre-existing
-// World (architecture doc §10.1, this task's own "migration comes later").
+// PHASE 1 (Eldra Account Foundation) CHANGED TWO THINGS HERE, AND NOTHING
+// ELSE. The capability vocabulary, WORLD_ROLE_CAPABILITIES, Scope, and
+// can()'s signature and role semantics are untouched. What changed is
+// identity resolution:
 //
-// WHAT THIS FILE DELIBERATELY DOES NOT DO (this task's own NON-GOALS): no
-// Accounts collection, no IdentityLinks, no OAuth, no Invitations, no
-// repository extraction, no entity/character ownership. resolvePrincipal
-// reads the Directus session directly via server/utils/directus.ts, exactly
-// as server/api/auth/me.get.ts already does -- Directus remains the
-// credential/session provider (§6.3). can() stays a pure function with no
-// I/O; the membership DATA it reads is fetched by resolvePrincipal (already
+// 1. `Principal.accountId` is now an ELDRA Account id
+//    (server/utils/eldra-accounts.ts), not the Directus user id this file
+//    used to read straight off `/users/me`. The Directus user is now just
+//    one IdentityLink pointing at that Account (architecture doc
+//    §6.1/§6.2), and is the only place a Directus user id survives.
+//
+// 2. `temporarySingleUserMode` IS GONE, and with it the implicit grant it
+//    carried. It was set from Directus's own `admin_access` policy flag,
+//    which meant "whoever Directus calls an Administrator is an Eldra
+//    platform administrator, and is additionally a superuser on every
+//    World that happens to have no membership row." Eldra platform
+//    capability is now exclusively what `eldra_platform_grants` says it
+//    is -- granted deliberately, per capability, per Account, and never
+//    derived from Directus's role or policy model. One human may
+//    administer both systems; granting one no longer grants the other.
+//
+// FAIL-CLOSED MEMBERSHIP DATA. resolveWorldCapabilities used to swallow a
+// failed membership read and return an empty map, after which can()'s
+// world branch fell through to temporarySingleUserMode -- so a Directus
+// outage or a missing collection WIDENED an administrator's access from
+// "whatever their memberships say" to "everything, everywhere." It now
+// propagates, resolvePrincipal fails the request, and no caller can
+// mistake "I could not read your memberships" for "you have none."
+//
+// WHAT THIS FILE STILL DELIBERATELY DOES NOT DO: no credential storage, no
+// Eldra-issued sessions, no external providers, no Invitations, no
+// repository extraction, no entity/character ownership. Directus remains
+// the credential verifier and session issuer during Beta (§6.3) --
+// `eldra_session` still carries a Directus access token, and
+// resolvePrincipal still validates it by calling Directus. Eldra owning
+// the Account id does NOT make authentication Directus-independent; it
+// makes the identity authorization decisions are ABOUT independent of
+// Directus's user model. can() stays a pure function with no I/O; the
+// membership DATA it reads is fetched by resolvePrincipal (already
 // infrastructure-adjacent, per §9.3) before can() ever runs, matching the
 // architecture doc's rule that policy is domain logic and data access is a
 // port (§9.1/§9.2).
@@ -39,7 +55,12 @@
 // nothing about production behavior.
 import { createError, type H3Event } from 'h3'
 import { fetchDirectusMe, getSessionToken } from './directus'
-import { resolveAccessFlag } from '../../app/utils/directusAccess'
+import { formatAccountDisplayName } from './accounts'
+import {
+  listIdentitySubjectsForAccount,
+  listPlatformGrants,
+  resolveAccountForIdentity
+} from './eldra-accounts'
 import { listMembershipsForAccount, type WorldMembershipRole } from './world-memberships'
 
 // ---------------------------------------------------------------------------
@@ -212,24 +233,37 @@ export const WORLD_ROLE_CAPABILITIES: Readonly<Record<WorldMembershipRole, reado
 export type Scope = { kind: 'platform' } | { kind: 'world'; worldId: string }
 
 // ---------------------------------------------------------------------------
-// Principal -- architecture doc §8.1/§9.3. `worldCapabilities` is now
-// populated from REAL WorldMembership rows (Phase 2), keyed by worldId
-// (as a string, matching Scope.worldId's type). `temporarySingleUserMode`
-// no longer means "ignore worldCapabilities" -- see can() below -- it
-// means "if this World has no membership row for me at all, fall back to
-// full access" (architecture doc §12 Phase 2's own framing: temporary mode
-// as a fallback, not a bypass).
+// Principal -- architecture doc §8.1/§9.3. Every field is now explicit
+// data: platform capabilities come from eldra_platform_grants rows, world
+// capabilities from world_memberships rows mapped through
+// WORLD_ROLE_CAPABILITIES. There is no longer any flag that means "and
+// also allow everything else."
 // ---------------------------------------------------------------------------
 
 export type Principal = {
+  // The ELDRA Account id (server/utils/eldra-accounts.ts) -- provider
+  // neutral, generated by Eldra, and deliberately NOT the Directus user
+  // id the session authenticated as.
   accountId: string
   platformCapabilities: ReadonlySet<PlatformCapability>
   worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>
-  // true only for an authenticated Directus admin -- lets tests and can()
-  // distinguish "the one effective administrator, with the Phase 2
-  // migration-gap fallback available" from an ordinary Account, without
-  // either of them special-casing anything other than this one flag.
-  temporarySingleUserMode: boolean
+  // Every id that may legitimately identify this Account in a store that
+  // predates Phase 1: the Eldra Account id itself, plus each linked
+  // provider subject (for Beta, the Directus user id).
+  //
+  // WHY THIS EXISTS. world_memberships.account_id and
+  // roll_events.roller_user_id were both written with Directus user ids
+  // before Phase 1, and this phase deliberately does not re-key live
+  // content (that is its own approved migration). Reads against those two
+  // stores therefore have to match either identifier, and this is the
+  // single place that set is assembled -- so no call site re-derives it,
+  // and so removing the compatibility path later means deleting one field
+  // and its uses rather than hunting for ad-hoc copies.
+  //
+  // It is NOT an authorization input: nothing grants a capability because
+  // of which key matched. New rows are always written with `accountId`,
+  // so the legacy half of this set only ever shrinks.
+  accountLookupKeys: readonly string[]
 }
 
 declare module 'h3' {
@@ -238,60 +272,119 @@ declare module 'h3' {
   }
 }
 
-function buildPrincipal(
-  accountId: string,
-  worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>,
-  temporarySingleUserMode: boolean
-): Principal {
+function buildPrincipal(input: {
+  accountId: string
+  accountLookupKeys: readonly string[]
+  platformCapabilities: ReadonlySet<PlatformCapability>
+  worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>
+}): Principal {
   return Object.freeze({
-    accountId,
-    // Platform capabilities have no Membership equivalent in this task
-    // (no PlatformMembership concept exists or is planned -- §8.1's
-    // platform/world split is about AUTHORITY, not about there being two
-    // membership systems). An admin keeps the full platform set via
-    // temporarySingleUserMode's platform-scope branch in can(); a non-admin
-    // gets none, exactly as Phase 0 already had it.
-    platformCapabilities: temporarySingleUserMode ? new Set(ALL_PLATFORM_CAPABILITIES) : new Set<PlatformCapability>(),
-    worldCapabilities,
-    temporarySingleUserMode
+    accountId: input.accountId,
+    accountLookupKeys: Object.freeze([...input.accountLookupKeys]),
+    platformCapabilities: input.platformCapabilities,
+    worldCapabilities: input.worldCapabilities
   })
 }
 
-// Every world_memberships row for this Account, mapped through
-// WORLD_ROLE_CAPABILITIES. Isolated in its own function (rather than
-// inlined into resolvePrincipal) so its one failure mode -- the
-// world_memberships collection not yet existing in a given environment,
-// per CLAUDE.md's Deployment Checklist ("nothing runs schema migrations
-// automatically") -- has a single, clearly-named place to degrade instead
-// of crashing every authenticated request.
-async function resolveWorldCapabilities(accountId: string): Promise<Map<string, ReadonlySet<WorldCapability>>> {
-  let memberships: Awaited<ReturnType<typeof listMembershipsForAccount>>
+// Narrows the raw capability strings stored in eldra_platform_grants to the
+// vocabulary this file actually defines, dropping anything it does not
+// recognize.
+//
+// This is deliberately a filter and not a cast: a grant row is data in a
+// store a human can edit, so a typo, a renamed capability, or an
+// optimistic future value must be inert rather than trusted. A row can
+// only ever grant a capability that already exists here -- it can never
+// extend the vocabulary.
+function resolvePlatformCapabilities(granted: readonly string[]): ReadonlySet<PlatformCapability> {
+  const vocabulary = new Set<string>(ALL_PLATFORM_CAPABILITIES)
+  const resolved = new Set<PlatformCapability>()
 
-  try {
-    memberships = await listMembershipsForAccount(accountId)
-  } catch {
-    // Degrade to "no memberships known" rather than failing
-    // authentication outright. temporarySingleUserMode's fallback in
-    // can() covers admins during this gap; a non-admin simply gets zero
-    // world capabilities, matching Phase 0's behavior exactly.
-    return new Map()
+  for (const capability of granted) {
+    if (vocabulary.has(capability)) {
+      resolved.add(capability as PlatformCapability)
+    }
   }
+
+  return resolved
+}
+
+// Every world_memberships row for this Account, mapped through
+// WORLD_ROLE_CAPABILITIES.
+//
+// NO LONGER SWALLOWS FAILURES (Phase 1 authorization preflight, finding
+// B). This function used to catch a failed membership read and return an
+// empty map, on the reasoning that a missing collection should not break
+// every authenticated request. The consequence was the opposite of safe:
+// an empty map sent can()'s world branch into its temporarySingleUserMode
+// fallback, so a transport error or an unprovisioned collection silently
+// promoted an administrator from "membership-limited" to "superuser on
+// every World." A read failure and a genuinely empty membership list are
+// not the same fact and must not produce the same Principal.
+//
+// It therefore propagates. resolvePrincipal turns that into a failed
+// request (see its own handling), which is the fail-closed direction: a
+// caller is told the decision could not be made, rather than handed a
+// Principal that quietly means more than the data supports. An
+// unprovisioned `world_memberships` collection is now a deployment error
+// that surfaces immediately instead of a silent widening -- which is what
+// CLAUDE.md's Deployment Checklist step 3 ("verify schema-dependent
+// features actually work") exists to catch.
+//
+// `accountLookupKeys` rather than a single id: see Principal's own field
+// comment for why rows written before Phase 1 must still resolve.
+async function resolveWorldCapabilities(
+  accountLookupKeys: readonly string[]
+): Promise<Map<string, ReadonlySet<WorldCapability>>> {
+  const memberships = await listMembershipsForAccount(accountLookupKeys)
 
   const result = new Map<string, ReadonlySet<WorldCapability>>()
   for (const membership of memberships) {
-    result.set(membership.worldId, new Set(WORLD_ROLE_CAPABILITIES[membership.role]))
+    const existing = result.get(membership.worldId)
+    const granted = WORLD_ROLE_CAPABILITIES[membership.role]
+
+    if (!existing) {
+      result.set(membership.worldId, new Set(granted))
+      continue
+    }
+
+    // Two rows for one World can only happen while both a legacy
+    // Directus-keyed row and an Eldra-keyed row exist for the same
+    // Account -- the transitional state accountLookupKeys exists to read
+    // across. Union rather than last-write-wins, so the transition can
+    // never silently REMOVE a capability the Account already had; the
+    // one-row-per-(world, account) invariant world-memberships.ts
+    // enforces for writes makes this unreachable once the legacy rows are
+    // re-keyed.
+    const merged = new Set(existing)
+    for (const capability of granted) {
+      merged.add(capability)
+    }
+    result.set(membership.worldId, merged)
   }
+
   return result
 }
 
 // ---------------------------------------------------------------------------
 // resolvePrincipal -- architecture doc §9.3. Infrastructure-adjacent by
-// necessity (it reads an H3Event, a session cookie, and now World
-// Membership rows), but everything it DECIDES is delegated: whether a
-// session is valid comes from Directus (§6.3, unchanged from today); which
-// capabilities a World grants comes from WORLD_ROLE_CAPABILITIES (pure,
-// above); WHO is the temporary-single-user fallback is exactly the same
-// admin check Phase 0 already had.
+// necessity (it reads an H3Event, a session cookie, Eldra Account rows and
+// World Membership rows), but everything it DECIDES is delegated: whether
+// a session is valid comes from Directus (§6.3, unchanged -- Directus is
+// still the credential verifier during Beta); WHICH Account that session
+// belongs to comes from the IdentityLink store; which platform
+// capabilities it holds comes from explicit grant rows; which capabilities
+// a World grants comes from WORLD_ROLE_CAPABILITIES (pure, above).
+//
+// THREE DISTINCT OUTCOMES, deliberately not collapsed:
+//   null    -- not authenticated (no cookie, or Directus rejected it).
+//              Exactly what server/api/auth/me.get.ts already treats as
+//              signed out.
+//   throws  -- authenticated, but the authorization data needed to decide
+//              anything could not be read. Fail closed and loudly: the
+//              caller gets an error, never a thinner Principal that would
+//              read as "this user legitimately has no access."
+//   Principal -- authenticated, and every capability in it is backed by a
+//              row.
 // ---------------------------------------------------------------------------
 
 export async function resolvePrincipal(event: H3Event): Promise<Principal | null> {
@@ -322,15 +415,52 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
     return null
   }
 
-  const accountId = user?.id
-  if (!accountId) {
+  const directusUserId = user?.id
+  if (!directusUserId) {
     return null
   }
 
-  const worldCapabilities = await resolveWorldCapabilities(accountId)
-  const isAdmin = resolveAccessFlag(user, 'admin_access')
+  // The Directus user id is a PROVIDER SUBJECT from here on, never an
+  // account id. resolveAccountForIdentity matches only on
+  // (provider, provider_subject) -- never on email or display name, which
+  // is the account-takeover rule the architecture doc states as §6.2 rule
+  // 2 and which that function enforces by not accepting an email at all.
+  // The display name is passed for first-sight provisioning only.
+  //
+  // Not wrapped in a try/catch: a failure here is "authenticated, but I
+  // cannot tell which Account you are", which must fail the request rather
+  // than degrade to an anonymous or empty Principal.
+  const account = await resolveAccountForIdentity({
+    provider: 'directus',
+    providerSubject: String(directusUserId),
+    displayName: formatAccountDisplayName(user)
+  })
 
-  return buildPrincipal(accountId, worldCapabilities, isAdmin)
+  if (account.status !== 'active') {
+    // A suspended Account authenticates against Directus perfectly well
+    // -- Directus knows nothing about Eldra Account status. Treating it
+    // as unauthenticated is the fail-closed reading, and keeps
+    // suspension a single Eldra-owned fact rather than something that
+    // also has to be mirrored into Directus.
+    return null
+  }
+
+  const accountLookupKeys = [
+    account.id,
+    ...(await listIdentitySubjectsForAccount(account.id))
+  ].filter((key, index, keys) => Boolean(key) && keys.indexOf(key) === index)
+
+  const [worldCapabilities, platformGrants] = await Promise.all([
+    resolveWorldCapabilities(accountLookupKeys),
+    listPlatformGrants(account.id)
+  ])
+
+  return buildPrincipal({
+    accountId: account.id,
+    accountLookupKeys,
+    platformCapabilities: resolvePlatformCapabilities(platformGrants),
+    worldCapabilities
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -345,33 +475,32 @@ export function can(principal: Principal | null, capability: Capability, scope: 
   }
 
   if (scope.kind === 'platform') {
-    // No WorldMembership equivalent exists for platform scope (see
-    // buildPrincipal) -- this branch is unchanged from Phase 0.
-    if (principal.temporarySingleUserMode) {
-      return true
-    }
+    // Platform capability is now exactly what eldra_platform_grants says
+    // -- the `temporarySingleUserMode` short-circuit that used to sit here
+    // ("an authenticated Directus Administrator may do anything at
+    // platform scope") is gone. A Directus Administrator with no grant row
+    // holds nothing here, which is the entire point of Phase 1.
     return principal.platformCapabilities.has(capability as PlatformCapability)
   }
 
   const worldCapabilities = principal.worldCapabilities.get(scope.worldId)
 
-  if (worldCapabilities) {
-    // A real membership row exists for this World -- it is authoritative,
-    // even for the temporary-single-user admin, even when it grants LESS
-    // than admin status would otherwise imply. This is what makes Platform
-    // Admin not a world superuser (architecture doc §8.1): once a World
-    // has an explicit membership for this Account, that membership decides
-    // access to it, full stop.
-    return worldCapabilities.has(capability as WorldCapability)
+  if (!worldCapabilities) {
+    // No membership row for this World means no access to it. Platform
+    // Admin is not a World superuser (architecture doc §8.1) and now has
+    // no fallback that could make it one -- a World this Account holds no
+    // role in is closed to it, administrator or not.
+    //
+    // Worlds that predate world_memberships therefore need a real owner
+    // row, which scripts/directus/bootstrap-eldra-platform-admin.mjs
+    // backfills as a deliberate, reviewable step rather than an implicit
+    // runtime grant.
+    return false
   }
 
-  // No membership row exists for this World at all -- the Phase 2
-  // migration gap (a World created before world_memberships existed, or
-  // before this Account had a row in it). Fall back to full access ONLY
-  // for the temporary single-user admin, exactly as Phase 0 behaved for
-  // every World. A non-admin Account with no membership row is denied, as
-  // it always was.
-  return principal.temporarySingleUserMode
+  // The membership row is authoritative, including when it grants LESS
+  // than platform administration might suggest.
+  return worldCapabilities.has(capability as WorldCapability)
 }
 
 // ---------------------------------------------------------------------------

@@ -1025,6 +1025,14 @@ export type ListRollEventsInput = {
   // else (the actual GM-visibility decision is `canSeeGm`, resolved by the
   // route via the existing `can()`, never re-derived here).
   requesterAccountId: string
+  // Every id that may identify the requester in rows written before the
+  // Eldra Account foundation existed -- Principal.accountLookupKeys
+  // (server/utils/authorization.ts). roll_events.roller_user_id held a
+  // Directus user id until then, so matching only the new Eldra Account id
+  // would hide a player's OWN historical private rolls from them. Defaults
+  // to [requesterAccountId] so a caller that does not care keeps today's
+  // behavior exactly.
+  requesterAccountKeys?: readonly string[]
   // Whether the requester holds world.roll.see_gm for this World --
   // resolved by the caller (the route), not this module: this file has no
   // reason to know what a Principal is, matching the same decoupling
@@ -1104,10 +1112,17 @@ export async function listRollEvents(input: ListRollEventsInput): Promise<ListRo
   // world.roll.see_gm (in which case no filter is added at all -- a GM
   // sees every row).
   if (!input.canSeeGm) {
+    const requesterKeys = (input.requesterAccountKeys?.length
+      ? input.requesterAccountKeys
+      : [input.requesterAccountId]
+    )
+      .map((key) => String(key ?? '').trim())
+      .filter(Boolean)
+
     clauses.push({
       _or: [
         { visibility: { _eq: 'table' } },
-        { _and: [{ visibility: { _eq: 'private' } }, { roller_user_id: { _eq: input.requesterAccountId } }] }
+        { _and: [{ visibility: { _eq: 'private' } }, { roller_user_id: { _in: requesterKeys } }] }
       ]
     })
   }

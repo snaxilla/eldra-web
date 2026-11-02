@@ -124,7 +124,7 @@ function publisherPrincipal(): Principal {
     accountId: 'admin-1',
     platformCapabilities: new Set(['platform.contentpack.publish']),
     worldCapabilities: new Map(),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -174,7 +174,7 @@ describe('POST /api/content-packs/publish/srd-5-1', () => {
       accountId: 'someone-1',
       platformCapabilities: new Set(),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     await expect(handler(fakeEvent(underprivileged))).rejects.toMatchObject({ statusCode: 403 })

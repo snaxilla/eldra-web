@@ -23,7 +23,7 @@ function ownerPrincipal(worldId: string, accountId = 'owner-1'): Principal {
     worldCapabilities: new Map([
       [worldId, new Set(['world.read', 'world.member.invite', 'world.member.assign_role', 'world.member.remove'])]
     ]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -32,7 +32,7 @@ function playerPrincipal(worldId: string, accountId = 'player-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.roll.execute'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 

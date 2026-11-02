@@ -22,7 +22,7 @@ function authenticatedPrincipal(accountId = 'account-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map(),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 

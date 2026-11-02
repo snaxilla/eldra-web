@@ -38,7 +38,7 @@ function event(blockKey: string, body: unknown = { data: { value: 1 } }): H3Even
         accountId: 'gm-1',
         platformCapabilities: new Set(),
         worldCapabilities: new Map([[String(WORLD_ID), new Set(['world.read', 'world.entity.edit'])]]),
-        temporarySingleUserMode: false
+        accountLookupKeys: []
       },
       params: { id: String(WORLD_ID), entityId: String(ENTITY_ID), blockKey }
     },

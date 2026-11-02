@@ -40,6 +40,16 @@ vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
   broadcastRollEvent: broadcastRollEventMock
 }))
 
+// Phase 1: resolveDisplayNames (server/utils/world-memberships.ts) now
+// consults the Eldra Accounts store before falling back to Directus
+// `/users`. These tests assert the exact sequence of Directus calls a roll
+// makes, so the new store is mocked out at its module boundary -- resolving
+// nothing, which keeps every assertion below exercising the same `/users`
+// fallback it always did.
+vi.mock('../../../server/utils/eldra-accounts', () => ({
+  resolveAccountDisplayNames: async () => new Map()
+}))
+
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'

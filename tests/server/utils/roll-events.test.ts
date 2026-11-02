@@ -39,6 +39,16 @@ vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
   broadcastRollEvent: broadcastRollEventMock
 }))
 
+// Phase 1: resolveDisplayNames (server/utils/world-memberships.ts) now
+// consults the Eldra Accounts store before falling back to Directus
+// `/users`. These tests assert the exact sequence of Directus calls a roll
+// makes, so the new store is mocked out at its module boundary -- resolving
+// nothing, which keeps every assertion below exercising the same `/users`
+// fallback it always did.
+vi.mock('../../../server/utils/eldra-accounts', () => ({
+  resolveAccountDisplayNames: async () => new Map()
+}))
+
 import {
   createCustomRollEvent,
   createHitDieRollEvent,
@@ -350,7 +360,11 @@ describe('listRollEvents', () => {
           {
             _or: [
               { visibility: { _eq: 'table' } },
-              { _and: [{ visibility: { _eq: 'private' } }, { roller_user_id: { _eq: 'account-2' } }] }
+              // Phase 1: `_in` over the requester's account lookup keys
+              // rather than `_eq` on one id. With no keys supplied it is
+              // exactly the single requesterAccountId, so this is the same
+              // filter as before for every existing caller.
+              { _and: [{ visibility: { _eq: 'private' } }, { roller_user_id: { _in: ['account-2'] } }] }
             ]
           }
         ])
@@ -368,6 +382,42 @@ describe('listRollEvents', () => {
 
     expect(result.rolls).toHaveLength(1)
     expect(result.rolls[0]!.id).toBe('mine')
+  })
+
+  // Phase 1: roll_events.roller_user_id held a DIRECTUS user id for every
+  // roll made before Eldra Accounts existed (414 such rows exist in the
+  // live store). Matching only the new Eldra Account id would hide a
+  // player's own historical private rolls from them -- so the requester's
+  // full lookup key set is what the filter uses.
+  it('a private roll recorded under the requester\'s pre-Phase-1 Directus id is still visible to them', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
+      expect(options.query.filter).toMatchObject({
+        _and: expect.arrayContaining([
+          {
+            _or: [
+              { visibility: { _eq: 'table' } },
+              {
+                _and: [
+                  { visibility: { _eq: 'private' } },
+                  { roller_user_id: { _in: ['eldra-account-1', 'directus-user-uuid'] } }
+                ]
+              }
+            ]
+          }
+        ])
+      })
+      return jsonResponse([row({ id: 'legacy-private', visibility: 'private', roller_user_id: 'directus-user-uuid' })])
+    })
+
+    const result = await listRollEvents({
+      worldId: 5,
+      requesterAccountId: 'eldra-account-1',
+      requesterAccountKeys: ['eldra-account-1', 'directus-user-uuid'],
+      canSeeGm: false
+    })
+
+    expect(result.rolls.map((r) => r.id)).toEqual(['legacy-private'])
   })
 
   it('adds no visibility filter at all for a requester holding world.roll.see_gm -- a GM sees every row', async () => {

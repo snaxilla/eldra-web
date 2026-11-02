@@ -48,7 +48,7 @@ function gmPrincipal(worldId = '5'): Principal {
     accountId: 'account-1',
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.character.edit_any'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   } as unknown as Principal
 }
 

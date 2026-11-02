@@ -13,10 +13,20 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { fetchDirectusMeMock, getSessionTokenMock, listMembershipsForAccountMock } = vi.hoisted(() => ({
+const {
+  fetchDirectusMeMock,
+  getSessionTokenMock,
+  listMembershipsForAccountMock,
+  resolveAccountForIdentityMock,
+  listIdentitySubjectsForAccountMock,
+  listPlatformGrantsMock
+} = vi.hoisted(() => ({
   fetchDirectusMeMock: vi.fn(),
   getSessionTokenMock: vi.fn(),
-  listMembershipsForAccountMock: vi.fn()
+  listMembershipsForAccountMock: vi.fn(),
+  resolveAccountForIdentityMock: vi.fn(),
+  listIdentitySubjectsForAccountMock: vi.fn(),
+  listPlatformGrantsMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -26,6 +36,23 @@ vi.mock('../../../server/utils/directus', () => ({
 
 vi.mock('../../../server/utils/world-memberships', () => ({
   listMembershipsForAccount: listMembershipsForAccountMock
+}))
+
+// Phase 1: resolvePrincipal now resolves an ELDRA Account from the
+// Directus session rather than treating the Directus user id as the
+// account id, and reads platform capabilities from explicit grant rows.
+// Both are mocked at the module boundary, the same way the Directus and
+// membership modules already are.
+vi.mock('../../../server/utils/eldra-accounts', () => ({
+  resolveAccountForIdentity: resolveAccountForIdentityMock,
+  listIdentitySubjectsForAccount: listIdentitySubjectsForAccountMock,
+  listPlatformGrants: listPlatformGrantsMock
+}))
+
+vi.mock('../../../server/utils/accounts', () => ({
+  formatAccountDisplayName: (row: any) =>
+    `${String(row?.first_name ?? '').trim()} ${String(row?.last_name ?? '').trim()}`.trim() ||
+    String(row?.email ?? '')
 }))
 
 import { can, requireCapability, resolvePrincipal, WORLD_ROLE_CAPABILITIES, type Principal } from '../../../server/utils/authorization'
@@ -97,11 +124,29 @@ function expectThrowsWithStatus(fn: () => void, statusCode: number) {
   expect((caught as { statusCode?: number }).statusCode).toBe(statusCode)
 }
 
+// The Eldra Account the mocked identity store resolves a Directus subject
+// to. Deliberately NOT shaped like a Directus uuid, and deliberately
+// unrelated to the `id` the Directus fixtures above return -- every
+// assertion that accountId is the Eldra id rather than the Directus one
+// depends on the two being visibly different.
+const ELDRA_ACCOUNT_ID = 'eldra-account-0001'
+
 beforeEach(() => {
   fetchDirectusMeMock.mockReset()
   getSessionTokenMock.mockReset()
   listMembershipsForAccountMock.mockReset()
+  resolveAccountForIdentityMock.mockReset()
+  listIdentitySubjectsForAccountMock.mockReset()
+  listPlatformGrantsMock.mockReset()
+
   listMembershipsForAccountMock.mockResolvedValue([]) // no memberships, unless a test overrides it
+  resolveAccountForIdentityMock.mockResolvedValue({
+    id: ELDRA_ACCOUNT_ID,
+    displayName: 'Admin User',
+    status: 'active'
+  })
+  listIdentitySubjectsForAccountMock.mockResolvedValue([])
+  listPlatformGrantsMock.mockResolvedValue([]) // no platform grants, unless a test overrides it
 })
 
 describe('resolvePrincipal', () => {
@@ -132,21 +177,145 @@ describe('resolvePrincipal', () => {
     expect(principal).toBeNull()
   })
 
-  it('temporary single-user mode: an authenticated Directus admin with NO memberships still holds every capability (the migration-gap fallback)', async () => {
+  // ---------------------------------------------------------------------
+  // PHASE 1: Eldra Account identity. These replace the old
+  // "temporary single-user mode" tests, which asserted that an
+  // authenticated Directus Administrator implicitly held every capability
+  // everywhere.
+  // ---------------------------------------------------------------------
+
+  it('Principal.accountId is the ELDRA Account id, never the Directus user id', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
-    listMembershipsForAccountMock.mockResolvedValue([])
 
     const principal = await resolvePrincipal(fakeEvent)
 
     expect(principal).not.toBeNull()
-    expect(principal!.accountId).toBe('admin-account-1')
-    expect(principal!.temporarySingleUserMode).toBe(true)
-    expect(can(principal, 'platform.breakglass.enter', { kind: 'platform' })).toBe(true)
-    expect(can(principal, 'world.rules.activate', { kind: 'world', worldId: 'any-world' })).toBe(true)
+    expect(principal!.accountId).toBe(ELDRA_ACCOUNT_ID)
+    expect(principal!.accountId).not.toBe('admin-account-1')
   })
 
-  it('an authenticated non-admin with no memberships resolves to a Principal with zero world capabilities', async () => {
+  it('resolves the Account by (provider, provider_subject) only -- never by email or display name', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+
+    await resolvePrincipal(fakeEvent)
+
+    expect(resolveAccountForIdentityMock).toHaveBeenCalledTimes(1)
+    const [input] = resolveAccountForIdentityMock.mock.calls[0]
+    expect(input.provider).toBe('directus')
+    expect(input.providerSubject).toBe('admin-account-1')
+    // The display name is provisioning seed data, not a lookup key, and
+    // there is no email field at all -- matching an Account by a mutable,
+    // reassignable address is the takeover vector §6.2 rule 2 forbids.
+    expect(Object.keys(input).sort()).toEqual(['displayName', 'provider', 'providerSubject'])
+  })
+
+  it('a Directus ADMIN with no Eldra platform grant holds NO platform capability -- Directus admin is not Eldra admin', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    listPlatformGrantsMock.mockResolvedValue([])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.platformCapabilities.size).toBe(0)
+    expect(can(principal, 'platform.breakglass.enter', { kind: 'platform' })).toBe(false)
+    expect(can(principal, 'platform.settings.manage', { kind: 'platform' })).toBe(false)
+    // ...and no World-scope fallback either.
+    expect(can(principal, 'world.rules.activate', { kind: 'world', worldId: 'any-world' })).toBe(false)
+  })
+
+  it('an explicit Eldra platform grant is what confers platform capability -- and only the granted ones', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    listPlatformGrantsMock.mockResolvedValue(['platform.settings.manage', 'platform.world.list'])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(listPlatformGrantsMock).toHaveBeenCalledWith(ELDRA_ACCOUNT_ID)
+    expect(can(principal, 'platform.settings.manage', { kind: 'platform' })).toBe(true)
+    expect(can(principal, 'platform.world.list', { kind: 'platform' })).toBe(true)
+    expect(can(principal, 'platform.world.delete', { kind: 'platform' })).toBe(false)
+    // A platform grant is still not a World grant.
+    expect(can(principal, 'world.read', { kind: 'world', worldId: 'any-world' })).toBe(false)
+  })
+
+  it('a Directus NON-admin cannot acquire platform capability by authenticating -- grants are the only source', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
+    listPlatformGrantsMock.mockResolvedValue([])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.accountId).toBe(ELDRA_ACCOUNT_ID)
+    expect(principal!.platformCapabilities.size).toBe(0)
+    expect(can(principal, 'platform.settings.manage', { kind: 'platform' })).toBe(false)
+    expect(can(principal, 'world.read', { kind: 'world', worldId: 'any-world' })).toBe(false)
+  })
+
+  it('an unrecognized grant row is inert -- a hand-edited capability cannot widen the vocabulary', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    listPlatformGrantsMock.mockResolvedValue([
+      'platform.settings.manage',
+      'platform.everything',
+      '*',
+      'world.delete'
+    ])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect([...principal!.platformCapabilities]).toEqual(['platform.settings.manage'])
+    expect(can(principal, 'platform.world.delete', { kind: 'platform' })).toBe(false)
+  })
+
+  it('a suspended Eldra Account is treated as unauthenticated even though Directus accepted the session', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    resolveAccountForIdentityMock.mockResolvedValue({
+      id: ELDRA_ACCOUNT_ID,
+      displayName: 'Suspended Admin',
+      status: 'suspended'
+    })
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).toBeNull()
+  })
+
+  it('memberships are looked up by the Eldra Account id AND every linked provider subject -- pre-Phase-1 rows still resolve', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
+    listIdentitySubjectsForAccountMock.mockResolvedValue(['player-account-1'])
+    listMembershipsForAccountMock.mockResolvedValue([
+      // The row shape that exists in the live store today: keyed by the
+      // DIRECTUS user id, written before Eldra Accounts existed.
+      membership({ worldId: '4', accountId: 'player-account-1', role: 'player' })
+    ])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(listMembershipsForAccountMock).toHaveBeenCalledWith([ELDRA_ACCOUNT_ID, 'player-account-1'])
+    expect(principal!.accountLookupKeys).toEqual([ELDRA_ACCOUNT_ID, 'player-account-1'])
+    // Same person, same role, same capabilities as before the account-id change.
+    expect(can(principal, 'world.read', { kind: 'world', worldId: '4' })).toBe(true)
+    expect(can(principal, 'world.character.create', { kind: 'world', worldId: '4' })).toBe(true)
+    expect(can(principal, 'world.delete', { kind: 'world', worldId: '4' })).toBe(false)
+  })
+
+  it('deduplicates the lookup keys', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
+    listIdentitySubjectsForAccountMock.mockResolvedValue([ELDRA_ACCOUNT_ID, 'subject-a', 'subject-a'])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal!.accountLookupKeys).toEqual([ELDRA_ACCOUNT_ID, 'subject-a'])
+  })
+
+  it('an authenticated account with no memberships resolves to a Principal with zero world capabilities', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
     listMembershipsForAccountMock.mockResolvedValue([])
@@ -154,15 +323,13 @@ describe('resolvePrincipal', () => {
     const principal = await resolvePrincipal(fakeEvent)
 
     expect(principal).not.toBeNull()
-    expect(principal!.accountId).toBe('player-account-1')
-    expect(principal!.temporarySingleUserMode).toBe(false)
     expect(can(principal, 'world.read', { kind: 'world', worldId: 'any-world' })).toBe(false)
   })
 
-  it('a non-admin WITH a membership row gets real world capabilities from it -- world capabilities populated', async () => {
+  it('a membership row gets real world capabilities from it -- world capabilities populated', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser({ id: 'player-account-1' }))
-    listMembershipsForAccountMock.mockResolvedValue([membership({ worldId: '5', accountId: 'player-account-1', role: 'player' })])
+    listMembershipsForAccountMock.mockResolvedValue([membership({ worldId: '5', accountId: ELDRA_ACCOUNT_ID, role: 'player' })])
 
     const principal = await resolvePrincipal(fakeEvent)
 
@@ -172,10 +339,11 @@ describe('resolvePrincipal', () => {
     expect(can(principal, 'world.read', { kind: 'world', worldId: 'some-other-world' })).toBe(false) // no membership there
   })
 
-  it('an admin WITH a real (lesser) membership for a World is bound by it, not by admin status -- Platform Admin is not a world superuser', async () => {
+  it('a fully-granted platform administrator with a lesser membership is bound by it -- Platform Admin is not a world superuser', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusAdminUser({ id: 'admin-account-1' }))
-    listMembershipsForAccountMock.mockResolvedValue([membership({ worldId: '5', accountId: 'admin-account-1', role: 'observer' })])
+    listPlatformGrantsMock.mockResolvedValue(['platform.settings.manage', 'platform.world.delete'])
+    listMembershipsForAccountMock.mockResolvedValue([membership({ worldId: '5', accountId: ELDRA_ACCOUNT_ID, role: 'observer' })])
 
     const principal = await resolvePrincipal(fakeEvent)
 
@@ -184,35 +352,42 @@ describe('resolvePrincipal', () => {
     expect(can(principal, 'world.delete', { kind: 'world', worldId: '5' })).toBe(false)
     expect(can(principal, 'world.rules.activate', { kind: 'world', worldId: '5' })).toBe(false)
 
-    // A DIFFERENT World with no membership row at all still falls back to
-    // the admin bypass -- the migration gap is per-World, not global.
-    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'unmigrated-world' })).toBe(true)
+    // PHASE 1 BEHAVIOR CHANGE: a World with no membership row used to fall
+    // back to the admin bypass. It no longer does, for anyone.
+    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'unmigrated-world' })).toBe(false)
+    expect(can(principal, 'world.read', { kind: 'world', worldId: 'unmigrated-world' })).toBe(false)
   })
 
-  it('degrades to zero world capabilities (never throws) if the memberships collection cannot be read', async () => {
+  // PHASE 1 BEHAVIOR CHANGE (authorization preflight, finding B). This test
+  // previously asserted that a failed membership read "degrades to zero
+  // world capabilities (never throws)". That looked safe and was not: an
+  // empty capability map sent can()'s world branch into the admin
+  // fallback, so a Directus outage WIDENED an administrator's access to
+  // every World. A failed read and an empty result are different facts and
+  // must not produce the same Principal.
+  it('fails closed when membership data cannot be read -- never a Principal that reads as "no memberships"', async () => {
     getSessionTokenMock.mockReturnValue('token')
-    fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    listPlatformGrantsMock.mockResolvedValue(['platform.settings.manage'])
     listMembershipsForAccountMock.mockRejectedValue(new Error('collection does not exist yet'))
 
-    const principal = await resolvePrincipal(fakeEvent)
-
-    expect(principal).not.toBeNull()
-    expect(can(principal, 'world.read', { kind: 'world', worldId: 'any-world' })).toBe(false)
+    await expect(resolvePrincipal(fakeEvent)).rejects.toThrow('collection does not exist yet')
   })
 
-  it('admin_access carried directly on the user (not the role) is still recognized', async () => {
-    // resolveAccessFlag checks policies on the user directly, policies on
-    // the role, and the role's own flag (v10 fallback) -- exercising the
-    // user-level policy path specifically here.
+  it('fails closed when the Eldra Account itself cannot be resolved', async () => {
     getSessionTokenMock.mockReturnValue('token')
-    fetchDirectusMeMock.mockResolvedValue({
-      id: 'admin-account-2',
-      policies: [{ policy: { admin_access: true } }]
-    })
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    resolveAccountForIdentityMock.mockRejectedValue(new Error('identity store unavailable'))
 
-    const principal = await resolvePrincipal(fakeEvent)
+    await expect(resolvePrincipal(fakeEvent)).rejects.toThrow('identity store unavailable')
+  })
 
-    expect(principal!.temporarySingleUserMode).toBe(true)
+  it('fails closed when platform grants cannot be read -- no silent demotion either', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+    listPlatformGrantsMock.mockRejectedValue(new Error('grants unavailable'))
+
+    await expect(resolvePrincipal(fakeEvent)).rejects.toThrow('grants unavailable')
   })
 })
 
@@ -239,8 +414,13 @@ describe('resolvePrincipal -- Directus response envelope (regression)', () => {
     const principal = await resolvePrincipal(fakeEvent)
 
     expect(principal).not.toBeNull()
-    expect(principal!.accountId).toBe('account-wrapped')
-    expect(principal!.temporarySingleUserMode).toBe(true)
+    // The Directus subject inside the envelope is what gets read and
+    // handed to the identity store; the Account id it maps to is what
+    // lands on the Principal.
+    expect(resolveAccountForIdentityMock).toHaveBeenCalledWith(
+      expect.objectContaining({ providerSubject: 'account-wrapped' })
+    )
+    expect(principal!.accountId).toBe(ELDRA_ACCOUNT_ID)
   })
 
   it('also tolerates an already-unwrapped response (defensive fallback, not the shape Directus actually sends)', async () => {
@@ -253,7 +433,10 @@ describe('resolvePrincipal -- Directus response envelope (regression)', () => {
     const principal = await resolvePrincipal(fakeEvent)
 
     expect(principal).not.toBeNull()
-    expect(principal!.accountId).toBe('account-flat')
+    expect(resolveAccountForIdentityMock).toHaveBeenCalledWith(
+      expect.objectContaining({ providerSubject: 'account-flat' })
+    )
+    expect(principal!.accountId).toBe(ELDRA_ACCOUNT_ID)
   })
 })
 
@@ -298,28 +481,39 @@ describe('can', () => {
     expect(can(null, 'world.read', { kind: 'world', worldId: '1' })).toBe(false)
   })
 
-  it('temporary single-user mode grants every platform capability', () => {
+  // PHASE 1 BEHAVIOR CHANGE: these two previously asserted that
+  // `temporarySingleUserMode` granted every platform capability, and every
+  // world capability on any World without a membership row. Both of those
+  // implicit grants are gone -- platform capability comes only from
+  // eldra_platform_grants, and World capability only from a membership row.
+  it('platform capability comes only from explicitly granted capabilities', () => {
     const principal: Principal = {
       accountId: 'admin-1',
-      platformCapabilities: new Set(),
+      platformCapabilities: new Set(['platform.world.delete']),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: true
+      accountLookupKeys: ['admin-1']
     }
 
     expect(can(principal, 'platform.world.delete', { kind: 'platform' })).toBe(true)
-    expect(can(principal, 'platform.contentpack.install', { kind: 'platform' })).toBe(true)
+    expect(can(principal, 'platform.contentpack.install', { kind: 'platform' })).toBe(false)
   })
 
-  it('temporary fallback still works: an admin with NO membership row for a World gets every world capability there', () => {
+  it('there is no admin fallback for a World with no membership row -- not even for every platform capability at once', () => {
     const principal: Principal = {
       accountId: 'admin-1',
-      platformCapabilities: new Set(),
-      worldCapabilities: new Map(), // no membership rows at all -- the migration gap
-      temporarySingleUserMode: true
+      platformCapabilities: new Set([
+        'platform.settings.manage',
+        'platform.world.create',
+        'platform.world.list',
+        'platform.world.delete',
+        'platform.breakglass.enter'
+      ]),
+      worldCapabilities: new Map(), // no membership rows at all
+      accountLookupKeys: ['admin-1']
     }
 
-    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-a' })).toBe(true)
-    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-b' })).toBe(true)
+    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-a' })).toBe(false)
+    expect(can(principal, 'world.read', { kind: 'world', worldId: 'world-b' })).toBe(false)
   })
 
   it('owner can(): a real owner membership grants every world capability for that world', () => {
@@ -327,7 +521,7 @@ describe('can', () => {
       accountId: 'account-1',
       platformCapabilities: new Set(),
       worldCapabilities: new Map([['world-5', new Set(WORLD_ROLE_CAPABILITIES.owner)]]),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-5' })).toBe(true)
@@ -340,7 +534,7 @@ describe('can', () => {
       accountId: 'account-2',
       platformCapabilities: new Set(),
       worldCapabilities: new Map([['world-5', new Set(WORLD_ROLE_CAPABILITIES.player)]]),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-5' })).toBe(false)
@@ -351,18 +545,18 @@ describe('can', () => {
     expect(can(principal, 'world.roll.execute', { kind: 'world', worldId: 'world-5' })).toBe(true)
   })
 
-  it('a real membership is authoritative even for temporarySingleUserMode -- an admin bound to observer stays observer for that world', () => {
+  it('a real membership is authoritative for a platform administrator -- an admin bound to observer stays observer for that world', () => {
     const principal: Principal = {
       accountId: 'admin-1',
-      platformCapabilities: new Set(),
+      platformCapabilities: new Set(['platform.settings.manage', 'platform.world.delete']),
       worldCapabilities: new Map([['world-5', new Set(WORLD_ROLE_CAPABILITIES.observer)]]),
-      temporarySingleUserMode: true
+      accountLookupKeys: ['admin-1']
     }
 
     expect(can(principal, 'world.read', { kind: 'world', worldId: 'world-5' })).toBe(true)
     expect(can(principal, 'world.delete', { kind: 'world', worldId: 'world-5' })).toBe(false)
-    // an UNMIGRATED world (no membership row) still falls back for this admin
-    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'other-world' })).toBe(true)
+    // PHASE 1: an unmigrated World no longer falls back -- it is closed.
+    expect(can(principal, 'world.delete', { kind: 'world', worldId: 'other-world' })).toBe(false)
   })
 
   it('a powerless (non-admin, non-temporary) principal is denied every capability', () => {
@@ -370,7 +564,7 @@ describe('can', () => {
       accountId: 'player-1',
       platformCapabilities: new Set(),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expect(can(principal, 'world.read', { kind: 'world', worldId: '1' })).toBe(false)
@@ -382,7 +576,7 @@ describe('can', () => {
       accountId: 'player-2',
       platformCapabilities: new Set(),
       worldCapabilities: new Map([['world-5', new Set(['world.read'])]]),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expect(can(principal, 'world.read', { kind: 'world', worldId: 'world-5' })).toBe(true)
@@ -395,7 +589,7 @@ describe('can', () => {
       accountId: 'staff-1',
       platformCapabilities: new Set(['platform.world.list']),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expect(can(principal, 'platform.world.list', { kind: 'platform' })).toBe(true)
@@ -413,7 +607,7 @@ describe('requireCapability', () => {
       accountId: 'player-1',
       platformCapabilities: new Set(),
       worldCapabilities: new Map(),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     expectThrowsWithStatus(() => requireCapability(principal, 'world.read', { kind: 'world', worldId: '1' }), 403)
@@ -423,8 +617,8 @@ describe('requireCapability', () => {
     const principal: Principal = {
       accountId: 'admin-1',
       platformCapabilities: new Set(),
-      worldCapabilities: new Map(),
-      temporarySingleUserMode: true
+      worldCapabilities: new Map([['1', new Set(WORLD_ROLE_CAPABILITIES.gm)]]),
+      accountLookupKeys: ['admin-1']
     }
 
     expect(() => requireCapability(principal, 'world.rules.activate', { kind: 'world', worldId: '1' })).not.toThrow()

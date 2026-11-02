@@ -40,7 +40,7 @@ function principalWith(capabilities: string[], worldId = '5'): Principal {
     accountId: 'account-1',
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(capabilities)]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   } as unknown as Principal
 }
 

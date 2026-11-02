@@ -36,7 +36,7 @@ function playerPrincipal(worldId: string, accountId = 'account-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.roll.execute'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -45,7 +45,7 @@ function gmPrincipal(worldId: string, accountId = 'gm-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.roll.execute', 'world.roll.see_gm'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -75,7 +75,7 @@ describe('GET /api/worlds/:id/rolls', () => {
       accountId: 'outsider',
       platformCapabilities: new Set(),
       worldCapabilities: new Map([['5', new Set([])]]),
-      temporarySingleUserMode: false
+      accountLookupKeys: []
     }
 
     await expect(handler(fakeEvent('5', noAccess))).rejects.toMatchObject({ statusCode: 403 })

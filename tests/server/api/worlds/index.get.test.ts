@@ -29,12 +29,16 @@ function worldsResponse() {
   }
 }
 
-function principal(worldCapabilities: [string, string[]][], temporarySingleUserMode = false): Principal {
+// `platformCapabilities` is now a parameter instead of the Phase 0
+// `temporarySingleUserMode` flag: holding platform capabilities is no
+// longer a World-scope fallback, so the two have to be expressible
+// independently to test that they stay independent.
+function principal(worldCapabilities: [string, string[]][], platformCapabilities: string[] = []): Principal {
   return {
     accountId: 'account-1',
-    platformCapabilities: new Set(),
+    platformCapabilities: new Set(platformCapabilities as any),
     worldCapabilities: new Map(worldCapabilities.map(([worldId, caps]) => [worldId, new Set(caps as any)])),
-    temporarySingleUserMode
+    accountLookupKeys: ['account-1']
   }
 }
 
@@ -61,21 +65,30 @@ describe('GET /api/worlds', () => {
   })
 
   it('a World with an explicit membership row is governed by that row alone, even for a Player with no access to it', async () => {
-    // World 2 has real memberships in this scenario (someone else's), so
-    // it must never fall back to temporarySingleUserMode for this account.
     const result = await handler(fakeEvent(principal([['1', ['world.read']]])))
 
     expect(result.map((w: any) => w.id)).not.toContain(2)
   })
 
-  it('the legacy migration-gap fallback only ever applies to a World with NO membership row at all, and only for the admin fallback', async () => {
-    const result = await handler(fakeEvent(principal([], true)))
+  // PHASE 1 BEHAVIOR CHANGE. This test previously asserted the opposite:
+  // that an account with temporarySingleUserMode saw every World,
+  // including ones it held no membership in, as a migration-gap fallback.
+  // That fallback was the implicit "Directus Administrator is a superuser
+  // everywhere" grant, and it is gone. A platform administrator now sees
+  // exactly the Worlds it holds a membership row in -- none, here -- which
+  // is architecture doc §8.1's "Platform Admin must not be a world
+  // superuser" with nothing left to undermine it.
+  //
+  // Worlds that genuinely predate world_memberships get a real owner row
+  // from scripts/directus/bootstrap-eldra-platform-admin.mjs, not a
+  // runtime bypass.
+  it('a platform administrator with no membership rows sees no Worlds -- platform capability is not a World grant', async () => {
+    const result = await handler(fakeEvent(principal([], [
+      'platform.world.list',
+      'platform.settings.manage'
+    ])))
 
-    // World 1 and 2 both have implied real memberships elsewhere in a real
-    // system (owner_id set) but no row was ever supplied to this principal
-    // for them here, so with temporarySingleUserMode this account should
-    // see everything -- proving the fallback still works for legacy Worlds.
-    expect(result.map((w: any) => w.id).sort()).toEqual([1, 2, 3])
+    expect(result).toEqual([])
   })
 
   it('a non-admin Player with no membership row anywhere sees nothing, not every World', async () => {

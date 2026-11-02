@@ -140,7 +140,7 @@ function playerPrincipal(worldId = '5'): Principal {
     accountId: 'player-1',
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read', 'world.character.create', 'world.character.edit_own', 'world.roll.execute'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 
@@ -149,7 +149,7 @@ function observerPrincipal(worldId = '5'): Principal {
     accountId: 'observer-1',
     platformCapabilities: new Set(),
     worldCapabilities: new Map([[worldId, new Set(['world.read'])]]),
-    temporarySingleUserMode: false
+    accountLookupKeys: []
   }
 }
 

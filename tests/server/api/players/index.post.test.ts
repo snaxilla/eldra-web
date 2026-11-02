@@ -31,7 +31,7 @@ function authenticatedPrincipal(accountId = 'admin-1'): Principal {
     accountId,
     platformCapabilities: new Set(),
     worldCapabilities: new Map(),
-    temporarySingleUserMode: true
+    accountLookupKeys: []
   }
 }
 

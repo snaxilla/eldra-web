@@ -15,15 +15,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const { directusRequestMock, setSessionCookiesMock } = vi.hoisted(() => ({
+const {
+  directusRequestMock,
+  setSessionCookiesMock,
+  resolveAccountForIdentityMock,
+  listPlatformGrantsMock
+} = vi.hoisted(() => ({
   directusRequestMock: vi.fn(),
-  setSessionCookiesMock: vi.fn()
+  setSessionCookiesMock: vi.fn(),
+  resolveAccountForIdentityMock: vi.fn(),
+  listPlatformGrantsMock: vi.fn()
 }))
 
 vi.mock('../../../../server/utils/directus', () => ({
   directusRequest: directusRequestMock,
   setSessionCookies: setSessionCookiesMock,
   DIRECTUS_ME_FIELDS: 'id,email,first_name,last_name,role.id,role.name'
+}))
+
+// Phase 1: the route now also resolves the Eldra Account behind the
+// Directus session and returns its explicit platform grants, so the
+// browser's `isAdmin` reads the same source the server enforces. Mocked at
+// the module boundary like every other store this test does not exercise.
+vi.mock('../../../../server/utils/eldra-accounts', () => ({
+  resolveAccountForIdentity: resolveAccountForIdentityMock,
+  listPlatformGrants: listPlatformGrantsMock
 }))
 
 vi.mock('h3', async () => {
@@ -48,9 +64,20 @@ function directusLoginSuccess(accessToken = 'access-token-1', refreshToken = 're
   return { data: { access_token: accessToken, refresh_token: refreshToken } }
 }
 
+const ELDRA_ACCOUNT_ID = 'eldra-account-0001'
+
 beforeEach(() => {
   directusRequestMock.mockReset()
   setSessionCookiesMock.mockReset()
+  resolveAccountForIdentityMock.mockReset()
+  listPlatformGrantsMock.mockReset()
+
+  resolveAccountForIdentityMock.mockResolvedValue({
+    id: ELDRA_ACCOUNT_ID,
+    displayName: 'Admin User',
+    status: 'active'
+  })
+  listPlatformGrantsMock.mockResolvedValue([])
 })
 
 describe('POST /api/auth/login', () => {
@@ -71,7 +98,13 @@ describe('POST /api/auth/login', () => {
     const loginCall = directusRequestMock.mock.calls.find(([path]) => path === '/auth/login')
     expect(loginCall?.[1].body).toEqual({ email: 'silverhand@players.eldra.app', password: 'longenough1' })
     expect(setSessionCookiesMock).toHaveBeenCalledWith(expect.anything(), 'access-token-1', 'refresh-token-1')
-    expect(result).toEqual({ ok: true, user: { id: 'account-1', email: 'silverhand@players.eldra.app', first_name: 'V' } })
+    expect(result).toEqual({
+      ok: true,
+      user: { id: 'account-1', email: 'silverhand@players.eldra.app', first_name: 'V' },
+      // Phase 1: the Eldra Account id, NOT the Directus user id in `user`.
+      accountId: ELDRA_ACCOUNT_ID,
+      platformCapabilities: []
+    })
   })
 
   it('email login still succeeds: an identifier containing "@" is passed through unchanged -- existing administrators are unaffected', async () => {
@@ -147,7 +180,12 @@ describe('POST /api/auth/login', () => {
 
     const result = await handler(fakeEvent({ username: 'NewPlayer', password: 'freshpassword1' }))
 
-    expect(result).toEqual({ ok: true, user: { id: 'new-account', email: 'newplayer@players.eldra.app', first_name: 'New' } })
+    expect(result).toEqual({
+      ok: true,
+      user: { id: 'new-account', email: 'newplayer@players.eldra.app', first_name: 'New' },
+      accountId: ELDRA_ACCOUNT_ID,
+      platformCapabilities: []
+    })
   })
 
   it('throws 401 when Directus returns no access token, without setting any cookies', async () => {

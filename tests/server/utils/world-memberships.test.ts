@@ -10,12 +10,23 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock } = vi.hoisted(() => ({
-  directusServiceRequestMock: vi.fn()
+const { directusServiceRequestMock, resolveAccountDisplayNamesMock } = vi.hoisted(() => ({
+  directusServiceRequestMock: vi.fn(),
+  resolveAccountDisplayNamesMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
+}))
+
+// Phase 1: resolveDisplayNames now asks the Eldra Accounts store first and
+// only falls through to Directus `/users` for ids it could not resolve --
+// the two id shapes (Eldra Account id, legacy Directus user id) coexist in
+// membership rows. Mocked at the module boundary; the default below
+// resolves nothing, so every existing test still exercises the Directus
+// fallback path exactly as before.
+vi.mock('../../../server/utils/eldra-accounts', () => ({
+  resolveAccountDisplayNames: resolveAccountDisplayNamesMock
 }))
 
 import {
@@ -29,6 +40,8 @@ import {
 
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
+  resolveAccountDisplayNamesMock.mockReset()
+  resolveAccountDisplayNamesMock.mockResolvedValue(new Map())
 })
 
 function jsonResponse(data: unknown) {
@@ -89,7 +102,7 @@ describe('listMembershipsForAccount', () => {
       ])
     )
 
-    const memberships = await listMembershipsForAccount('account-1')
+    const memberships = await listMembershipsForAccount(['account-1'])
 
     expect(memberships).toEqual([
       { id: 'm1', worldId: '1', accountId: 'account-1', role: 'owner', createdAt: '2026-01-01T00:00:00Z' },
@@ -100,16 +113,54 @@ describe('listMembershipsForAccount', () => {
   it('filters by account_id', async () => {
     directusServiceRequestMock.mockResolvedValue(jsonResponse([]))
 
-    await listMembershipsForAccount('account-7')
+    await listMembershipsForAccount(['account-7'])
 
     const [, options] = directusServiceRequestMock.mock.calls[0]
-    expect(options.query.filter).toEqual({ account_id: { _eq: 'account-7' } })
+    expect(options.query.filter).toEqual({ account_id: { _in: ['account-7'] } })
+  })
+
+  // Phase 1: membership rows written before Eldra Accounts existed are
+  // keyed by the DIRECTUS user id. Matching every lookup key is what keeps
+  // those rows resolving to the same person with the same role after
+  // Principal.accountId became an Eldra Account id -- without re-keying a
+  // single live row.
+  it('matches an Eldra Account id AND every legacy provider subject', async () => {
+    directusServiceRequestMock.mockResolvedValue(
+      jsonResponse([
+        { id: 'm-legacy', world_id: 4, account_id: 'directus-user-uuid', role: 'player', created_at: null },
+        { id: 'm-new', world_id: 9, account_id: 'eldra-account-1', role: 'owner', created_at: null }
+      ])
+    )
+
+    const memberships = await listMembershipsForAccount(['eldra-account-1', 'directus-user-uuid'])
+
+    const [, options] = directusServiceRequestMock.mock.calls[0]
+    expect(options.query.filter).toEqual({
+      account_id: { _in: ['eldra-account-1', 'directus-user-uuid'] }
+    })
+    expect(memberships.map((m) => m.worldId).sort()).toEqual(['4', '9'])
+  })
+
+  it('drops blank keys rather than sending them to Directus', async () => {
+    directusServiceRequestMock.mockResolvedValue(jsonResponse([]))
+
+    await listMembershipsForAccount(['account-7', '', '   '])
+
+    const [, options] = directusServiceRequestMock.mock.calls[0]
+    expect(options.query.filter).toEqual({ account_id: { _in: ['account-7'] } })
+  })
+
+  it('never queries at all when there are no usable keys -- fails closed with no memberships', async () => {
+    const memberships = await listMembershipsForAccount([])
+
+    expect(memberships).toEqual([])
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
   })
 
   it('returns an empty array when the account has no memberships', async () => {
     directusServiceRequestMock.mockResolvedValue(jsonResponse([]))
 
-    const memberships = await listMembershipsForAccount('account-lonely')
+    const memberships = await listMembershipsForAccount(['account-lonely'])
 
     expect(memberships).toEqual([])
   })
@@ -159,6 +210,50 @@ describe('listMembersForWorld', () => {
     const members = await listMembersForWorld(5)
 
     expect(members[0].displayName).toBe('ghost-account')
+  })
+
+  // Phase 1: the two id shapes side by side in one roster. The Eldra
+  // Account resolves from the Accounts store; the legacy Directus-keyed row
+  // falls through to /users. Neither call site has to know which it is
+  // looking at.
+  it('resolves an Eldra Account name from the Accounts store and only asks Directus about the ids it could not resolve', async () => {
+    resolveAccountDisplayNamesMock.mockResolvedValue(new Map([['eldra-account-1', 'Sam Ledoux']]))
+
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/items/world_memberships') {
+        return jsonResponse([
+          { id: 'm1', world_id: 5, account_id: 'eldra-account-1', role: 'owner', created_at: null },
+          { id: 'm2', world_id: 5, account_id: 'directus-user-uuid', role: 'player', created_at: null }
+        ])
+      }
+      if (path === '/users') {
+        // Only the unresolved id is asked about.
+        expect(options.query.filter).toEqual({ id: { _in: ['directus-user-uuid'] } })
+        return jsonResponse([
+          { id: 'directus-user-uuid', email: 'bobbyb@players.eldra.app', first_name: 'BobbyB', last_name: '' }
+        ])
+      }
+      throw new Error(`unexpected path: ${path}`)
+    })
+
+    const members = await listMembersForWorld(5)
+
+    expect(members.map((m) => m.displayName)).toEqual(['Sam Ledoux', 'BobbyB'])
+  })
+
+  it('does not call /users at all when every id resolved as an Eldra Account', async () => {
+    resolveAccountDisplayNamesMock.mockResolvedValue(new Map([['eldra-account-1', 'Sam Ledoux']]))
+
+    directusServiceRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/items/world_memberships') {
+        return jsonResponse([{ id: 'm1', world_id: 5, account_id: 'eldra-account-1', role: 'owner', created_at: null }])
+      }
+      throw new Error(`unexpected call to ${path}`)
+    })
+
+    const members = await listMembersForWorld(5)
+
+    expect(members[0].displayName).toBe('Sam Ledoux')
   })
 
   it('does not call /users at all when the world has no members', async () => {

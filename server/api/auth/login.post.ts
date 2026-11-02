@@ -19,6 +19,8 @@
 // directly unit-testable under plain Vitest.
 import { createError, defineEventHandler, readBody } from 'h3'
 import { DIRECTUS_ME_FIELDS, directusRequest, setSessionCookies } from '../../utils/directus'
+import { formatAccountDisplayName } from '../../utils/accounts'
+import { listPlatformGrants, resolveAccountForIdentity } from '../../utils/eldra-accounts'
 import { resolveLoginEmail } from '../../utils/players'
 
 export default defineEventHandler(async (event) => {
@@ -35,8 +37,17 @@ export default defineEventHandler(async (event) => {
 
   const email = resolveLoginEmail(identifier)
 
+  // `unauthenticated: true` (Phase 1 authorization preflight, finding A):
+  // Directus's `/auth/login` takes its credential in the request BODY and
+  // needs no Authorization header -- but directusRequest is now
+  // fail-closed and rejects a call it cannot authenticate as a user, so
+  // the two endpoints that are legitimately credential-free have to say
+  // so. Before that change this call silently carried the Directus
+  // SERVICE token, which was harmless here only because `/auth/login`
+  // ignores it.
   const loginResponse = await directusRequest('/auth/login', {
     method: 'POST',
+    unauthenticated: true,
     body: { email, password }
   })
 
@@ -75,8 +86,24 @@ export default defineEventHandler(async (event) => {
     }
   })
 
+  // Phase 1: the same `accountId` / `platformCapabilities` pair
+  // server/api/auth/me.get.ts returns. Without it the browser would hold a
+  // logged-in session with no known capabilities until its next /me call,
+  // and app/middleware/admin.ts (which only calls fetchMe when state is
+  // not yet ready) would bounce a freshly-logged-in administrator straight
+  // back out of the admin workspace.
+  const row = me?.data || me
+  const account = await resolveAccountForIdentity({
+    provider: 'directus',
+    providerSubject: String(row?.id ?? ''),
+    displayName: formatAccountDisplayName(row)
+  })
+  const platformCapabilities = await listPlatformGrants(account.id)
+
   return {
     ok: true,
-    user: me?.data || me
+    user: row,
+    accountId: account.id,
+    platformCapabilities
   }
 })

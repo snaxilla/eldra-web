@@ -64,6 +64,10 @@ export default defineEventHandler(async (event) => {
   return await listRollEvents({
     worldId,
     requesterAccountId: principal.accountId,
+    // Lets a player still see their OWN private rolls that were
+    // recorded under their Directus user id, before Eldra Accounts
+    // existed (see Principal.accountLookupKeys).
+    requesterAccountKeys: principal.accountLookupKeys,
     canSeeGm,
     encounterId,
     actorCharacterId,

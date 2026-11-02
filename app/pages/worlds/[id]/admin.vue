@@ -9,6 +9,7 @@ definePageMeta({
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import AdminSectionRail from '~/components/admin/AdminSectionRail.vue'
+import AdminPlayerCharacterDrawer from '~/components/admin/AdminPlayerCharacterDrawer.vue'
 import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewForgePanel.vue'
 import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
@@ -28,22 +29,24 @@ const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
 
 // PLAYER MANAGEMENT -- account ownership + deletion. Both are genuine
-// architecture blockers, not an oversight -- see this file's own "Account
-// Owner" / "Delete Character" markup below for the exact reasons (no
-// `entities.owner_account_id` column exists anywhere in the real schema --
-// confirmed by tracing, not assumed -- and deletion has no referential-
-// integrity story for character_sheets/entity_relationships/inventory
-// transfers, which are plain integer columns with no Directus-level
-// relation or cascade configured). Kept visible, not hidden: this task's
-// own instruction is "leave the UI action clearly unavailable rather than
-// risking orphaned data," which is a different thing from omitting it.
-// Keyed by entity id so expanding one card's management panel doesn't
-// affect any other card's.
-const managingEntityId = ref<string | null>(null)
-function toggleManage(entity: any) {
-  const id = entityId(entity)
-  managingEntityId.value = managingEntityId.value === id ? null : id
-}
+// architecture blockers, not an oversight -- see AdminPlayerCharacterDrawer
+// .vue's own header for the exact, traced reasons (no
+// `entities.owner_account_id` column exists anywhere in the real schema,
+// and deletion has no referential-integrity story for
+// character_sheets/entity_relationships/inventory transfers, which are
+// plain integer columns with no Directus-level relation or cascade
+// configured). Kept visible, not hidden: this task's own instruction is
+// "leave the UI action clearly unavailable rather than risking orphaned
+// data," which is a different thing from omitting it.
+//
+// PLAYER MANAGEMENT PRESENTATION FIX: this used to be per-card inline
+// expand state (`managingEntityId`, keyed by entity id, toggling a block
+// inside that one card) -- correct in isolation, but it made whichever
+// card was open taller than its neighbors and bent the roster grid. A
+// single nullable "which entity is open" ref, driving ONE drawer instance
+// mounted outside the roster grid (see AdminPlayerCharacterDrawer.vue
+// below), means no card's own height ever depends on this state at all.
+const managingEntity = ref<any | null>(null)
 
 const grantTargetEntityId = ref('')
 const itemSearch = ref('')
@@ -917,60 +920,10 @@ async function refreshAdmin() {
                     <button
                       type="button"
                       class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#9f9278]"
-                      :aria-expanded="managingEntityId === entityId(entity)"
-                      @click="toggleManage(entity)"
+                      @click="managingEntity = entity"
                     >
-                      {{ managingEntityId === entityId(entity) ? 'Hide Account & Deletion' : 'Account & Deletion' }}
+                      Account & Deletion
                     </button>
-                  </div>
-
-                  <!-- Account ownership + deletion -- both genuinely unavailable today; see
-                       managingEntityId's own header above for the exact, traced reasons. This is
-                       the UI the task asked for ("clearly unavailable," not absent), not a stub
-                       left half-wired to a mutation that does not exist. -->
-                  <div
-                    v-if="managingEntityId === entityId(entity)"
-                    class="mt-4 grid gap-3 border-t border-[rgba(201,164,90,0.16)] pt-4"
-                  >
-                    <div class="rounded-none border border-dashed border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.55)] p-3">
-                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">
-                        Account Owner
-                      </div>
-                      <p class="mt-1.5 text-xs leading-5 text-[#d8ceb8]">
-                        Not tracked yet. Eldra's World Membership model (Owner/GM/Worldbuilder/Player/Observer)
-                        does not currently record which player account, if any, owns this specific character --
-                        there is no owner column on this World's characters to assign. Changing that is a
-                        schema decision (adding an account reference to characters) that needs explicit
-                        approval before it is made, per this World's own architecture notes.
-                      </p>
-                      <button
-                        type="button"
-                        disabled
-                        class="mt-2.5 cursor-not-allowed rounded-none border border-[rgba(201,164,90,0.18)] px-3 py-2 text-xs font-semibold text-[#6f6754]"
-                      >
-                        Change Owner (unavailable)
-                      </button>
-                    </div>
-
-                    <div class="rounded-none border border-dashed border-red-500/25 bg-[rgba(20,17,12,0.55)] p-3">
-                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">
-                        Delete Character
-                      </div>
-                      <p class="mt-1.5 text-xs leading-5 text-[#d8ceb8]">
-                        Not available yet. Deleting {{ entityTitle(entity) }} today would remove only this
-                        character's own article record -- its character sheet, inventory/transfer history, and
-                        any relationships to other characters are stored under a separate id with no enforced
-                        link back to it, so they would be silently left behind rather than cleaned up. Safe
-                        deletion needs that cleanup implemented and verified first.
-                      </p>
-                      <button
-                        type="button"
-                        disabled
-                        class="mt-2.5 cursor-not-allowed rounded-none border border-red-500/20 px-3 py-2 text-xs font-semibold text-red-300/50"
-                      >
-                        Delete Character (unavailable)
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1472,6 +1425,20 @@ async function refreshAdmin() {
       @close="closeEntityContext"
       @read-more="openArticle"
       @open-mention="openEntityContext"
+    />
+
+    <!-- PLAYER MANAGEMENT PRESENTATION FIX: mounted once here, outside the
+         panel-switching chain and outside the Player Management roster grid
+         -- the same "single instance, root-level sibling" placement
+         WorldEntityContextDrawer itself already uses, so opening it can
+         never affect any section's own layout, including the roster it
+         was opened from. -->
+    <AdminPlayerCharacterDrawer
+      :entity="managingEntity"
+      :entity-id="entityId"
+      :entity-title="entityTitle"
+      :entity-type-label="entityTypeLabel"
+      @close="managingEntity = null"
     />
   </div>
 </template>

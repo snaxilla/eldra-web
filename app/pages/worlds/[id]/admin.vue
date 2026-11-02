@@ -549,41 +549,37 @@ async function refreshAdmin() {
           class="mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
           :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
         >
-          <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgb(var(--eldra-panel-rgb)/var(--eldra-surface-reading-alpha)),rgb(var(--eldra-ink-rgb)/var(--eldra-surface-reading-alpha)))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] [backdrop-filter:blur(var(--eldra-panel-blur))]">
-            <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-                  World Control
-                </div>
+          <!-- Game Admin Workspace Cleanup: the old persistent "World
+               Control / Game Admin" masthead (title/subtitle + health-card
+               row shown above every section) is gone -- the Sections rail
+               already carries navigation context, and repeating the page
+               title above every panel wasted vertical space. Refresh Admin,
+               the Characters shortcut, and the health cards move into the
+               Overview section only, where they're actually Overview
+               content; other sections now start right at the top of the
+               scroll column. -->
+          <div
+            v-if="activePanel === 'overview'"
+            class="mt-6 grid gap-6"
+          >
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.12)]"
+                @click="refreshAdmin"
+              >
+                Refresh Admin
+              </button>
 
-                <h1 class="mt-2 text-4xl font-semibold text-white">
-                  Game Admin
-                </h1>
-
-                <p class="mt-3 max-w-3xl text-sm leading-6 text-[#d8ceb8]">
-                  DM cockpit for party state, grants, transfers, relationships, and campaign cleanup.
-                </p>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.12)]"
-                  @click="refreshAdmin"
-                >
-                  Refresh Admin
-                </button>
-
-                <NuxtLink
-                  :to="`/worlds/${worldId}/characters`"
-                  class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.58)] px-4 py-3 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
-                >
-                  Characters
-                </NuxtLink>
-              </div>
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters`"
+                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.58)] px-4 py-3 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+              >
+                Characters
+              </NuxtLink>
             </div>
 
-            <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <article
                 v-for="card in healthCards"
                 :key="card.label"
@@ -602,11 +598,9 @@ async function refreshAdmin() {
                 </div>
               </article>
             </div>
-          </section>
 
       <section
-        v-if="activePanel === 'overview'"
-        class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]"
+        class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]"
       >
         <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
           <div class="flex items-start justify-between gap-3">
@@ -774,6 +768,7 @@ async function refreshAdmin() {
           </div>
         </div>
       </section>
+          </div>
 
             <AdminHomebrewForgePanel
         v-else-if="activePanel === 'homebrew'"

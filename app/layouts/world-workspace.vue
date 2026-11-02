@@ -28,12 +28,18 @@ watch(showPins, (value) => {
 // 4B-0), and `characters/create-v2` -- the same reasoning as the sheet:
 // both are full-bleed, content-dense surfaces where the expanded 280px rail
 // is the first thing pushing their own content below the fold at short
-// viewport heights.
+// viewport heights. (Game Admin Workspace Cleanup) `worlds/:id/admin` joins
+// this list for the same reason -- it now owns its own Sections rail
+// (AdminSectionRail.vue), so starting the global App Nav collapsed gives
+// that rail the width instead of two expanded rails competing for space.
+// This only sets the App Nav's own `leftCollapsed` state; it never reads or
+// writes AdminSectionRail's independent expanded/collapsed state.
 function shouldCollapseWorkspaceSidebar(path: any) {
   const value = String(path || '')
   return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(value)
     || /^\/worlds\/[^/]+\/characters\/[^/]+\/sheet(?:-v2)?(?:\/|$)/.test(value)
     || /^\/worlds\/[^/]+\/characters\/create-v2(?:\/|$)/.test(value)
+    || /^\/worlds\/[^/]+\/admin(?:\/|$)/.test(value)
 }
 
 const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => shouldCollapseWorkspaceSidebar(route.path))

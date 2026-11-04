@@ -167,9 +167,21 @@ describe('GET /api/auth/me -- Eldra-issued (OIDC) session, checked first', () =>
 })
 
 describe('GET /api/auth/me -- Directus session (unchanged behaviour)', () => {
-  it('reports unauthenticated with no eldra_session cookie at all', async () => {
+  // Login-latency investigation (no unnecessary Directus call when
+  // logged out). A fresh, cookie-less visitor opening the login page
+  // calls this route (app/composables/useAuth.ts's fetchMe, from
+  // app/middleware/auth.ts and app/pages/login.vue) -- this pins that it
+  // short-circuits before ever reaching Directus or the Eldra session
+  // store, rather than merely returning the right JSON shape by
+  // coincidence while still paying for a call behind the scenes.
+  it('reports unauthenticated with no eldra_session cookie at all, WITHOUT calling Directus session validation or the Eldra session store', async () => {
     const result = await handler(fakeEvent())
+
     expect(result).toEqual({ authenticated: false, user: null, accountId: null, platformCapabilities: [] })
+    expect(fetchDirectusMeMock).not.toHaveBeenCalled()
+    expect(resolveEldraSessionMock).not.toHaveBeenCalled()
+    expect(getAccountByIdMock).not.toHaveBeenCalled()
+    expect(resolveAccountForIdentityMock).not.toHaveBeenCalled()
   })
 
   it('clears both Directus cookies and reports unauthenticated when the session token is rejected', async () => {

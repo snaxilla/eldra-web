@@ -151,6 +151,90 @@ describe('buildAuthorizationRequest', () => {
 
     expect(discoveryMock).toHaveBeenCalledTimes(2)
   })
+
+  // Login-latency investigation. A SEQUENTIAL second call already never
+  // re-discovered (the test above) -- the real gap was CONCURRENT first
+  // calls (a double click, or two near-simultaneous requests hitting a
+  // freshly-started process) each seeing no cached Configuration yet and
+  // each independently paying a discovery() network round trip. Caching
+  // the in-flight PROMISE, not only the resolved value, is what this
+  // proves closed.
+  it('discovers exactly once even when buildAuthorizationRequest is called concurrently, before the first discovery() resolves', async () => {
+    setConfiguredEnv()
+
+    let resolveDiscovery!: (value: typeof fakeConfig) => void
+    discoveryMock.mockReset()
+    discoveryMock.mockImplementation(() => new Promise((resolve) => { resolveDiscovery = resolve }))
+
+    // Three callers race in before discovery() has settled at all.
+    const first = buildAuthorizationRequest()
+    const second = buildAuthorizationRequest()
+    const third = buildAuthorizationRequest()
+
+    resolveDiscovery(fakeConfig)
+    await Promise.all([first, second, third])
+
+    expect(discoveryMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-discovers if the client id changes, even though the issuer URL did not', async () => {
+    setConfiguredEnv()
+    await buildAuthorizationRequest()
+
+    process.env.OIDC_CLIENT_ID = 'a-different-client-id'
+    await buildAuthorizationRequest()
+
+    expect(discoveryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('re-discovers if the client secret changes, even though the issuer URL did not -- a rotated secret must never be served a stale Configuration built with the old one', async () => {
+    setConfiguredEnv()
+    await buildAuthorizationRequest()
+
+    process.env.OIDC_CLIENT_SECRET = 'a-different-secret'
+    await buildAuthorizationRequest()
+
+    expect(discoveryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does NOT re-discover when only the redirect URI changes -- it is never part of discovery() at all', async () => {
+    setConfiguredEnv()
+    await buildAuthorizationRequest()
+
+    process.env.OIDC_REDIRECT_URI = 'https://eldra.example.com/a/different/callback/path'
+    await buildAuthorizationRequest()
+
+    expect(discoveryMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('never caches a rejected discovery -- a transient outage is retried on the next call, not replayed forever', async () => {
+    setConfiguredEnv()
+    discoveryMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    await expect(buildAuthorizationRequest()).rejects.toThrow('provider unreachable')
+
+    discoveryMock.mockResolvedValueOnce(fakeConfig)
+    await expect(buildAuthorizationRequest()).resolves.toBeDefined()
+
+    expect(discoveryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('a process restart (fresh module state) re-discovers rather than reusing anything from before it', async () => {
+    setConfiguredEnv()
+    await buildAuthorizationRequest()
+    expect(discoveryMock).toHaveBeenCalledTimes(1)
+
+    // Simulates a real process restart more faithfully than this test
+    // file's own resetOidcConfigurationCache escape hatch: a genuinely
+    // fresh module instance, with its own independent module-level
+    // cache state, picking up whatever environment settings are current
+    // at that moment.
+    vi.resetModules()
+    const fresh = await import('../../../server/utils/oidc')
+    await fresh.buildAuthorizationRequest()
+
+    expect(discoveryMock).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('completeAuthorizationCodeGrant', () => {

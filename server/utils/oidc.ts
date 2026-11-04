@@ -78,13 +78,40 @@ export class OidcNotConfiguredError extends Error {
   }
 }
 
-// Lazily discovered, reused across requests -- the same "one small,
-// lazily-created, reused" shape server/utils/character-resource-atomic.ts's
-// own Pool already establishes for a different external dependency.
-// Re-discovered if the configured issuer URL changes (e.g. a config
-// reload) rather than cached forever against stale metadata.
-let cachedConfig: client.Configuration | null = null
-let cachedForIssuer: string | null = null
+// Lazily discovered ONCE per server process, reused across every
+// subsequent login/link attempt -- the same "one small, lazily-created,
+// reused" shape server/utils/character-resource-atomic.ts's own Pool
+// already establishes for a different external dependency, and the
+// pattern `discovery()`'s own docs describe: construct a `Configuration`
+// once, keep it, reuse it (there is no library-level cache to opt into --
+// the `Configuration` it returns IS the reusable unit).
+//
+// LATENCY INVESTIGATION (worlds.theledouxs.com login-latency report).
+// Measured (this file's own tests, and a local reproduction of the
+// deployed `.output` build) confirms a SEQUENTIAL second call already
+// skipped discovery() entirely before this change -- that part was never
+// the bug. What was: two CONCURRENT first-ever calls (e.g. a double
+// click, or two near-simultaneous requests hitting a freshly-started
+// process) each saw `cachedConfig` as not-yet-set and each independently
+// called `client.discovery()` -- a real network round trip to the
+// provider, twice, for what should be one. Caching the in-flight PROMISE
+// (not merely the resolved value) is what closes that: every caller
+// during the discovery window awaits the SAME network call.
+//
+// Keyed on every value that actually changes WHAT discovery() returns
+// (issuer, client id, client secret) -- not merely the issuer URL, which
+// would have kept serving a STALE Configuration (built with an old
+// client id/secret) if an operator changed one of those without the
+// issuer URL also changing. `redirectUri` is deliberately excluded: it is
+// never passed into discovery() at all (only used later, in
+// buildAuthorizationUrl), so including it would force needless
+// re-discovery whenever only the redirect URI changed.
+let cachedConfigPromise: Promise<client.Configuration> | null = null
+let cachedForKey: string | null = null
+
+function configurationCacheKey(env: ReturnType<typeof readOidcEnv>): string {
+  return `${env.issuerUrl}|${env.clientId}|${env.clientSecret}`
+}
 
 async function getConfiguration(): Promise<client.Configuration> {
   const env = readOidcEnv()
@@ -92,8 +119,10 @@ async function getConfiguration(): Promise<client.Configuration> {
     throw new OidcNotConfiguredError()
   }
 
-  if (cachedConfig && cachedForIssuer === env.issuerUrl) {
-    return cachedConfig
+  const key = configurationCacheKey(env)
+
+  if (cachedConfigPromise && cachedForKey === key) {
+    return cachedConfigPromise
   }
 
   // discovery() fetches `<issuer>/.well-known/openid-configuration` (or
@@ -102,17 +131,38 @@ async function getConfiguration(): Promise<client.Configuration> {
   // matches the URL given here -- the actual mechanism behind "strict
   // issuer validation": a provider cannot claim to be a different
   // issuer than the one this was configured to trust.
-  cachedConfig = await client.discovery(new URL(env.issuerUrl), env.clientId, env.clientSecret)
-  cachedForIssuer = env.issuerUrl
-  return cachedConfig
+  //
+  // The promise is cached BEFORE it settles (not after an await), which
+  // is what makes it safe for concurrent callers: the second caller in
+  // sees this same in-flight promise already assigned to
+  // `cachedConfigPromise` and awaits it instead of starting a second
+  // discovery() call of its own.
+  cachedForKey = key
+  const discoveryPromise = client.discovery(new URL(env.issuerUrl), env.clientId, env.clientSecret)
+  cachedConfigPromise = discoveryPromise
+
+  try {
+    return await discoveryPromise
+  } catch (error) {
+    // Never cache a failure -- a transient discovery outage must not
+    // permanently break OIDC login for the rest of this process's life.
+    // Only clear the cache if nothing has since replaced this exact
+    // attempt (a later, different config change may already have
+    // started its own discovery by the time this one's catch runs).
+    if (cachedConfigPromise === discoveryPromise) {
+      cachedConfigPromise = null
+      cachedForKey = null
+    }
+    throw error
+  }
 }
 
 // Test-only: forces re-discovery on the next call. Production never
 // calls this; it exists so unit tests don't leak a mocked Configuration
 // across test files.
 export function resetOidcConfigurationCache(): void {
-  cachedConfig = null
-  cachedForIssuer = null
+  cachedConfigPromise = null
+  cachedForKey = null
 }
 
 export type OidcAuthorizationRequest = {

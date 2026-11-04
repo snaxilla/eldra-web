@@ -203,3 +203,77 @@ describe('revokeEldraSession', () => {
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
   })
 })
+
+// Security review (OIDC architecture audit) -- before this fix, every one
+// of these three functions called directusServiceRequest directly, so a
+// Directus-side failure (most realistically: the `eldra_sessions`
+// collection not yet provisioned, which Directus answers with the same
+// 403 shape as "the service token may not read this" -- see
+// server/utils/eldra-accounts.ts's own identityStoreError for the
+// verified detail) propagated as Directus's OWN raw error. h3 serializes
+// an uncaught thrown object's own `data`/`statusCode` into the actual HTTP
+// response, so that error would have reached an unauthenticated caller
+// completing server/api/auth/oidc/callback.get.ts's login flow. These
+// pin that a store failure now always surfaces as a generic 503, never
+// the raw Directus error, for all three entry points.
+describe('session store failures never propagate as the raw Directus error', () => {
+  function directusRejects() {
+    directusServiceRequestMock.mockReset()
+    directusServiceRequestMock.mockRejectedValue(
+      Object.assign(new Error("You don't have permission to access this."), {
+        statusCode: 403,
+        data: { errors: [{ message: "You don't have permission to access this.", extensions: { code: 'FORBIDDEN' } }] }
+      })
+    )
+  }
+
+  it('createEldraSession maps a store failure to a generic 503, never Directus\'s own 403/message', async () => {
+    directusRejects()
+
+    await expect(createEldraSession(ACCOUNT_ID)).rejects.toMatchObject({ statusCode: 503 })
+    try {
+      await createEldraSession(ACCOUNT_ID)
+    } catch (error: any) {
+      expect(JSON.stringify(error)).not.toContain('FORBIDDEN')
+      expect(JSON.stringify(error)).not.toContain("don't have permission")
+    }
+  })
+
+  it('resolveEldraSession\'s lookup maps a store failure the same way', async () => {
+    directusRejects()
+
+    await expect(resolveEldraSession('some-token')).rejects.toMatchObject({ statusCode: 503 })
+  })
+
+  it('revokeEldraSession\'s lookup maps a store failure the same way', async () => {
+    directusRejects()
+
+    await expect(revokeEldraSession('some-token')).rejects.toMatchObject({ statusCode: 503 })
+  })
+
+  it('revokeEldraSession\'s revoking PATCH maps a store failure the same way, after a successful lookup', async () => {
+    const rawToken = 'a-raw-token'
+    installStore([
+      { id: 's1', account_id: ACCOUNT_ID, token_hash: hash(rawToken), expires_at: new Date(Date.now() + 10000).toISOString(), revoked_at: null }
+    ])
+    const base = directusServiceRequestMock.getMockImplementation()!
+    directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
+      if (opts.method === 'PATCH') {
+        throw Object.assign(new Error('forbidden'), { statusCode: 403 })
+      }
+      return base(path, opts)
+    })
+
+    await expect(revokeEldraSession(rawToken)).rejects.toMatchObject({ statusCode: 503 })
+  })
+
+  it('still logs the real Directus detail server-side, so the failure is diagnosable from the server log alone', async () => {
+    directusRejects()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(createEldraSession(ACCOUNT_ID)).rejects.toBeTruthy()
+
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+  })
+})

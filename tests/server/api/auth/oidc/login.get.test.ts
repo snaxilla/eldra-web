@@ -78,7 +78,8 @@ describe('GET /api/auth/oidc/login', () => {
       state: 'state-1',
       nonce: 'nonce-1',
       kind: 'login',
-      redirect: null
+      redirect: null,
+      initiatingAccountId: null
     })
   })
 
@@ -102,6 +103,20 @@ describe('GET /api/auth/oidc/login', () => {
 
   it('drops a protocol-relative ?redirect= the same way', async () => {
     await handler(fakeEvent({ redirect: '//evil.example.com' }))
+
+    expect(setOidcFlowCookieMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ redirect: null }))
+  })
+
+  // Security review (OIDC redirect-safety audit): this route is the first
+  // caller to ever hand safeRedirectTarget's output to a real HTTP
+  // Location header (callback.get.ts's sendRedirect), rather than a
+  // client-side navigateTo -- the exact new sink that turned a
+  // browser-normalization quirk in safeRedirectTarget into a genuine open
+  // redirect. Covered at the unit level in tests/utils/safeRedirect.test.ts;
+  // repeated here end-to-end to prove THIS route's flow cookie never ends
+  // up carrying it.
+  it('drops a tab+backslash redirect that bypasses a leading-characters-only check (regression)', async () => {
+    await handler(fakeEvent({ redirect: '/\t\\evil.example.com' }))
 
     expect(setOidcFlowCookieMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ redirect: null }))
   })

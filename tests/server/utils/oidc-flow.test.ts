@@ -74,7 +74,8 @@ const FLOW: OidcFlowState = {
   state: 'state-1',
   nonce: 'nonce-1',
   kind: 'login',
-  redirect: '/worlds/abc'
+  redirect: '/worlds/abc',
+  initiatingAccountId: null
 }
 
 describe('setOidcFlowCookie / readAndClearOidcFlowState', () => {
@@ -120,17 +121,30 @@ describe('setOidcFlowCookie / readAndClearOidcFlowState', () => {
     ['missing codeVerifier', { ...FLOW, codeVerifier: '' }],
     ['missing state', { ...FLOW, state: '' }],
     ['missing nonce', { ...FLOW, nonce: '' }],
-    ['an invalid kind', { ...FLOW, kind: 'evil' as any }]
+    ['an invalid kind', { ...FLOW, kind: 'evil' as any }],
+    ['a non-string, non-null initiatingAccountId', { ...FLOW, initiatingAccountId: 42 as any }]
   ])('returns null for a tampered/incomplete flow state (%s)', (_label, tampered) => {
     const event = fakeEvent({ [OIDC_FLOW_COOKIE]: JSON.stringify(tampered) })
     expect(readAndClearOidcFlowState(event)).toBeNull()
   })
 
-  it('never carries an accountId or any field beyond codeVerifier/state/nonce/kind/redirect', () => {
+  it('carries exactly codeVerifier/state/nonce/kind/redirect/initiatingAccountId -- no other field', () => {
     const writeEvent = fakeEvent()
-    setOidcFlowCookie(writeEvent, { ...FLOW, kind: 'link', redirect: null })
+    setOidcFlowCookie(writeEvent, { ...FLOW, kind: 'link', redirect: null, initiatingAccountId: 'account-1' })
 
     const raw = cookiesSetOn(writeEvent)[OIDC_FLOW_COOKIE]
-    expect(Object.keys(JSON.parse(raw)).sort()).toEqual(['codeVerifier', 'kind', 'nonce', 'redirect', 'state'])
+    expect(Object.keys(JSON.parse(raw)).sort()).toEqual([
+      'codeVerifier', 'initiatingAccountId', 'kind', 'nonce', 'redirect', 'state'
+    ])
+  })
+
+  it('accepts a string initiatingAccountId for a link flow and round-trips it unchanged', () => {
+    const writeEvent = fakeEvent()
+    setOidcFlowCookie(writeEvent, { ...FLOW, kind: 'link', redirect: null, initiatingAccountId: 'account-1' })
+
+    const readEvent = fakeEvent(cookiesSetOn(writeEvent))
+    const result = readAndClearOidcFlowState(readEvent)
+
+    expect(result?.initiatingAccountId).toBe('account-1')
   })
 })

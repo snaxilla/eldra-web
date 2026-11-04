@@ -28,7 +28,8 @@ export default defineEventHandler(async (event) => {
     state: request.state,
     nonce: request.nonce,
     kind: 'login',
-    redirect
+    redirect,
+    initiatingAccountId: null
   })
 
   return sendRedirect(event, request.authorizationUrl)

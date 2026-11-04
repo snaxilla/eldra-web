@@ -4,8 +4,10 @@
 // authenticated" for this route (tests/server/middleware/authorize.test.ts
 // covers that boundary); this file only has to prove the route itself
 // starts the SAME OIDC round-trip login.get.ts does, tagged kind:'link',
-// and never writes an accountId into the flow cookie (see
-// server/utils/oidc-flow.ts's own header for why that matters).
+// carrying the live principal's accountId ONLY as a non-authoritative
+// fingerprint (see server/utils/oidc-flow.ts's own header for why that is
+// safe, and callback.get.test.ts for where the fingerprint is actually
+// enforced).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
@@ -62,7 +64,7 @@ describe('GET /api/auth/oidc/link', () => {
     expect(setOidcFlowCookieMock).not.toHaveBeenCalled()
   })
 
-  it('writes a kind:link flow cookie, with no redirect and NO accountId of any kind', async () => {
+  it('writes a kind:link flow cookie with no redirect, fingerprinted to the live principal\'s accountId', async () => {
     await handler(fakeEvent({ accountId: 'the-caller-account' }))
 
     const [, flow] = setOidcFlowCookieMock.mock.calls[0]
@@ -71,9 +73,23 @@ describe('GET /api/auth/oidc/link', () => {
       state: 'state-1',
       nonce: 'nonce-1',
       kind: 'link',
-      redirect: null
+      redirect: null,
+      initiatingAccountId: 'the-caller-account'
     })
-    expect(JSON.stringify(flow)).not.toContain('the-caller-account')
+  })
+
+  it('reads the fingerprint from event.context.principal, never re-resolving it independently', async () => {
+    await handler(fakeEvent({ accountId: 'account-42' }))
+
+    const [, flow] = setOidcFlowCookieMock.mock.calls[0]
+    expect(flow.initiatingAccountId).toBe('account-42')
+  })
+
+  it('carries a null fingerprint if somehow called with no principal (defensive -- the middleware should already have 401ed)', async () => {
+    await handler(fakeEvent(null))
+
+    const [, flow] = setOidcFlowCookieMock.mock.calls[0]
+    expect(flow.initiatingAccountId).toBeNull()
   })
 
   it('redirects the browser to the authorization URL', async () => {

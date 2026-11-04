@@ -47,6 +47,35 @@ describe('safeRedirectTarget -- rejects off-origin targets (open redirect)', () 
   it('rejects a bare relative path with no leading slash', () => {
     expect(safeRedirectTarget('worlds/12/admin')).toBeNull()
   })
+
+  // Security review (OIDC redirect-safety audit): browsers strip ASCII
+  // tab/newline from a URL reference BEFORE applying backslash-as-slash
+  // normalization, so a tab inserted between the leading slash and a
+  // backslash defeats a check that only looks at the literal leading
+  // characters. Confirmed directly against Node's own WHATWG URL
+  // implementation: `new URL('/\t\\evil.example', base).host === 'evil.example'`.
+  // This was reachable through server/api/auth/oidc/login.get.ts's
+  // `?redirect=` -- the first caller to ever hand this value to a real
+  // HTTP Location header (sendRedirect) rather than client-side
+  // navigateTo.
+  it('rejects a backslash-escaped authority even with a tab inserted before it (browser tab-stripping bypass)', () => {
+    expect(safeRedirectTarget('/\t\\evil.example/phish')).toBeNull()
+    expect(safeRedirectTarget('/\n\\evil.example/phish')).toBeNull()
+    expect(safeRedirectTarget('/\r\\evil.example/phish')).toBeNull()
+  })
+
+  it('rejects a backslash anywhere in the target, not only at the start', () => {
+    expect(safeRedirectTarget('/worlds/12\\evil.example')).toBeNull()
+  })
+
+  // CRLF embedded in a redirect target can never reach a legitimate
+  // same-origin path, and the same new HTTP-header sink above means a
+  // value like this would otherwise hit sendRedirect's Location header
+  // (Node's http layer throws ERR_INVALID_CHAR for it rather than
+  // permitting injection, but a crafted value should never get that far).
+  it('rejects a value with an embedded CR/LF (HTTP header injection attempt)', () => {
+    expect(safeRedirectTarget('/foo\r\nSet-Cookie: evil=1')).toBeNull()
+  })
 })
 
 describe('safeRedirectTarget -- rejects malformed and looping input', () => {

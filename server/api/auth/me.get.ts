@@ -15,6 +15,15 @@
 // The Directus `user` payload is still returned unchanged -- it carries
 // the email and name the UI displays, and removing fields from it is not
 // this phase's job.
+// getCookie/deleteCookie/defineEventHandler are imported explicitly from
+// h3 (rather than relied on as Nitro auto-imports) for the same reason
+// server/utils/authorization.ts and server/middleware/authorize.ts
+// already do: this route duplicates security-critical session-resolution
+// logic (see the comment below) and needs to be directly unit-testable
+// under plain Vitest, which has no Nuxt/Nitro auto-import shims. h3's
+// exports are the exact functions Nitro auto-imports at runtime, so this
+// changes nothing about production behavior.
+import { defineEventHandler, deleteCookie, getCookie } from 'h3'
 import { fetchDirectusMe } from '../../utils/directus'
 import { formatAccountDisplayName } from '../../utils/accounts'
 import { getAccountById, listPlatformGrants, resolveAccountForIdentity } from '../../utils/eldra-accounts'

@@ -1,3 +1,8 @@
+// getCookie/deleteCookie/defineEventHandler are imported explicitly (see
+// server/api/auth/me.get.ts's identical note) so this route -- which now
+// also revokes the OIDC session, security-critical logic with no prior
+// test coverage -- is directly unit-testable under plain Vitest.
+import { defineEventHandler, deleteCookie, getCookie } from 'h3'
 import { directusRequest, getSessionToken } from '../../utils/directus'
 import { clearEldraSessionCookie, getEldraSessionToken, revokeEldraSession } from '../../utils/eldra-sessions'
 

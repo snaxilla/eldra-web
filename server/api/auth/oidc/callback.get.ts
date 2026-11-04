@@ -98,6 +98,19 @@ export default defineEventHandler(async (event) => {
       return redirectToLoginWithError(event, 'invalid-state')
     }
 
+    // FINGERPRINT CHECK (security review, OIDC architecture audit): if
+    // the live session changed between link.get.ts recording who started
+    // this and right now -- a shared/kiosk browser, or a logout/login in
+    // another tab while the caller was away at the identity provider --
+    // refuse rather than silently linking to whichever Account happens to
+    // be live now. See oidc-flow.ts's own header for why trusting this
+    // ONLY as an equality check (never as the link target itself) does
+    // not reopen the client-influenced-target vector this flow cookie was
+    // built to avoid.
+    if (flow.initiatingAccountId !== callerAccount.id) {
+      return redirectToLoginWithError(event, 'invalid-state')
+    }
+
     const linkResult = await linkIdentityToAccount({
       accountId: callerAccount.id,
       provider: identity.issuer,

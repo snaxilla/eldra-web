@@ -79,8 +79,13 @@ const IDENTITY = {
   email: 'jane@example.com'
 }
 
-const LOGIN_FLOW = { codeVerifier: 'cv', state: 'st', nonce: 'nc', kind: 'login' as const, redirect: null }
-const LINK_FLOW = { codeVerifier: 'cv', state: 'st', nonce: 'nc', kind: 'link' as const, redirect: null }
+const LOGIN_FLOW = { codeVerifier: 'cv', state: 'st', nonce: 'nc', kind: 'login' as const, redirect: null, initiatingAccountId: null }
+// Matches the `resolveAuthenticatedAccountMock` return value every
+// existing link-flow test below already uses -- the fingerprint check
+// (security review, OIDC architecture audit) passes by default here so
+// those tests keep proving what they originally proved; the dedicated
+// mismatch tests below override this field explicitly.
+const LINK_FLOW = { codeVerifier: 'cv', state: 'st', nonce: 'nc', kind: 'link' as const, redirect: null, initiatingAccountId: 'caller-account' }
 
 beforeEach(() => {
   resolveAuthenticatedAccountMock.mockReset()
@@ -227,7 +232,7 @@ describe('GET /api/auth/oidc/callback -- link flow, verification succeeds', () =
     readAndClearOidcFlowStateMock.mockReturnValue(LINK_FLOW)
   })
 
-  it('re-derives the link target from the CALLER\'S LIVE session, never from the flow cookie (which carries no accountId at all)', async () => {
+  it('re-derives the link target from the CALLER\'S LIVE session, never by trusting the flow cookie\'s fingerprint as a target', async () => {
     resolveAuthenticatedAccountMock.mockResolvedValue({ id: 'caller-account', displayName: 'Caller', status: 'active' })
     linkIdentityToAccountMock.mockResolvedValue({ outcome: 'linked' })
 
@@ -258,6 +263,36 @@ describe('GET /api/auth/oidc/callback -- link flow, verification succeeds', () =
 
     expect(linkIdentityToAccountMock).not.toHaveBeenCalled()
     expect(redirectedTo()).toBe('/login?oidc_error=invalid-state')
+  })
+
+  // Security review (OIDC architecture audit): if the Eldra session in
+  // this browser changed between link.get.ts recording who started the
+  // flow and this callback completing -- another person signing in on a
+  // shared/kiosk browser, or a logout/login in a second tab while the
+  // caller was away at the identity provider -- the live session now
+  // resolves to a DIFFERENT, real, authenticated Account than the one
+  // that asked to link. Without this check the identity would have been
+  // linked to whichever Account merely happened to be live at this
+  // moment, never the one that actually requested it.
+  it('fails the link (no write attempted) when the live account no longer matches the one that started the flow', async () => {
+    readAndClearOidcFlowStateMock.mockReturnValue({ ...LINK_FLOW, initiatingAccountId: 'the-account-that-started-this' })
+    resolveAuthenticatedAccountMock.mockResolvedValue({ id: 'a-different-now-live-account', displayName: 'Someone Else', status: 'active' })
+
+    await handler(fakeEvent())
+
+    expect(linkIdentityToAccountMock).not.toHaveBeenCalled()
+    expect(redirectedTo()).toBe('/login?oidc_error=invalid-state')
+  })
+
+  it('succeeds when the live account matches the fingerprint exactly', async () => {
+    readAndClearOidcFlowStateMock.mockReturnValue({ ...LINK_FLOW, initiatingAccountId: 'caller-account' })
+    resolveAuthenticatedAccountMock.mockResolvedValue({ id: 'caller-account', displayName: 'Caller', status: 'active' })
+    linkIdentityToAccountMock.mockResolvedValue({ outcome: 'linked' })
+
+    await handler(fakeEvent())
+
+    expect(linkIdentityToAccountMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'caller-account' }))
+    expect(redirectedTo()).toBe('/?oidc_link=linked')
   })
 
   it.each([

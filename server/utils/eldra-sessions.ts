@@ -39,7 +39,7 @@
 // (the same fail-closed discipline server/utils/authorization.ts's own
 // Phase 1 review already established for membership/platform-grant
 // reads).
-import { deleteCookie, getCookie, setCookie, type H3Event } from 'h3'
+import { createError, deleteCookie, getCookie, setCookie, type H3Event } from 'h3'
 import { createHash, randomBytes } from 'node:crypto'
 import { directusServiceRequest } from './directus'
 
@@ -90,6 +90,54 @@ export function clearEldraSessionCookie(event: H3Event): void {
   deleteCookie(event, ELDRA_SESSION_COOKIE, { path: '/' })
 }
 
+// THE ERROR BOUNDARY -- mirrors server/utils/eldra-accounts.ts's own
+// identityStoreRequest/identityStoreError exactly, for the identical
+// reason: Directus answers an unprovisioned `eldra_sessions` collection
+// and one the service token may not read with the byte-identical 403
+// response (see that module's own header for the verified detail), so a
+// raw Directus error must never propagate uncaught out of this module.
+// Before this fix it did -- createEldraSession/resolveEldraSession/
+// revokeEldraSession called directusServiceRequest directly, so a missing
+// or inaccessible collection (the exact "schema not yet provisioned"
+// condition CLAUDE.md's Deployment Checklist already anticipates) would
+// have thrown Directus's own FetchError straight out of
+// server/api/auth/oidc/callback.get.ts (and me.get.ts/logout.post.ts) --
+// an uncaught, non-H3Error object whose `.data`/`.statusCode` h3 will
+// still serialize into the actual HTTP response, handing an
+// unauthenticated caller completing a login callback Directus's internal
+// error wording. Security review (OIDC architecture audit) caught this by
+// comparing this module against its sibling's already-documented fix for
+// the identical risk, not by reproducing the leak end-to-end.
+//
+// 503, not 403/500: the condition is genuinely "this dependency is not
+// answering" -- what an operator needs to hear and what a client should
+// retry -- never a claim about the signed-in caller's own permissions.
+const SESSION_STORE_UNAVAILABLE = 'Session store unavailable'
+
+function sessionStoreError(operation: string, error: any): never {
+  const status = error?.response?.status ?? error?.statusCode ?? error?.status ?? 'unknown'
+  const directusMessage =
+    error?.data?.errors?.[0]?.message ??
+    error?.response?._data?.errors?.[0]?.message ??
+    error?.message ??
+    String(error)
+
+  console.error(
+    `[eldra-sessions] session store request failed (operation=${operation}, status=${status}): ${directusMessage}`,
+    error
+  )
+
+  throw createError({ statusCode: 503, statusMessage: SESSION_STORE_UNAVAILABLE })
+}
+
+async function sessionStoreRequest(operation: string, path: string, options: any): Promise<any> {
+  try {
+    return await directusServiceRequest(path, options)
+  } catch (error: any) {
+    sessionStoreError(operation, error)
+  }
+}
+
 function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex')
 }
@@ -134,7 +182,7 @@ export async function createEldraSession(accountId: string): Promise<CreatedEldr
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString()
 
-  await directusServiceRequest(`/items/${SESSIONS_COLLECTION}`, {
+  await sessionStoreRequest('createEldraSession', `/items/${SESSIONS_COLLECTION}`, {
     method: 'POST',
     body: {
       account_id: accountId,
@@ -162,7 +210,7 @@ export async function resolveEldraSession(rawToken: string): Promise<{ accountId
 
   const tokenHash = hashToken(token)
 
-  const res: any = await directusServiceRequest(`/items/${SESSIONS_COLLECTION}`, {
+  const res: any = await sessionStoreRequest('resolveEldraSession', `/items/${SESSIONS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { token_hash: { _eq: tokenHash } },
@@ -204,7 +252,7 @@ export async function revokeEldraSession(rawToken: string): Promise<void> {
 
   const tokenHash = hashToken(token)
 
-  const res: any = await directusServiceRequest(`/items/${SESSIONS_COLLECTION}`, {
+  const res: any = await sessionStoreRequest('revokeEldraSession', `/items/${SESSIONS_COLLECTION}`, {
     method: 'GET',
     query: {
       filter: { token_hash: { _eq: tokenHash } },
@@ -216,7 +264,7 @@ export async function revokeEldraSession(rawToken: string): Promise<void> {
   const row = Array.isArray(res?.data) ? res.data[0] : null
   if (!row || row.revoked_at) return
 
-  await directusServiceRequest(`/items/${SESSIONS_COLLECTION}/${row.id}`, {
+  await sessionStoreRequest('revokeEldraSession', `/items/${SESSIONS_COLLECTION}/${row.id}`, {
     method: 'PATCH',
     body: { revoked_at: new Date().toISOString() }
   })

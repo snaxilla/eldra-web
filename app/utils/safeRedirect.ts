@@ -8,6 +8,23 @@
 // targets are accepted; everything else falls back to the caller's own
 // default.
 
+// Matches any ASCII control character (0x00-0x1F, 0x7F) or a backslash,
+// ANYWHERE in the string -- not just at the start. Security review
+// finding (OIDC redirect-safety audit): the WHATWG URL parser every
+// browser uses strips ASCII tab/newline from a URL reference BEFORE
+// applying its own backslash-as-slash normalization for special schemes
+// (http/https). That ordering defeats a leading-characters-only check: a
+// value like "/\t\\evil.com" does not start with "/\\" (its second
+// character is a tab), so it survived the old `trimmed.startsWith('/\\')`
+// check, yet `new URL('/\t\\evil.com', 'https://example.com')` resolves to
+// `https://evil.com/` -- confirmed directly against Node's own URL
+// implementation (the same WHATWG algorithm browsers use) before this
+// fix. A backslash or control character anywhere in an intended same-
+// origin path is never legitimate, so rejecting the whole value outright
+// (rather than trying to enumerate every position a tab could occupy) is
+// both safe and cannot reject any real target.
+const UNSAFE_REDIRECT_CHARS = /[\x00-\x1f\x7f\\]/
+
 export function safeRedirectTarget(value: unknown): string | null {
   const target = Array.isArray(value) ? value[0] : value
 
@@ -18,9 +35,18 @@ export function safeRedirectTarget(value: unknown): string | null {
   // Must be an absolute path on this origin.
   if (!trimmed.startsWith('/')) return null
 
-  // `//host` (protocol-relative) and `/\host` (browser-normalized to the
-  // same thing) both escape to another origin despite starting with '/'.
-  if (trimmed.startsWith('//') || trimmed.startsWith('/\\')) return null
+  // Control characters (CR/LF/tab/etc.) and backslashes are never part of
+  // a legitimate same-origin path -- see UNSAFE_REDIRECT_CHARS's own
+  // comment for the browser-normalization bypass this specifically
+  // closes, and server/api/auth/oidc/callback.get.ts's own header for the
+  // new sink (a literal HTTP Location header) that made this exploitable
+  // rather than merely malformed.
+  if (UNSAFE_REDIRECT_CHARS.test(trimmed)) return null
+
+  // `//host` (protocol-relative) escapes to another origin despite
+  // starting with '/'. (The `/\host` backslash variant is now covered by
+  // the blanket backslash check above.)
+  if (trimmed.startsWith('//')) return null
 
   // Never bounce back to the login page itself -- that would loop.
   if (trimmed === '/login' || trimmed.startsWith('/login?')) return null

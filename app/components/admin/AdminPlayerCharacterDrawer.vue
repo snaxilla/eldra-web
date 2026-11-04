@@ -57,6 +57,14 @@ type OwnershipHistoryEntry = {
   newOwnerDisplayName: string | null
   actorDisplayName: string | null
   changedAt: string | null
+  // pending/failed are write-safety diagnostics (no cross-collection
+  // transaction exists -- see server/utils/character-ownership.ts's own
+  // header): 'completed' is the only status that confirms this row's own
+  // description is accurate. The CURRENT owner is never read from this
+  // history -- only from the entity itself -- so a pending/failed row
+  // here is informational, never something the admin needs to act on to
+  // find out who really owns the character.
+  status: 'pending' | 'completed' | 'failed'
 }
 
 const ownershipLoading = ref(false)
@@ -390,6 +398,13 @@ function close() {
                         <span v-if="entry.newOwnerDisplayName">Assigned to {{ entry.newOwnerDisplayName }}</span>
                         <span v-else>Unassigned</span>
                         <span v-if="entry.previousOwnerDisplayName"> (from {{ entry.previousOwnerDisplayName }})</span>
+                        <span
+                          v-if="entry.status !== 'completed'"
+                          class="ml-1 text-[10px] uppercase tracking-[0.1em]"
+                          :class="entry.status === 'failed' ? 'text-red-300' : 'text-amber-300'"
+                        >
+                          ({{ entry.status === 'failed' ? 'did not take effect' : 'unconfirmed' }})
+                        </span>
                         <span class="block text-[#9f9278]">
                           by {{ entry.actorDisplayName || 'Unknown' }} · {{ formatChangedAt(entry.changedAt) }}
                         </span>

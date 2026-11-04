@@ -12,9 +12,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock, resolveAccountsForIdentitiesMock } = vi.hoisted(() => ({
+const { directusServiceRequestMock, lookupActiveAccountsForIdentitiesMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
-  resolveAccountsForIdentitiesMock: vi.fn()
+  lookupActiveAccountsForIdentitiesMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -22,14 +22,14 @@ vi.mock('../../../server/utils/directus', () => ({
 }))
 
 vi.mock('../../../server/utils/eldra-accounts', () => ({
-  resolveAccountsForIdentities: resolveAccountsForIdentitiesMock
+  lookupActiveAccountsForIdentities: lookupActiveAccountsForIdentitiesMock
 }))
 
 import { formatAccountDisplayName, searchAccounts } from '../../../server/utils/accounts'
 
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
-  resolveAccountsForIdentitiesMock.mockReset()
+  lookupActiveAccountsForIdentitiesMock.mockReset()
 })
 
 function jsonResponse(data: unknown) {
@@ -56,14 +56,14 @@ describe('searchAccounts', () => {
 
     expect(results).toEqual([])
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
-    expect(resolveAccountsForIdentitiesMock).not.toHaveBeenCalled()
+    expect(lookupActiveAccountsForIdentitiesMock).not.toHaveBeenCalled()
   })
 
   it('searches the Directus directory by display name -- matches first_name/last_name', async () => {
     directusServiceRequestMock.mockResolvedValue(
       jsonResponse([{ id: 'directus-user-1', first_name: 'Bob', last_name: 'Smith', email: 'bob@example.com' }])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([['directus-user-1', { id: 'eldra-account-1', displayName: 'Bob Smith', status: 'active' }]])
     )
 
@@ -84,7 +84,7 @@ describe('searchAccounts', () => {
     directusServiceRequestMock.mockResolvedValue(
       jsonResponse([{ id: 'directus-user-1', first_name: 'Bob', last_name: 'Smith', email: 'bob@example.com' }])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([['directus-user-1', { id: 'eldra-account-1', displayName: 'Bob Smith', status: 'active' }]])
     )
 
@@ -98,15 +98,32 @@ describe('searchAccounts', () => {
     directusServiceRequestMock.mockResolvedValue(
       jsonResponse([{ id: 'directus-user-1', first_name: 'Bob', last_name: 'Smith', email: 'bob@example.com' }])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([['directus-user-1', { id: 'eldra-account-1', displayName: 'Bob Smith', status: 'active' }]])
     )
 
     await searchAccounts('Bob')
 
-    expect(resolveAccountsForIdentitiesMock).toHaveBeenCalledWith('directus', [
-      { providerSubject: 'directus-user-1', displayName: 'Bob Smith' }
-    ])
+    expect(lookupActiveAccountsForIdentitiesMock).toHaveBeenCalledWith('directus', ['directus-user-1'])
+  })
+
+  // THE WRITE-SAFETY FIX (this task): a search must never provision an
+  // Account as a side effect of a read. lookupActiveAccountsForIdentities
+  // itself is read-only (its own test file proves that); this pins that
+  // searchAccounts never does anything ELSE that could create one either
+  // -- a Directus directory match with no resolvable Account is simply
+  // dropped from the results, and no POST of any kind happens.
+  it('never creates an Account -- a directory match with no resolvable Account is simply dropped', async () => {
+    directusServiceRequestMock.mockResolvedValue(
+      jsonResponse([{ id: 'never-logged-in', first_name: 'Ghost', last_name: 'User', email: 'ghost@example.com' }])
+    )
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(new Map()) // never authenticated -- no Account exists
+
+    const results = await searchAccounts('Ghost')
+
+    expect(results).toEqual([])
+    const postCalls = directusServiceRequestMock.mock.calls.filter(([, options]) => options.method === 'POST')
+    expect(postCalls).toHaveLength(0)
   })
 
   // Two different Directus users sharing a display name must never collapse
@@ -118,7 +135,7 @@ describe('searchAccounts', () => {
         { id: 'directus-user-2', first_name: 'Bob', last_name: 'Smith', email: 'bob2@example.com' }
       ])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([
         ['directus-user-1', { id: 'eldra-account-1', displayName: 'Bob Smith', status: 'active' }],
         ['directus-user-2', { id: 'eldra-account-2', displayName: 'Bob Smith', status: 'active' }]
@@ -130,11 +147,14 @@ describe('searchAccounts', () => {
     expect(results.map((r) => r.accountId).sort()).toEqual(['eldra-account-1', 'eldra-account-2'])
   })
 
-  it('a Directus user who has never authenticated is still found -- lazily provisioned by the resolve step, not skipped', async () => {
+  // createPlayer (server/utils/players.ts) now provisions the Account at
+  // CREATION time, not here -- so by the time anyone searches, the link
+  // already exists, and this is just the ordinary batched-lookup path.
+  it('a just-created Player (Account already provisioned at creation) is found via the ordinary lookup path', async () => {
     directusServiceRequestMock.mockResolvedValue(
       jsonResponse([{ id: 'brand-new-player', first_name: 'New', last_name: 'Player', email: 'newplayer@players.eldra.app' }])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([['brand-new-player', { id: 'eldra-account-fresh', displayName: 'New Player', status: 'active' }]])
     )
 
@@ -147,7 +167,7 @@ describe('searchAccounts', () => {
     directusServiceRequestMock.mockResolvedValue(
       jsonResponse([{ id: 'directus-user-1', first_name: 'Bob', last_name: 'Smith', email: 'bob@example.com', role: { id: 'admin' } }])
     )
-    resolveAccountsForIdentitiesMock.mockResolvedValue(
+    lookupActiveAccountsForIdentitiesMock.mockResolvedValue(
       new Map([['directus-user-1', { id: 'eldra-account-1', displayName: 'Bob Smith', status: 'active' }]])
     )
 
@@ -174,7 +194,7 @@ describe('searchAccounts', () => {
     const results = await searchAccounts('nobody-matches-this')
 
     expect(results).toEqual([])
-    expect(resolveAccountsForIdentitiesMock).not.toHaveBeenCalled()
+    expect(lookupActiveAccountsForIdentitiesMock).not.toHaveBeenCalled()
   })
 
   it('caps the result count', async () => {

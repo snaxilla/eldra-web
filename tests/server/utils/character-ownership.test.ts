@@ -64,14 +64,27 @@ function installDirectus(options: {
   changesRows?: any[]
   onPatchEntity?: (body: any) => void
   onCreateChange?: (body: any) => void
+  onConfirmChange?: (id: string, body: any) => void
+  // Simulates the ENTITY write itself failing -- the one failure that
+  // must propagate as a thrown error (see applyOwnerChange's own header).
+  failEntityPatch?: boolean
+  // Simulates the CONFIRM write (patching the audit row to
+  // completed/failed) failing -- must NOT propagate when the entity
+  // write itself succeeded.
+  failConfirmPatch?: boolean
 } = {}) {
   const entity = options.entity === undefined ? entityRow() : options.entity
+  const changeRows: Record<string, any> = {}
+  let nextChangeId = 1
 
   directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
     if (path === `/items/entities/${ENTITY_ID}` && opts.method === 'GET') {
       return { data: entity }
     }
     if (path === `/items/entities/${ENTITY_ID}` && opts.method === 'PATCH') {
+      if (options.failEntityPatch) {
+        throw new Error('simulated entity write failure')
+      }
       options.onPatchEntity?.(opts.body)
       return { data: { ...entity, ...opts.body } }
     }
@@ -79,11 +92,26 @@ function installDirectus(options: {
       return { data: options.changesRows ?? [] }
     }
     if (path === '/items/entity_ownership_changes' && opts.method === 'POST') {
+      const id = `change-${nextChangeId++}`
+      const row = { id, status: 'pending', ...opts.body }
+      changeRows[id] = row
       options.onCreateChange?.(opts.body)
-      return { data: { id: 'change-1', ...opts.body } }
+      return { data: row }
+    }
+    const confirmMatch = path.match(/^\/items\/entity_ownership_changes\/(.+)$/)
+    if (confirmMatch && opts.method === 'PATCH') {
+      if (options.failConfirmPatch) {
+        throw new Error('simulated confirm-write failure')
+      }
+      const id = confirmMatch[1]
+      Object.assign(changeRows[id] ?? {}, opts.body)
+      options.onConfirmChange?.(id, opts.body)
+      return { data: changeRows[id] }
     }
     throw new Error(`unexpected call: ${opts.method} ${path}`)
   })
+
+  return { changeRows }
 }
 
 beforeEach(() => {
@@ -337,7 +365,8 @@ describe('listOwnershipHistory', () => {
           previous_owner_account_id: CURRENT_OWNER,
           new_owner_account_id: NEW_OWNER,
           actor_account_id: ACTOR,
-          changed_at: '2026-02-01T00:00:00Z'
+          changed_at: '2026-02-01T00:00:00Z',
+          status: 'completed'
         },
         {
           id: 'c1',
@@ -346,7 +375,8 @@ describe('listOwnershipHistory', () => {
           previous_owner_account_id: null,
           new_owner_account_id: CURRENT_OWNER,
           actor_account_id: ACTOR,
-          changed_at: '2026-01-01T00:00:00Z'
+          changed_at: '2026-01-01T00:00:00Z',
+          status: 'completed'
         }
       ]
     })
@@ -361,7 +391,8 @@ describe('listOwnershipHistory', () => {
         previousOwnerAccountId: CURRENT_OWNER,
         newOwnerAccountId: NEW_OWNER,
         actorAccountId: ACTOR,
-        changedAt: '2026-02-01T00:00:00Z'
+        changedAt: '2026-02-01T00:00:00Z',
+        status: 'completed'
       },
       {
         id: 'c1',
@@ -370,7 +401,8 @@ describe('listOwnershipHistory', () => {
         previousOwnerAccountId: null,
         newOwnerAccountId: CURRENT_OWNER,
         actorAccountId: ACTOR,
-        changedAt: '2026-01-01T00:00:00Z'
+        changedAt: '2026-01-01T00:00:00Z',
+        status: 'completed'
       }
     ])
   })
@@ -379,5 +411,132 @@ describe('listOwnershipHistory', () => {
     installDirectus({ changesRows: [] })
 
     expect(await listOwnershipHistory(WORLD_ID, ENTITY_ID)).toEqual([])
+  })
+
+  it('defaults a row with no status column (old data) to pending, never crashing and never claiming completed', async () => {
+    installDirectus({
+      changesRows: [
+        {
+          id: 'c0',
+          world_id: Number(WORLD_ID),
+          entity_id: Number(ENTITY_ID),
+          previous_owner_account_id: null,
+          new_owner_account_id: CURRENT_OWNER,
+          actor_account_id: ACTOR,
+          changed_at: '2026-01-01T00:00:00Z'
+          // no `status` field at all
+        }
+      ]
+    })
+
+    const [entry] = await listOwnershipHistory(WORLD_ID, ENTITY_ID)
+
+    expect(entry.status).toBe('pending')
+  })
+})
+
+// ---------------------------------------------------------------------
+// WRITE-SAFETY REVIEW: the pending -> completed/failed audit sequence.
+//
+// No cross-collection Postgres transaction is available for this pair of
+// writes (re-verified: the existing ELDRA_RESOURCE_DB_URL / eldra_resource_writer
+// credential has only SELECT on `entities` and no grant at all on
+// `entity_ownership_changes` -- confirmed against
+// scripts/directus/create-resources-unique-index.mjs's own documented
+// grant list). These tests pin the resulting three-state design instead
+// of a false claim of atomicity.
+// ---------------------------------------------------------------------
+
+describe('assignCharacterOwner -- write sequence is pending -> completed/failed, never a false audit', () => {
+  it('writes the audit row as pending BEFORE attempting the entity write', async () => {
+    const order: string[] = []
+    installDirectus({
+      onCreateChange: () => order.push('insert-pending'),
+      onPatchEntity: () => order.push('entity-write'),
+      onConfirmChange: () => order.push('confirm')
+    })
+
+    await assignCharacterOwner(WORLD_ID, ENTITY_ID, NEW_OWNER, ACTOR)
+
+    expect(order).toEqual(['insert-pending', 'entity-write', 'confirm'])
+  })
+
+  it('marks the row completed once the entity write succeeds', async () => {
+    const { changeRows } = installDirectus()
+
+    await assignCharacterOwner(WORLD_ID, ENTITY_ID, NEW_OWNER, ACTOR)
+
+    expect(Object.values(changeRows)[0].status).toBe('completed')
+  })
+
+  // THE CORE FIX: when the entity write fails, the audit row must NOT
+  // claim the change happened.
+  it('when the entity write fails: marks the row failed, and re-throws the ORIGINAL error -- never a false "completed"', async () => {
+    const { changeRows } = installDirectus({ failEntityPatch: true })
+
+    await expect(assignCharacterOwner(WORLD_ID, ENTITY_ID, NEW_OWNER, ACTOR)).rejects.toThrow('simulated entity write failure')
+
+    expect(Object.values(changeRows)[0].status).toBe('failed')
+  })
+
+  // THE OTHER HALF OF THE FIX: when the entity write SUCCEEDS but
+  // confirming that in the audit row fails, the caller must NOT be told
+  // the operation failed -- that would be a false failure for a change
+  // that actually took effect.
+  it('when only the CONFIRM write fails: does not throw, and the real ownership change still took effect', async () => {
+    let entityWasPatched = false
+    const { changeRows } = installDirectus({
+      failConfirmPatch: true,
+      onPatchEntity: () => { entityWasPatched = true }
+    })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await assignCharacterOwner(WORLD_ID, ENTITY_ID, NEW_OWNER, ACTOR)
+
+    expect(result.changed).toBe(true)
+    expect(result.ownership.ownerAccountId).toBe(NEW_OWNER)
+    expect(entityWasPatched).toBe(true)
+    // The row is left pending -- honest about the gap, never upgraded to
+    // 'completed' by this function pretending the confirm write worked.
+    expect(Object.values(changeRows)[0].status).toBe('pending')
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+  })
+
+  it('still performs no-op detection BEFORE ever writing a pending row', async () => {
+    const { changeRows } = installDirectus()
+    getAccountByIdMock.mockResolvedValue(activeAccount(CURRENT_OWNER))
+
+    const result = await assignCharacterOwner(WORLD_ID, ENTITY_ID, CURRENT_OWNER, ACTOR)
+
+    expect(result.changed).toBe(false)
+    expect(Object.keys(changeRows)).toHaveLength(0)
+  })
+})
+
+describe('unassignCharacterOwner -- same write sequence', () => {
+  it('marks the row completed once the entity write succeeds', async () => {
+    const { changeRows } = installDirectus()
+
+    await unassignCharacterOwner(WORLD_ID, ENTITY_ID, ACTOR)
+
+    expect(Object.values(changeRows)[0].status).toBe('completed')
+  })
+
+  it('when the entity write fails: marks the row failed and re-throws', async () => {
+    const { changeRows } = installDirectus({ failEntityPatch: true })
+
+    await expect(unassignCharacterOwner(WORLD_ID, ENTITY_ID, ACTOR)).rejects.toThrow('simulated entity write failure')
+
+    expect(Object.values(changeRows)[0].status).toBe('failed')
+  })
+
+  it('a no-op (already Unassigned) writes no pending row at all', async () => {
+    const { changeRows } = installDirectus({ entity: entityRow({ owner_account_id: null }) })
+
+    const result = await unassignCharacterOwner(WORLD_ID, ENTITY_ID, ACTOR)
+
+    expect(result.changed).toBe(false)
+    expect(Object.keys(changeRows)).toHaveLength(0)
   })
 })

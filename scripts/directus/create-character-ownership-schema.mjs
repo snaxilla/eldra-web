@@ -281,8 +281,8 @@ async function createSchema() {
 
   await ensureCollection(OWNERSHIP_CHANGES, {
     icon: 'history',
-    note: 'Append-only history of character ownership changes (Player Management). One row per ACTUAL assign/reassign/unassign -- never per no-op. See server/utils/character-ownership.ts, the only writer.',
-    displayTemplate: '{{entity_id}}: {{previous_owner_account_id}} -> {{new_owner_account_id}}'
+    note: 'Append-only history of character ownership changes (Player Management). One row per ACTUAL assign/reassign/unassign attempt -- never per no-op. See server/utils/character-ownership.ts, the only writer. WRITE-SAFETY REVIEW: Directus REST exposes no cross-collection transaction, so this row and the entities.owner_account_id update it describes are two independent writes -- `status` (below) exists specifically so this collection never implies a change happened when it did not; see that field\'s own note for the exact state machine.',
+    displayTemplate: '{{entity_id}}: {{previous_owner_account_id}} -> {{new_owner_account_id}} ({{status}})'
   })
 
   await ensureField(OWNERSHIP_CHANGES, integerField(OWNERSHIP_CHANGES, 'world_id', {
@@ -311,6 +311,12 @@ async function createSchema() {
   }))
 
   await ensureField(OWNERSHIP_CHANGES, timestampField(OWNERSHIP_CHANGES, 'changed_at', { required: true }))
+
+  await ensureField(OWNERSHIP_CHANGES, stringField(OWNERSHIP_CHANGES, 'status', {
+    required: true,
+    defaultValue: 'pending',
+    note: "One of: pending | completed | failed. WRITE-SAFETY REVIEW (no cross-collection transaction exists): this row is inserted with status='pending' BEFORE the entities.owner_account_id write is attempted, then patched to 'completed' or 'failed' once that write's own outcome is known. A row that stays 'pending' means the SECOND write (marking the outcome) never completed -- the entity update itself may have succeeded or failed; that cannot be told from this row alone, which is why the entities row's OWN owner_account_id, never this history, is read as the authoritative current owner (server/utils/character-ownership.ts's getCharacterOwnership reads the entity directly). A 'pending' or 'failed' row is a diagnostic signal for an operator, never proof that a reassignment took effect."
+  }))
 
   console.log('Character ownership schema is ready.')
 }

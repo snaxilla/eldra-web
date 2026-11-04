@@ -50,23 +50,47 @@
 // NOT ENFORCED HERE, DELIBERATELY: that the acting Platform Admin holds
 // `platform.character.manage` -- see above, that is the route's job.
 //
-// ATOMICITY (this task's own instruction: document the exact failure mode
-// if the store cannot make this atomic). Directus's REST API exposes no
-// cross-collection transaction -- every multi-step write already in this
-// codebase (server/utils/world-memberships.ts's createOwnerMembership,
-// server/utils/eldra-accounts.ts's resolveAccountForIdentity) is a
-// sequence of independent requests, not a transaction, and this is no
-// different. The audit row is written FIRST, the entities.owner_account_id
-// update SECOND. If the SECOND write fails after the first succeeded, the
-// true failure mode is: an entity_ownership_changes row exists describing
-// a change that did NOT take effect -- entities.owner_account_id still
-// holds the PREVIOUS value. This is the deliberately safer of the two
-// orderings: the alternative (update first, audit second) would leave an
-// ACTUAL privileged change in effect with NO record of it, which is worse
-// -- an invisible state change -- than a visible, checkable
-// record/reality mismatch. Callers see this as a thrown error; nothing
-// here attempts a compensating rollback (a failed rollback would only add
-// a second inconsistency on top of the first).
+// ATOMICITY -- RE-VERIFIED, NOT JUST ASSUMED. A real Postgres transaction
+// across entities.owner_account_id and entity_ownership_changes would
+// need a single connection with write access to BOTH tables. The one
+// direct-Postgres credential this codebase already has
+// (ELDRA_RESOURCE_DB_URL / the `eldra_resource_writer` role,
+// server/utils/character-resource-atomic.ts) was checked against its own
+// documented grant set (scripts/directus/create-resources-unique-index.mjs):
+// `SELECT, INSERT, UPDATE` on `block_instances`, `SELECT` (read-only) on
+// `entities`, and NOTHING on `eldra_accounts`/`entity_ownership_changes`.
+// It cannot write `entities.owner_account_id` at all, let alone
+// transactionally with a second table it has no grant on whatsoever.
+// Granting a role broader write access would be a new production
+// database change (out of scope here), and would reintroduce the exact
+// cache-coherency hazard character-resource-atomic.ts's own header
+// documents from production experience: Directus's response cache
+// invalidates only as a side effect of its own ItemsService writes, so a
+// raw SQL UPDATE to `entities` -- a collection read through ordinary
+// Directus REST by many OTHER routes, unlike the narrow `resources` JSON
+// block that module was built for -- would leave those routes' cached
+// reads silently stale. No transaction is available here, truthfully.
+//
+// THE DESIGN THIS BECOMES: a three-state audit record (`pending` |
+// `completed` | `failed`, scripts/directus/create-character-ownership-schema.mjs),
+// not a claim of atomicity. The sequence (recordPendingOwnershipChange ->
+// writeOwner -> markOwnershipChangeOutcome, see applyOwnerChange below)
+// writes the audit row as 'pending' BEFORE attempting the real change,
+// then confirms it 'completed' or 'failed' once that change's own outcome
+// is known. Every reachable failure point leaves the system in an HONEST
+// state -- never a row that CLAIMS a change happened when it did not:
+//   - The entity write fails -> the row is marked 'failed' (best effort)
+//     and the original error propagates. No false success.
+//   - The entity write succeeds, confirming it fails -> the row stays
+//     'pending'. The REAL change is correct; only its confirmation in the
+//     history is missing, logged server-side, never thrown to the
+//     caller (a thrown error here would falsely report the actual,
+//     successful change as a failure -- the opposite lie).
+// `getCharacterOwnership` never reads this history to answer "who owns
+// this character" -- it always reads entities.owner_account_id directly,
+// which is the one place that is ever authoritative. A 'pending' or
+// 'failed' row is a diagnostic trail for an operator, never a substitute
+// for checking the entity itself.
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
 import { getAccountById } from './eldra-accounts'
@@ -87,6 +111,22 @@ export type CharacterOwnership = {
   ownerAccountId: string | null
 }
 
+// pending   -- the entities.owner_account_id write has been attempted but
+//              its outcome is not yet recorded here (the process may have
+//              crashed, or the second write below may itself have failed).
+// completed -- the entities.owner_account_id write is CONFIRMED to have
+//              succeeded.
+// failed    -- the entities.owner_account_id write is CONFIRMED to have
+//              NOT happened; previousOwnerAccountId is still the real
+//              current owner.
+//
+// This is a diagnostic trail, never the source of truth for "who owns
+// this character now" -- getCharacterOwnership always reads
+// entities.owner_account_id directly. See the field's own note in
+// scripts/directus/create-character-ownership-schema.mjs for the full
+// write-safety reasoning (no cross-collection transaction exists).
+export type OwnershipChangeStatus = 'pending' | 'completed' | 'failed'
+
 export type OwnershipChangeRecord = {
   id: string
   worldId: string
@@ -95,12 +135,13 @@ export type OwnershipChangeRecord = {
   newOwnerAccountId: string | null
   actorAccountId: string
   changedAt: string | null
+  status: OwnershipChangeStatus
 }
 
 const ENTITY_FIELDS = 'id,world_id,entity_type,title,owner_account_id'
 const OWNERSHIP_CHANGES_COLLECTION = 'entity_ownership_changes'
 const OWNERSHIP_CHANGE_FIELDS =
-  'id,world_id,entity_id,previous_owner_account_id,new_owner_account_id,actor_account_id,changed_at'
+  'id,world_id,entity_id,previous_owner_account_id,new_owner_account_id,actor_account_id,changed_at,status'
 
 function normalizeOwnershipChange(row: any): OwnershipChangeRecord {
   return {
@@ -110,7 +151,8 @@ function normalizeOwnershipChange(row: any): OwnershipChangeRecord {
     previousOwnerAccountId: row?.previous_owner_account_id ? String(row.previous_owner_account_id) : null,
     newOwnerAccountId: row?.new_owner_account_id ? String(row.new_owner_account_id) : null,
     actorAccountId: String(row?.actor_account_id ?? ''),
-    changedAt: row?.changed_at ?? null
+    changedAt: row?.changed_at ?? null,
+    status: (row?.status === 'completed' || row?.status === 'failed' ? row.status : 'pending') as OwnershipChangeStatus
   }
 }
 
@@ -153,23 +195,46 @@ export async function getCharacterOwnership(
   return await loadOwnableCharacter(worldId, entityId)
 }
 
-async function recordOwnershipChange(input: {
+// Inserts the audit row with status='pending' and returns its id.
+// Pending, not completed -- the entities write has not been attempted
+// yet when this returns.
+async function recordPendingOwnershipChange(input: {
   worldId: string
   entityId: string
   previousOwnerAccountId: string | null
   newOwnerAccountId: string | null
   actorAccountId: string
-}): Promise<void> {
-  await directusServiceRequest(`/items/${OWNERSHIP_CHANGES_COLLECTION}`, {
+}): Promise<string> {
+  const res: any = await directusServiceRequest(`/items/${OWNERSHIP_CHANGES_COLLECTION}`, {
     method: 'POST',
+    query: { fields: 'id' },
     body: {
       world_id: Number(input.worldId),
       entity_id: Number(input.entityId),
       previous_owner_account_id: input.previousOwnerAccountId,
       new_owner_account_id: input.newOwnerAccountId,
       actor_account_id: input.actorAccountId,
-      changed_at: new Date().toISOString()
+      changed_at: new Date().toISOString(),
+      status: 'pending'
     }
+  })
+
+  const id = String(res?.data?.id ?? '')
+  if (!id) {
+    throw createError({ statusCode: 500, statusMessage: 'Ownership change record was created without an id' })
+  }
+  return id
+}
+
+// Patches the audit row to its final, CONFIRMED outcome. This call itself
+// can fail too (see this module's header) -- if it does, the row is left
+// at 'pending', which is the honest state: the entities write's own
+// outcome (recorded by the caller before this runs) is real either way,
+// this patch only makes that outcome legible in the history.
+async function markOwnershipChangeOutcome(changeId: string, status: 'completed' | 'failed'): Promise<void> {
+  await directusServiceRequest(`/items/${OWNERSHIP_CHANGES_COLLECTION}/${changeId}`, {
+    method: 'PATCH',
+    body: { status }
   })
 }
 
@@ -178,6 +243,58 @@ async function writeOwner(entityId: string, ownerAccountId: string | null): Prom
     method: 'PATCH',
     body: { owner_account_id: ownerAccountId }
   })
+}
+
+// THE THREE-STEP SEQUENCE every completed ownership change goes through,
+// shared by assign and unassign so the two can never drift into
+// different failure behavior. See this module's header for why this
+// exact order and not "entity first, audit second."
+//
+//   1. Insert the audit row as 'pending'.                (recordPendingOwnershipChange)
+//   2. Attempt the real entities.owner_account_id write.  (writeOwner)
+//   3. Patch the audit row to 'completed' or 'failed',    (markOwnershipChangeOutcome)
+//      matching step 2's own outcome.
+//
+// STEP 2 IS THE ONLY STEP THAT CAN MAKE THIS FUNCTION THROW. If it
+// fails, the real change genuinely did not happen -- the row is marked
+// 'failed' (best-effort) and the original error propagates, which is
+// simply correct.
+//
+// If step 2 SUCCEEDS but step 3 (confirming that in the audit row)
+// fails, this function does NOT throw. The actual, authoritative change
+// -- entities.owner_account_id -- already took effect; telling the
+// caller the operation failed would be a LIE in the opposite direction
+// from the one this redesign exists to close (a false failure instead of
+// a false success). The audit row is left 'pending', which is an honest,
+// inspectable signal, and the gap is logged server-side for an operator
+// to find -- exactly the same "tell the operator, not the caller"
+// split server/utils/eldra-accounts.ts's own identityStoreError draws.
+async function applyOwnerChange(
+  changeId: string,
+  entityId: string,
+  newOwnerAccountId: string | null
+): Promise<void> {
+  try {
+    await writeOwner(entityId, newOwnerAccountId)
+  } catch (error) {
+    await markOwnershipChangeOutcome(changeId, 'failed').catch(() => {
+      // The entity write already failed; a failure to even RECORD that
+      // leaves the row 'pending' -- still truthful (not a false
+      // success), just less informative. Swallowed deliberately so the
+      // ORIGINAL entity-write error is what the caller sees below, not
+      // this secondary one.
+    })
+    throw error
+  }
+
+  try {
+    await markOwnershipChangeOutcome(changeId, 'completed')
+  } catch (confirmError) {
+    console.error(
+      `[character-ownership] entity ${entityId} owner updated successfully, but ownership_change ${changeId} could not be confirmed (left 'pending')`,
+      confirmError
+    )
+  }
 }
 
 export type AssignOwnerResult = {
@@ -230,8 +347,7 @@ export async function assignCharacterOwner(
     return { ownership: character, changed: false }
   }
 
-  // Audit row FIRST -- see this module's own header for why.
-  await recordOwnershipChange({
+  const changeId = await recordPendingOwnershipChange({
     worldId: character.worldId,
     entityId: character.entityId,
     previousOwnerAccountId: character.ownerAccountId,
@@ -239,7 +355,7 @@ export async function assignCharacterOwner(
     actorAccountId
   })
 
-  await writeOwner(character.entityId, targetAccountId)
+  await applyOwnerChange(changeId, character.entityId, targetAccountId)
 
   return {
     ownership: { ...character, ownerAccountId: targetAccountId },
@@ -266,7 +382,7 @@ export async function unassignCharacterOwner(
     return { ownership: character, changed: false }
   }
 
-  await recordOwnershipChange({
+  const changeId = await recordPendingOwnershipChange({
     worldId: character.worldId,
     entityId: character.entityId,
     previousOwnerAccountId: character.ownerAccountId,
@@ -274,7 +390,7 @@ export async function unassignCharacterOwner(
     actorAccountId
   })
 
-  await writeOwner(character.entityId, null)
+  await applyOwnerChange(changeId, character.entityId, null)
 
   return {
     ownership: { ...character, ownerAccountId: null },

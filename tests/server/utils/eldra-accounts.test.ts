@@ -28,7 +28,7 @@ import {
   listPlatformGrants,
   resolveAccountDisplayNames,
   resolveAccountForIdentity,
-  resolveAccountsForIdentities
+  lookupActiveAccountsForIdentities
 } from '../../../server/utils/eldra-accounts'
 
 const DIRECTUS_USER_ID = '12dbac5d-476b-4933-819a-c83de299239a'
@@ -528,8 +528,8 @@ describe('getAccountById', () => {
   })
 })
 
-describe('resolveAccountsForIdentities', () => {
-  it('resolves every subject that already has a link, in two batched calls', async () => {
+describe('lookupActiveAccountsForIdentities -- read-only, never creates', () => {
+  it('resolves every subject that already has a link to an active Account, in two batched calls', async () => {
     const store = installStore({
       accounts: [
         { id: 'account-a', display_name: 'Alice', status: 'active' },
@@ -541,10 +541,7 @@ describe('resolveAccountsForIdentities', () => {
       ]
     })
 
-    const result = await resolveAccountsForIdentities('directus', [
-      { providerSubject: 'subject-a', displayName: 'Alice' },
-      { providerSubject: 'subject-b', displayName: 'Bob' }
-    ])
+    const result = await lookupActiveAccountsForIdentities('directus', ['subject-a', 'subject-b'])
 
     expect(result.get('subject-a')?.id).toBe('account-a')
     expect(result.get('subject-b')?.id).toBe('account-b')
@@ -554,18 +551,74 @@ describe('resolveAccountsForIdentities', () => {
     expect(getCalls).toHaveLength(2)
   })
 
-  it('provisions a brand-new Account for a subject with no existing link', async () => {
+  // THE FIX: a search must not provision an Account as a side effect.
+  it('NEVER creates an Account -- a subject with no existing link is simply absent from the result', async () => {
     const store = installStore()
 
-    const result = await resolveAccountsForIdentities('directus', [
-      { providerSubject: DIRECTUS_USER_ID, displayName: 'New Player' }
-    ])
+    const result = await lookupActiveAccountsForIdentities('directus', [DIRECTUS_USER_ID])
 
-    expect(result.get(DIRECTUS_USER_ID)?.displayName).toBe('New Player')
-    expect(store.createdCount()).toBe(1)
+    expect(result.has(DIRECTUS_USER_ID)).toBe(false)
+    expect(store.createdCount()).toBe(0)
+    // No POST at all -- this function performs only reads.
+    const postCalls = directusServiceRequestMock.mock.calls.filter(([, opts]) => opts.method === 'POST')
+    expect(postCalls).toHaveLength(0)
   })
 
-  it('mixes the batched-lookup path and the create path in one call', async () => {
+  it('omits a subject whose linked Account is suspended, not active', async () => {
+    installStore({
+      accounts: [{ id: 'account-a', display_name: 'Alice', status: 'suspended' }],
+      links: [
+        { id: 'l1', account_id: 'account-a', provider: 'directus', provider_subject: 'subject-a', identity_key: 'directus|subject-a' }
+      ]
+    })
+
+    const result = await lookupActiveAccountsForIdentities('directus', ['subject-a'])
+
+    expect(result.has('subject-a')).toBe(false)
+  })
+
+  it('a mix of resolvable and unresolvable subjects returns only the resolvable, active ones', async () => {
+    installStore({
+      accounts: [
+        { id: 'account-a', display_name: 'Alice', status: 'active' },
+        { id: 'account-b', display_name: 'Suspended Bob', status: 'suspended' }
+      ],
+      links: [
+        { id: 'l1', account_id: 'account-a', provider: 'directus', provider_subject: 'subject-a', identity_key: 'directus|subject-a' },
+        { id: 'l2', account_id: 'account-b', provider: 'directus', provider_subject: 'subject-b', identity_key: 'directus|subject-b' }
+      ]
+    })
+
+    const result = await lookupActiveAccountsForIdentities('directus', ['subject-a', 'subject-b', 'subject-never-seen'])
+
+    expect([...result.keys()]).toEqual(['subject-a'])
+  })
+
+  it('never merges two different subjects, even with identical account display names', async () => {
+    installStore({
+      accounts: [
+        { id: 'account-x', display_name: 'Bob Smith', status: 'active' },
+        { id: 'account-y', display_name: 'Bob Smith', status: 'active' }
+      ],
+      links: [
+        { id: 'l1', account_id: 'account-x', provider: 'directus', provider_subject: 'subject-x', identity_key: 'directus|subject-x' },
+        { id: 'l2', account_id: 'account-y', provider: 'directus', provider_subject: 'subject-y', identity_key: 'directus|subject-y' }
+      ]
+    })
+
+    const result = await lookupActiveAccountsForIdentities('directus', ['subject-x', 'subject-y'])
+
+    expect(result.get('subject-x')!.id).not.toBe(result.get('subject-y')!.id)
+  })
+
+  it('returns an empty map for an empty subject list, with no store call', async () => {
+    const result = await lookupActiveAccountsForIdentities('directus', [])
+
+    expect(result.size).toBe(0)
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('deduplicates repeated subjects in the input', async () => {
     const store = installStore({
       accounts: [{ id: 'account-a', display_name: 'Alice', status: 'active' }],
       links: [
@@ -573,52 +626,9 @@ describe('resolveAccountsForIdentities', () => {
       ]
     })
 
-    const result = await resolveAccountsForIdentities('directus', [
-      { providerSubject: 'subject-a', displayName: 'Alice' },
-      { providerSubject: 'subject-new', displayName: 'Brand New' }
-    ])
-
-    expect(result.get('subject-a')?.id).toBe('account-a')
-    expect(result.get('subject-new')?.displayName).toBe('Brand New')
-    expect(store.createdCount()).toBe(1)
-  })
-
-  it('never merges two different subjects into one Account, even with identical display names', async () => {
-    installStore()
-
-    const result = await resolveAccountsForIdentities('directus', [
-      { providerSubject: 'subject-x', displayName: 'Bob Smith' },
-      { providerSubject: 'subject-y', displayName: 'Bob Smith' }
-    ])
-
-    expect(result.get('subject-x')!.id).not.toBe(result.get('subject-y')!.id)
-  })
-
-  it('is idempotent -- resolving the same batch twice never creates a second Account', async () => {
-    const store = installStore()
-
-    await resolveAccountsForIdentities('directus', [{ providerSubject: DIRECTUS_USER_ID, displayName: 'X' }])
-    await resolveAccountsForIdentities('directus', [{ providerSubject: DIRECTUS_USER_ID, displayName: 'Renamed' }])
-
-    expect(store.createdCount()).toBe(1)
-  })
-
-  it('returns an empty map for an empty subject list, with no store call', async () => {
-    const result = await resolveAccountsForIdentities('directus', [])
-
-    expect(result.size).toBe(0)
-    expect(directusServiceRequestMock).not.toHaveBeenCalled()
-  })
-
-  it('deduplicates repeated subjects in the input', async () => {
-    const store = installStore()
-
-    const result = await resolveAccountsForIdentities('directus', [
-      { providerSubject: DIRECTUS_USER_ID, displayName: 'X' },
-      { providerSubject: DIRECTUS_USER_ID, displayName: 'X' }
-    ])
+    const result = await lookupActiveAccountsForIdentities('directus', ['subject-a', 'subject-a'])
 
     expect(result.size).toBe(1)
-    expect(store.createdCount()).toBe(1)
+    expect(store.createdCount()).toBe(0)
   })
 })

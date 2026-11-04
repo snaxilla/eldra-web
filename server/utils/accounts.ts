@@ -12,19 +12,22 @@
 // never an identity input) and nothing to text-match against beyond the
 // display name it was seeded with. So this still searches `/users` first,
 // exactly as before Phase 1, and then resolves each matched Directus user
-// through `resolveAccountsForIdentities` -- matched ONLY by
+// through `lookupActiveAccountsForIdentities` -- matched ONLY by
 // (provider, provider_subject), never by the email/name that found it in
 // the first place, which is what keeps this search from ever becoming a
 // second, looser way to merge two identities.
 //
-// LAZY PROVISIONING AS A SIDE EFFECT OF SEARCH. A Directus user who has
-// never logged in (e.g. one `createPlayer` just created from Game Admin)
-// has no Eldra Account yet. resolveAccountsForIdentities provisions one on
-// first sight, the same way a first login does -- the alternative, only
-// returning users who already have one, would make a just-created Player
-// briefly unfindable by the admin who just created them, for no safety
-// benefit (the identity being provisioned is still keyed on their real
-// Directus subject, never guessed).
+// SEARCH NEVER CREATES AN ACCOUNT, AND NEVER RETURNS A SUSPENDED ONE.
+// A Directus user with no Account yet (never logged in, never created as
+// a Player) simply does not appear in results -- the same absence a
+// genuinely-no-match search produces. This used to fall through to the
+// same lazy-provisioning `resolveAccountForIdentity` a first login uses,
+// which made a plain read (searching) capable of a write (minting an
+// Account) as a side effect; that fallback is gone. It costs nothing in
+// practice: `createPlayer` (server/utils/players.ts) already provisions
+// the Account at CREATION time, not at first-search time, so "create a
+// Player, immediately find and add them" still holds -- by the time
+// anyone searches, the Account the Player flow needs already exists.
 //
 // PERSISTENCE BOUNDARY (architecture doc §3.2/§10.3: "Eldra's domain and
 // application layers must be able to express everything they need without
@@ -37,7 +40,7 @@
 // character ownership routes.
 
 import { directusServiceRequest } from './directus'
-import { resolveAccountsForIdentities } from './eldra-accounts'
+import { lookupActiveAccountsForIdentities } from './eldra-accounts'
 
 export type AccountSearchResult = {
   accountId: string
@@ -101,23 +104,20 @@ export async function searchAccounts(query: string): Promise<AccountSearchResult
   // found candidates in the Directus directory; this step never repeats
   // that match against anything. Two different Directus users who happen
   // to share a display name resolve to two different Eldra Accounts here,
-  // exactly as they would on two separate logins.
-  const resolved = await resolveAccountsForIdentities(
+  // exactly as they would on two separate logins. READ-ONLY: a candidate
+  // with no Account yet, or whose Account is not active, is simply
+  // absent from `resolved` -- never created, never surfaced.
+  const resolved = await lookupActiveAccountsForIdentities(
     'directus',
-    rows.map((row: any) => ({
-      providerSubject: String(row?.id ?? ''),
-      displayName: formatAccountDisplayName(row)
-    }))
+    rows.map((row: any) => String(row?.id ?? ''))
   )
 
   const results: AccountSearchResult[] = []
   for (const row of rows) {
     const account = resolved.get(String(row?.id ?? ''))
-    // Unreachable in practice: resolveAccountsForIdentities either resolves
-    // every requested subject or throws (an orphaned link throws, it is
-    // never silently dropped) -- this guard is defensive only, so a future
-    // change to that contract fails a missing-result here rather than
-    // pushing a malformed row.
+    // A Directus directory match with no resolved Account: never
+    // authenticated/created yet, or suspended. Not an error -- this
+    // candidate simply isn't a result, the same as any other non-match.
     if (!account) continue
     results.push({
       accountId: account.id,

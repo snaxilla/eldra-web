@@ -194,4 +194,23 @@ describe('Player Directory workflow', () => {
 
     expect(fake.memberships).toHaveLength(2)
   })
+
+  // THE WRITE-SAFETY FIX (search must not provision an Account as a side
+  // effect): a Directus directory entry that was NEVER created as a
+  // Player and has NEVER logged in has no Eldra Account yet. Searching
+  // for it must not change that -- it should simply not appear.
+  it('a Directus user who was never created as a Player and has never logged in does not appear in search, and no Account is created for them', async () => {
+    const fake = createFakeDirectus()
+    directusServiceRequestMock.mockImplementation(fake.handle)
+
+    // A bare Directus user row, inserted directly -- bypassing
+    // createPlayer entirely, exactly like a legacy/pre-Phase-1 account
+    // that predates the Account layer and has never authenticated.
+    fake.users.push({ id: 'legacy-user-1', first_name: 'Legacy', last_name: 'Ghost', email: 'ghost@players.eldra.app' })
+
+    const results = await searchAccounts('Legacy')
+
+    expect(results).toEqual([])
+    expect(fake.eldraAccounts).toHaveLength(0)
+  })
 })

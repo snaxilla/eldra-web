@@ -242,41 +242,42 @@ export async function getAccountById(accountId: string): Promise<EldraAccount | 
   return await findAccountById(id)
 }
 
-export type IdentitySubject = {
-  providerSubject: string
-  // Seed data for first-sight provisioning only, exactly like
-  // ResolveAccountInput.displayName -- never a lookup key.
-  displayName: string
-}
-
-// Batch form of resolveAccountForIdentity, for a caller that needs the
-// Account behind many identities in one pass (searchAccounts, below --
-// up to 20 Directus users per query). Two round trips cover the common
-// case where every subject has already been seen; a subject with no
-// existing link falls through to resolveAccountForIdentity one at a
-// time, which is what makes an identity's SECOND and later appearances in
-// a search cheap while its FIRST stays exactly as safe (race-checked,
-// never matched by name/email) as a first login.
+// Batch, READ-ONLY lookup of the Accounts behind many identities at once
+// (searchAccounts, below -- up to 20 Directus users per query). Two
+// round trips: one batched identity-link lookup, one batched account
+// lookup.
+//
+// NEVER CREATES. An earlier version of this function fell through to
+// resolveAccountForIdentity for any subject with no existing link, which
+// made a plain account SEARCH capable of provisioning a brand-new Eldra
+// Account as a side effect of someone merely typing a query -- a write
+// hiding inside what is supposed to be a read. A subject with no link, or
+// whose linked Account is not `active`, is simply ABSENT from the
+// returned map, exactly like a search that matched nothing for that
+// candidate -- never an error, never a reason to mint one.
+//
+// `resolveAccountForIdentity` remains the only function in this module
+// allowed to create, and remains exactly as eager as before: login
+// (server/api/auth/login.post.ts, me.get.ts), session resolution
+// (server/utils/authorization.ts's resolvePrincipal), and Player creation
+// (server/utils/players.ts's createPlayer) all call it directly, never
+// through this batch function, so "create Player -> immediately
+// searchable" still holds -- the Account is provisioned the moment the
+// Player is CREATED, not the moment someone later searches for them.
 //
 // Keyed by providerSubject in the result map -- never by displayName or
 // any other field a caller might be tempted to merge on.
-export async function resolveAccountsForIdentities(
+export async function lookupActiveAccountsForIdentities(
   provider: IdentityProvider,
-  subjects: readonly IdentitySubject[]
+  providerSubjects: readonly string[]
 ): Promise<Map<string, EldraAccount>> {
-  const bySubject = new Map<string, IdentitySubject>()
-  for (const subject of subjects) {
-    const providerSubject = String(subject?.providerSubject ?? '').trim()
-    if (providerSubject) {
-      bySubject.set(providerSubject, { providerSubject, displayName: String(subject?.displayName ?? '') })
-    }
-  }
+  const subjects = [...new Set(providerSubjects.map((subject) => String(subject ?? '').trim()).filter(Boolean))]
 
-  if (bySubject.size === 0) {
+  if (subjects.length === 0) {
     return new Map()
   }
 
-  const identityKeys = [...bySubject.keys()].map((providerSubject) => buildIdentityKey(provider, providerSubject))
+  const identityKeys = subjects.map((subject) => buildIdentityKey(provider, subject))
   const links = await findIdentityLinksByKeys(identityKeys)
 
   const accountIdBySubject = new Map<string, string>()
@@ -289,29 +290,18 @@ export async function resolveAccountsForIdentities(
   const accountsById = new Map(accounts.map((account) => [account.id, account]))
 
   const result = new Map<string, EldraAccount>()
-  const unresolved: IdentitySubject[] = []
-
-  for (const [providerSubject, info] of bySubject) {
-    const accountId = accountIdBySubject.get(providerSubject)
-    const account = accountId ? accountsById.get(accountId) : undefined
-    if (account) {
+  for (const [providerSubject, accountId] of accountIdBySubject) {
+    const account = accountsById.get(accountId)
+    // Active only -- a suspended Account should not surface as an
+    // assignable/addable search result, matching addMember's and
+    // assignCharacterOwner's own active-status check at write time. A
+    // link whose Account row is missing entirely (the orphan case
+    // resolveAccountForIdentity fails loudly on) is likewise just absent
+    // here, not an error -- this is a best-effort read, not the
+    // authoritative resolution path.
+    if (account && account.status === 'active') {
       result.set(providerSubject, account)
-    } else {
-      // No link yet (never authenticated, never searched before) -- or a
-      // link whose Account row is missing, which resolveAccountForIdentity
-      // treats as the orphan case it already fails loudly on. Either way,
-      // the one-at-a-time path is what owns deciding.
-      unresolved.push(info)
     }
-  }
-
-  for (const info of unresolved) {
-    const account = await resolveAccountForIdentity({
-      provider,
-      providerSubject: info.providerSubject,
-      displayName: info.displayName
-    })
-    result.set(info.providerSubject, account)
   }
 
   return result
@@ -448,7 +438,7 @@ async function findIdentityLinkByKey(identityKey: string): Promise<EldraIdentity
   return row ? normalizeIdentityLink(row) : null
 }
 
-// Batch counterpart of findIdentityLinkByKey, for resolveAccountsForIdentities.
+// Batch counterpart of findIdentityLinkByKey, for lookupActiveAccountsForIdentities.
 async function findIdentityLinksByKeys(identityKeys: readonly string[]): Promise<EldraIdentityLink[]> {
   if (identityKeys.length === 0) return []
 
@@ -464,7 +454,7 @@ async function findIdentityLinksByKeys(identityKeys: readonly string[]): Promise
   return (Array.isArray(res?.data) ? res.data : []).map(normalizeIdentityLink)
 }
 
-// Batch counterpart of findAccountById, for resolveAccountsForIdentities.
+// Batch counterpart of findAccountById, for lookupActiveAccountsForIdentities.
 async function findAccountsByIds(accountIds: readonly string[]): Promise<EldraAccount[]> {
   if (accountIds.length === 0) return []
 

@@ -19,6 +19,7 @@
 // (enforced inside linkIdentityToAccount itself).
 import { createError, defineEventHandler, getRequestURL, sendRedirect } from 'h3'
 import { resolveAuthenticatedAccount } from '../../../utils/authorization'
+import { clearSessionCookies, revokeDirectusSession } from '../../../utils/directus'
 import { linkIdentityToAccount, resolveAccountForIdentity } from '../../../utils/eldra-accounts'
 import { createEldraSession, setEldraSessionCookie } from '../../../utils/eldra-sessions'
 import { completeAuthorizationCodeGrant, isOidcConfigured } from '../../../utils/oidc'
@@ -141,6 +142,34 @@ export default defineEventHandler(async (event) => {
     // session just because its underlying identity verified cleanly.
     return redirectToLoginWithError(event, 'account-inactive')
   }
+
+  // ONE ACTIVE LOGIN SESSION PER BROWSER (session-precedence task). This
+  // login has just been confirmed fully successful -- the account
+  // resolved and is active -- so it is safe to displace whatever Directus
+  // session this browser was ALSO carrying. Without this, both cookies
+  // could coexist: server/utils/authorization.ts's resolveAuthenticatedAccount
+  // checks the OIDC cookie first and never falls through to Directus once
+  // it is present, so a later-expired or cleared OIDC session (the OIDC
+  // cookie removed, the Directus one still sitting there unexpired) would
+  // otherwise resurface as a confusing, un-asked-for switch back to
+  // whichever Account the stale Directus cookie names. Revoking first,
+  // then clearing, matches server/api/auth/logout.post.ts's own order for
+  // the symmetric cookie pair.
+  //
+  // Best-effort on the revoke: revokeDirectusSession already never throws
+  // (see its own header), but this route's own try/catch restates that
+  // guarantee explicitly rather than depending solely on a different
+  // module's current implementation detail -- a Directus outage or an
+  // already-expired refresh token must not turn this successful OIDC
+  // login into a failed one. No raw token is ever in this catch's scope
+  // to log; see revokeDirectusSession's own logging for the failure
+  // detail.
+  try {
+    await revokeDirectusSession(event)
+  } catch (error: any) {
+    console.error('[oidc] failed to revoke a displaced Directus session during OIDC login:', error?.statusCode ?? error?.message ?? 'unknown error')
+  }
+  clearSessionCookies(event)
 
   const session = await createEldraSession(account.id)
   setEldraSessionCookie(event, session.token, session.expiresAt)

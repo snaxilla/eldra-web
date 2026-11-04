@@ -19,12 +19,18 @@ const {
   directusRequestMock,
   setSessionCookiesMock,
   resolveAccountForIdentityMock,
-  listPlatformGrantsMock
+  listPlatformGrantsMock,
+  clearEldraSessionCookieMock,
+  getEldraSessionTokenMock,
+  revokeEldraSessionMock
 } = vi.hoisted(() => ({
   directusRequestMock: vi.fn(),
   setSessionCookiesMock: vi.fn(),
   resolveAccountForIdentityMock: vi.fn(),
-  listPlatformGrantsMock: vi.fn()
+  listPlatformGrantsMock: vi.fn(),
+  clearEldraSessionCookieMock: vi.fn(),
+  getEldraSessionTokenMock: vi.fn(),
+  revokeEldraSessionMock: vi.fn()
 }))
 
 vi.mock('../../../../server/utils/directus', () => ({
@@ -40,6 +46,15 @@ vi.mock('../../../../server/utils/directus', () => ({
 vi.mock('../../../../server/utils/eldra-accounts', () => ({
   resolveAccountForIdentity: resolveAccountForIdentityMock,
   listPlatformGrants: listPlatformGrantsMock
+}))
+
+// Session-precedence task: a successful Directus login now also displaces
+// any existing Eldra-issued OIDC session, mocked at the module boundary
+// like every other store this test does not otherwise exercise.
+vi.mock('../../../../server/utils/eldra-sessions', () => ({
+  clearEldraSessionCookie: clearEldraSessionCookieMock,
+  getEldraSessionToken: getEldraSessionTokenMock,
+  revokeEldraSession: revokeEldraSessionMock
 }))
 
 vi.mock('h3', async () => {
@@ -71,6 +86,9 @@ beforeEach(() => {
   setSessionCookiesMock.mockReset()
   resolveAccountForIdentityMock.mockReset()
   listPlatformGrantsMock.mockReset()
+  clearEldraSessionCookieMock.mockReset()
+  getEldraSessionTokenMock.mockReset()
+  revokeEldraSessionMock.mockReset()
 
   resolveAccountForIdentityMock.mockResolvedValue({
     id: ELDRA_ACCOUNT_ID,
@@ -78,6 +96,7 @@ beforeEach(() => {
     status: 'active'
   })
   listPlatformGrantsMock.mockResolvedValue([])
+  getEldraSessionTokenMock.mockReturnValue('')
 })
 
 describe('POST /api/auth/login', () => {
@@ -313,5 +332,89 @@ describe('POST /api/auth/login -- session cookies are set only after every requi
       accountId: ELDRA_ACCOUNT_ID,
       platformCapabilities: ['platform.settings.manage']
     })
+  })
+})
+
+// ONE ACTIVE LOGIN SESSION PER BROWSER (session-precedence task): a
+// successful Directus login displaces any Eldra-issued OIDC session this
+// browser was also carrying, symmetric to
+// server/api/auth/oidc/callback.get.ts's own displacement of a Directus
+// session on a successful OIDC login. Neither side's displacement runs
+// for a FAILED login (both tested below), and the account-linking flow
+// (server/api/auth/oidc/link.get.ts / callback.get.ts's link branch) is
+// untouched by this task and still never revokes or clears anything.
+describe('POST /api/auth/login -- displaces an existing Eldra OIDC session', () => {
+  function directusAuthenticates() {
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') return directusLoginSuccess()
+      return { data: { id: 'account-1', email: 'sam@example.com', first_name: 'Sam' } }
+    })
+  }
+
+  it('revokes and clears an existing OIDC session when one is present, before setting the new Directus cookie', async () => {
+    directusAuthenticates()
+    getEldraSessionTokenMock.mockReturnValue('raw-oidc-token')
+    const order: string[] = []
+    revokeEldraSessionMock.mockImplementation(async () => { order.push('revokeOidc') })
+    clearEldraSessionCookieMock.mockImplementation(() => { order.push('clearOidc') })
+    setSessionCookiesMock.mockImplementation(() => { order.push('setDirectusCookies') })
+
+    await handler(fakeEvent({ username: 'sam', password: 'pw' }))
+
+    expect(revokeEldraSessionMock).toHaveBeenCalledWith('raw-oidc-token')
+    expect(clearEldraSessionCookieMock).toHaveBeenCalledWith(expect.anything())
+    expect(order).toEqual(['revokeOidc', 'clearOidc', 'setDirectusCookies'])
+  })
+
+  it('does not call revokeEldraSession when there was no OIDC session to begin with, but still clears the cookie defensively', async () => {
+    directusAuthenticates()
+    getEldraSessionTokenMock.mockReturnValue('')
+
+    await handler(fakeEvent({ username: 'sam', password: 'pw' }))
+
+    expect(revokeEldraSessionMock).not.toHaveBeenCalled()
+    expect(clearEldraSessionCookieMock).toHaveBeenCalledWith(expect.anything())
+  })
+
+  it('an Eldra session-store failure while revoking does not turn this successful Directus login into a failed one', async () => {
+    directusAuthenticates()
+    getEldraSessionTokenMock.mockReturnValue('raw-oidc-token')
+    revokeEldraSessionMock.mockRejectedValue(Object.assign(new Error('Session store unavailable'), { statusCode: 503 }))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await handler(fakeEvent({ username: 'sam', password: 'pw' }))
+
+    expect(result).toMatchObject({ ok: true, accountId: ELDRA_ACCOUNT_ID })
+    expect(setSessionCookiesMock).toHaveBeenCalled()
+    expect(clearEldraSessionCookieMock).toHaveBeenCalled()
+    expect(logged).toHaveBeenCalled() // the detail goes to the server log, not the response
+    logged.mockRestore()
+  })
+
+  it('does NOT revoke or clear an existing OIDC session when the login fails (bad credentials)', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-oidc-token')
+    directusRequestMock.mockImplementation(async (path: string) => {
+      if (path === '/auth/login') {
+        throw Object.assign(new Error('Invalid user credentials.'), { statusCode: 401 })
+      }
+      throw new Error('should not fetch /users/me when login itself failed')
+    })
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'wrong' }))).rejects.toMatchObject({ statusCode: 401 })
+
+    expect(revokeEldraSessionMock).not.toHaveBeenCalled()
+    expect(clearEldraSessionCookieMock).not.toHaveBeenCalled()
+  })
+
+  it('does NOT revoke or clear an existing OIDC session when a later required resolution step fails', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-oidc-token')
+    directusAuthenticates()
+    resolveAccountForIdentityMock.mockRejectedValue(Object.assign(new Error('Identity store unavailable'), { statusCode: 503 }))
+
+    await expect(handler(fakeEvent({ username: 'sam', password: 'pw' }))).rejects.toMatchObject({ statusCode: 503 })
+
+    expect(revokeEldraSessionMock).not.toHaveBeenCalled()
+    expect(clearEldraSessionCookieMock).not.toHaveBeenCalled()
+    expect(setSessionCookiesMock).not.toHaveBeenCalled()
   })
 })

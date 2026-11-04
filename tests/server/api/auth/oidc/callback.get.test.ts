@@ -16,6 +16,8 @@ import type { H3Event } from 'h3'
 
 const {
   resolveAuthenticatedAccountMock,
+  clearSessionCookiesMock,
+  revokeDirectusSessionMock,
   linkIdentityToAccountMock,
   resolveAccountForIdentityMock,
   createEldraSessionMock,
@@ -27,6 +29,8 @@ const {
   getRequestURLMock
 } = vi.hoisted(() => ({
   resolveAuthenticatedAccountMock: vi.fn(),
+  clearSessionCookiesMock: vi.fn(),
+  revokeDirectusSessionMock: vi.fn(),
   linkIdentityToAccountMock: vi.fn(),
   resolveAccountForIdentityMock: vi.fn(),
   createEldraSessionMock: vi.fn(),
@@ -40,6 +44,11 @@ const {
 
 vi.mock('../../../../../server/utils/authorization', () => ({
   resolveAuthenticatedAccount: resolveAuthenticatedAccountMock
+}))
+
+vi.mock('../../../../../server/utils/directus', () => ({
+  clearSessionCookies: clearSessionCookiesMock,
+  revokeDirectusSession: revokeDirectusSessionMock
 }))
 
 vi.mock('../../../../../server/utils/eldra-accounts', () => ({
@@ -89,6 +98,8 @@ const LINK_FLOW = { codeVerifier: 'cv', state: 'st', nonce: 'nc', kind: 'link' a
 
 beforeEach(() => {
   resolveAuthenticatedAccountMock.mockReset()
+  clearSessionCookiesMock.mockReset()
+  revokeDirectusSessionMock.mockReset()
   linkIdentityToAccountMock.mockReset()
   resolveAccountForIdentityMock.mockReset()
   createEldraSessionMock.mockReset()
@@ -98,6 +109,8 @@ beforeEach(() => {
   readAndClearOidcFlowStateMock.mockReset()
   sendRedirectMock.mockReset()
   getRequestURLMock.mockReset()
+
+  revokeDirectusSessionMock.mockResolvedValue(undefined)
 
   isOidcConfiguredMock.mockReturnValue(true)
   getRequestURLMock.mockReturnValue(new URL('https://eldra.example.com/api/auth/oidc/callback?code=abc&state=st'))
@@ -227,6 +240,78 @@ describe('GET /api/auth/oidc/callback -- login flow, verification succeeds', () 
   })
 })
 
+// ONE ACTIVE LOGIN SESSION PER BROWSER (session-precedence task): a
+// successful OIDC login displaces any Directus session this browser was
+// also carrying, so the two cookies can never coexist as the result of a
+// NEW login (server/utils/authorization.ts's existing OIDC-first
+// precedence for requests where they already coexist some other way --
+// e.g. a pre-existing deployment, or a stale cookie -- is left untouched;
+// this only prevents new successful logins from creating that state).
+describe('GET /api/auth/oidc/callback -- login flow displaces an existing Directus session', () => {
+  beforeEach(() => {
+    readAndClearOidcFlowStateMock.mockReturnValue(LOGIN_FLOW)
+    resolveAccountForIdentityMock.mockResolvedValue({ id: 'account-1', displayName: 'Jane Doe', status: 'active' })
+    createEldraSessionMock.mockResolvedValue({ token: 'raw-token', expiresAt: '2099-01-01T00:00:00.000Z' })
+  })
+
+  it('revokes and clears any existing Directus session on a successful login, before issuing the new OIDC session', async () => {
+    const order: string[] = []
+    revokeDirectusSessionMock.mockImplementation(async () => { order.push('revokeDirectus') })
+    clearSessionCookiesMock.mockImplementation(() => { order.push('clearDirectus') })
+    createEldraSessionMock.mockImplementation(async () => { order.push('createOidc'); return { token: 'raw-token', expiresAt: '2099-01-01T00:00:00.000Z' } })
+
+    await handler(fakeEvent())
+
+    expect(revokeDirectusSessionMock).toHaveBeenCalledWith(expect.anything())
+    expect(clearSessionCookiesMock).toHaveBeenCalledWith(expect.anything())
+    expect(order).toEqual(['revokeDirectus', 'clearDirectus', 'createOidc'])
+  })
+
+  it('a Directus revocation failure does not turn this successful OIDC login into a failed one', async () => {
+    revokeDirectusSessionMock.mockRejectedValue(new Error('Directus unreachable'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await handler(fakeEvent())
+
+    // The login still completes: the new OIDC session is still issued and
+    // the browser still lands where a successful login lands, exactly as
+    // if revocation had quietly succeeded.
+    expect(createEldraSessionMock).toHaveBeenCalledWith('account-1')
+    expect(setEldraSessionCookieMock).toHaveBeenCalled()
+    expect(clearSessionCookiesMock).toHaveBeenCalled()
+    expect(redirectedTo()).toBe('/')
+    expect(logged).toHaveBeenCalled() // the detail goes to the server log, not the response
+    logged.mockRestore()
+  })
+
+  it('does NOT revoke or clear the Directus session for a failed login (not-configured)', async () => {
+    isOidcConfiguredMock.mockReturnValue(false)
+
+    await handler(fakeEvent())
+
+    expect(revokeDirectusSessionMock).not.toHaveBeenCalled()
+    expect(clearSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('does NOT revoke or clear the Directus session when OIDC verification itself fails', async () => {
+    completeAuthorizationCodeGrantMock.mockResolvedValue({ ok: false, reason: 'cancelled', message: 'generic' })
+
+    await handler(fakeEvent())
+
+    expect(revokeDirectusSessionMock).not.toHaveBeenCalled()
+    expect(clearSessionCookiesMock).not.toHaveBeenCalled()
+  })
+
+  it('does NOT revoke or clear the Directus session when the resolved Account is not active', async () => {
+    resolveAccountForIdentityMock.mockResolvedValue({ id: 'account-1', displayName: 'Jane Doe', status: 'suspended' })
+
+    await handler(fakeEvent())
+
+    expect(revokeDirectusSessionMock).not.toHaveBeenCalled()
+    expect(clearSessionCookiesMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('GET /api/auth/oidc/callback -- link flow, verification succeeds', () => {
   beforeEach(() => {
     readAndClearOidcFlowStateMock.mockReturnValue(LINK_FLOW)
@@ -254,6 +339,24 @@ describe('GET /api/auth/oidc/callback -- link flow, verification succeeds', () =
 
     expect(createEldraSessionMock).not.toHaveBeenCalled()
     expect(setEldraSessionCookieMock).not.toHaveBeenCalled()
+  })
+
+  // Session-precedence task, explicit NON-GOAL: "Do not change the
+  // account-linking flow: linking an OIDC identity must preserve the
+  // current session and must not switch accounts." The displacement
+  // behavior added to the login branch above (revokeDirectusSession/
+  // clearSessionCookies) must never run for a link -- a link's whole
+  // premise is that the caller is ALREADY signed in via that exact
+  // session, and this proves nothing added for the login case leaked
+  // into the link branch.
+  it('never revokes or clears the Directus session for a link flow -- the current session is preserved', async () => {
+    resolveAuthenticatedAccountMock.mockResolvedValue({ id: 'caller-account', displayName: 'Caller', status: 'active' })
+    linkIdentityToAccountMock.mockResolvedValue({ outcome: 'linked' })
+
+    await handler(fakeEvent())
+
+    expect(revokeDirectusSessionMock).not.toHaveBeenCalled()
+    expect(clearSessionCookiesMock).not.toHaveBeenCalled()
   })
 
   it('fails the link (no write attempted) when the live session that started it is gone', async () => {

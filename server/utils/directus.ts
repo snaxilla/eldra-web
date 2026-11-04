@@ -66,9 +66,53 @@ export function setSessionCookies(event: H3Event, accessToken: string, refreshTo
   }
 }
 
-function clearSessionCookies(event: H3Event) {
+// Exported (one-active-login-session-per-browser, OIDC session-precedence
+// task) so a route outside this module -- server/api/auth/oidc/callback.get.ts,
+// clearing a DISPLACED Directus session on a successful OIDC login -- can
+// clear both Directus cookies without re-stating their names. Still the
+// same two deleteCookie calls refreshDirectusSession already made locally.
+export function clearSessionCookies(event: H3Event) {
   deleteCookie(event, 'eldra_session', { path: '/' })
   deleteCookie(event, 'eldra_refresh', { path: '/' })
+}
+
+// Best-effort server-side revocation of whichever Directus session the
+// CURRENT request's own eldra_session/eldra_refresh cookies identify, if
+// any. Factored out of server/api/auth/logout.post.ts's own inline
+// `/auth/logout` call (same request shape, same "no refresh token means
+// nothing to revoke" and "Directus rejecting/unreachable is not this
+// caller's problem" behavior) so server/api/auth/oidc/callback.get.ts can
+// reuse it for a NEW case logout.post.ts doesn't have: revoking a
+// Directus session that a successful OIDC login is about to DISPLACE,
+// where a revocation failure must never turn that otherwise-successful
+// OIDC login into a failed one.
+//
+// NEVER THROWS. Logs the failure (status/message only -- never the
+// access/refresh token themselves) and returns, exactly like
+// logout.post.ts's own swallow, so a Directus outage or an already-
+// expired refresh token degrades to "the old session just expires on its
+// own later" rather than blocking the new login.
+export async function revokeDirectusSession(event: H3Event): Promise<void> {
+  const accessToken = getSessionToken(event)
+  const refreshToken = getRefreshToken(event)
+
+  if (!refreshToken) return
+
+  try {
+    await directusRequest('/auth/logout', {
+      method: 'POST',
+      unauthenticated: true,
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
+      body: {
+        refresh_token: refreshToken
+      }
+    })
+  } catch (error: any) {
+    const status = error?.statusCode ?? error?.status ?? error?.response?.status ?? 'unknown'
+    console.error(`[directus] failed to revoke a displaced Directus session (status=${status}):`, error?.message || error?.statusMessage || 'unknown error')
+  }
 }
 
 // THE FIX for the "authenticated, cookie present, still 401" regression:

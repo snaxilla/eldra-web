@@ -21,6 +21,7 @@ import { createError, defineEventHandler, readBody } from 'h3'
 import { DIRECTUS_ME_FIELDS, directusRequest, setSessionCookies } from '../../utils/directus'
 import { formatAccountDisplayName } from '../../utils/accounts'
 import { listPlatformGrants, resolveAccountForIdentity } from '../../utils/eldra-accounts'
+import { clearEldraSessionCookie, getEldraSessionToken, revokeEldraSession } from '../../utils/eldra-sessions'
 import { resolveLoginEmail } from '../../utils/players'
 
 export default defineEventHandler(async (event) => {
@@ -129,6 +130,27 @@ export default defineEventHandler(async (event) => {
     displayName: formatAccountDisplayName(row)
   })
   const platformCapabilities = await listPlatformGrants(account.id)
+
+  // ONE ACTIVE LOGIN SESSION PER BROWSER (session-precedence task). This
+  // Directus login has just been confirmed fully successful, so it is
+  // safe to displace whatever Eldra-issued OIDC session this browser was
+  // ALSO carrying -- see server/api/auth/oidc/callback.get.ts's own
+  // symmetric comment for why letting both coexist is the actual problem
+  // this prevents. Caught, not awaited-and-left-to-throw: the same "a
+  // revocation failure must not turn an otherwise-successful login into a
+  // failed one" rule this task states explicitly for the OIDC side
+  // applies here in reverse -- an Eldra session-store hiccup clearing an
+  // old OIDC session is not a reason to reject a password Directus
+  // already accepted.
+  const existingOidcSessionToken = getEldraSessionToken(event)
+  if (existingOidcSessionToken) {
+    try {
+      await revokeEldraSession(existingOidcSessionToken)
+    } catch (error: any) {
+      console.error('[auth] failed to revoke a displaced Eldra OIDC session:', error?.statusCode ?? error?.statusMessage ?? 'unknown error')
+    }
+  }
+  clearEldraSessionCookie(event)
 
   // Everything required has resolved -- only now does the browser get a
   // session.

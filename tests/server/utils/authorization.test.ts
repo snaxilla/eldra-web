@@ -19,7 +19,7 @@ const {
   listMembershipsForAccountMock,
   resolveAccountForIdentityMock,
   getAccountByIdMock,
-  listIdentitySubjectsForAccountMock,
+  listLegacyDirectusUuidSubjectsForAccountMock,
   listPlatformGrantsMock,
   getEldraSessionTokenMock,
   resolveEldraSessionMock
@@ -29,7 +29,7 @@ const {
   listMembershipsForAccountMock: vi.fn(),
   resolveAccountForIdentityMock: vi.fn(),
   getAccountByIdMock: vi.fn(),
-  listIdentitySubjectsForAccountMock: vi.fn(),
+  listLegacyDirectusUuidSubjectsForAccountMock: vi.fn(),
   listPlatformGrantsMock: vi.fn(),
   getEldraSessionTokenMock: vi.fn(),
   resolveEldraSessionMock: vi.fn()
@@ -53,7 +53,7 @@ vi.mock('../../../server/utils/eldra-accounts', () => ({
   DIRECTUS_PROVIDER: 'directus',
   resolveAccountForIdentity: resolveAccountForIdentityMock,
   getAccountById: getAccountByIdMock,
-  listIdentitySubjectsForAccount: listIdentitySubjectsForAccountMock,
+  listLegacyDirectusUuidSubjectsForAccount: listLegacyDirectusUuidSubjectsForAccountMock,
   listPlatformGrants: listPlatformGrantsMock
 }))
 
@@ -155,7 +155,7 @@ beforeEach(() => {
   listMembershipsForAccountMock.mockReset()
   resolveAccountForIdentityMock.mockReset()
   getAccountByIdMock.mockReset()
-  listIdentitySubjectsForAccountMock.mockReset()
+  listLegacyDirectusUuidSubjectsForAccountMock.mockReset()
   listPlatformGrantsMock.mockReset()
   getEldraSessionTokenMock.mockReset()
   resolveEldraSessionMock.mockReset()
@@ -166,7 +166,7 @@ beforeEach(() => {
     displayName: 'Admin User',
     status: 'active'
   })
-  listIdentitySubjectsForAccountMock.mockResolvedValue([])
+  listLegacyDirectusUuidSubjectsForAccountMock.mockResolvedValue([])
   listPlatformGrantsMock.mockResolvedValue([]) // no platform grants, unless a test overrides it
   // No Eldra session cookie by default -- every EXISTING test below is a
   // Directus-session test and must fall through to that branch exactly
@@ -313,7 +313,7 @@ describe('resolvePrincipal', () => {
   it('memberships are looked up by the Eldra Account id AND every linked provider subject -- pre-Phase-1 rows still resolve', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
-    listIdentitySubjectsForAccountMock.mockResolvedValue(['player-account-1'])
+    listLegacyDirectusUuidSubjectsForAccountMock.mockResolvedValue(['player-account-1'])
     listMembershipsForAccountMock.mockResolvedValue([
       // The row shape that exists in the live store today: keyed by the
       // DIRECTUS user id, written before Eldra Accounts existed.
@@ -333,7 +333,7 @@ describe('resolvePrincipal', () => {
   it('deduplicates the lookup keys', async () => {
     getSessionTokenMock.mockReturnValue('token')
     fetchDirectusMeMock.mockResolvedValue(directusNonAdminUser())
-    listIdentitySubjectsForAccountMock.mockResolvedValue([ELDRA_ACCOUNT_ID, 'subject-a', 'subject-a'])
+    listLegacyDirectusUuidSubjectsForAccountMock.mockResolvedValue([ELDRA_ACCOUNT_ID, 'subject-a', 'subject-a'])
 
     const principal = await resolvePrincipal(fakeEvent)
 

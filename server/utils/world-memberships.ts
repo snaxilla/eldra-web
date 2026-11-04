@@ -142,6 +142,20 @@ export async function createOwnerMembership(worldId: string | number, accountId:
 // Writes are unaffected and still take one id (addMember,
 // createOwnerMembership): new rows always carry the Eldra Account id, so
 // the legacy half of the lookup set only ever shrinks.
+//
+// WORLDS-LOADING REGRESSION (generic OIDC identity linking) -- fixed at
+// the SOURCE, not here: `account_id` is `uuid`-typed
+// (scripts/directus/create-world-memberships-schema.mjs), and
+// server/utils/authorization.ts's accountLookupKeys used to include
+// every linked provider's subject unfiltered, which broke this query
+// outright the moment a non-Directus (OIDC) subject was linked --
+// "invalid input syntax for type uuid". See accountLookupKeys's own
+// header and listLegacyDirectusUuidSubjectsForAccount in
+// eldra-accounts.ts for where that is now filtered to Directus-provider,
+// UUID-shaped subjects only. This function still takes whatever it is
+// given, by design -- see its own Phase 1 history below -- so the fix
+// had to be where the set is BUILT, not duplicated into every reader of
+// it.
 export async function listMembershipsForAccount(
   accountLookupKeys: readonly string[]
 ): Promise<WorldMembershipRecord[]> {

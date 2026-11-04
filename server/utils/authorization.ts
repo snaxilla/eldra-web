@@ -80,7 +80,7 @@ import { formatAccountDisplayName } from './accounts'
 import {
   DIRECTUS_PROVIDER,
   getAccountById,
-  listIdentitySubjectsForAccount,
+  listLegacyDirectusUuidSubjectsForAccount,
   listPlatformGrants,
   resolveAccountForIdentity,
   type EldraAccount
@@ -299,7 +299,7 @@ export type Principal = {
   worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>
   // Every id that may legitimately identify this Account in a store that
   // predates Phase 1: the Eldra Account id itself, plus each linked
-  // provider subject (for Beta, the Directus user id).
+  // DIRECTUS identity's user id -- never any other provider's subject.
   //
   // WHY THIS EXISTS. world_memberships.account_id and
   // roll_events.roller_user_id were both written with Directus user ids
@@ -309,6 +309,19 @@ export type Principal = {
   // single place that set is assembled -- so no call site re-derives it,
   // and so removing the compatibility path later means deleting one field
   // and its uses rather than hunting for ad-hoc copies.
+  //
+  // WORLDS-LOADING REGRESSION (generic OIDC identity linking) -- fixed at
+  // the SOURCE, not here: this set used to include EVERY linked
+  // provider's subject (listIdentitySubjectsForAccount), which was safe
+  // only because every provider_subject in the identity-link store
+  // happened to be a Directus user id until OIDC linking made that no
+  // longer true. Both legacy columns above are `uuid`-typed, and an
+  // OIDC/social provider's `sub` claim has no shape guarantee at all --
+  // Postgres rejected the first non-UUID value outright ("invalid input
+  // syntax for type uuid"), taking down the Worlds list for the account
+  // that linked it. `listLegacyDirectusUuidSubjectsForAccount` (below) now
+  // filters to the Directus provider specifically, with a UUID-shape
+  // check as defense in depth -- see its own header in eldra-accounts.ts.
   //
   // It is NOT an authorization input: nothing grants a capability because
   // of which key matched. New rows are always written with `accountId`,
@@ -542,7 +555,7 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
 
   const accountLookupKeys = [
     account.id,
-    ...(await listIdentitySubjectsForAccount(account.id))
+    ...(await listLegacyDirectusUuidSubjectsForAccount(account.id))
   ].filter((key, index, keys) => Boolean(key) && keys.indexOf(key) === index)
 
   const [worldCapabilities, platformGrants] = await Promise.all([

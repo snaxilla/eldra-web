@@ -24,8 +24,9 @@ import {
   buildGrantKey,
   buildIdentityKey,
   getAccountById,
+  isUuid,
   linkIdentityToAccount,
-  listIdentitySubjectsForAccount,
+  listLegacyDirectusUuidSubjectsForAccount,
   listPlatformGrants,
   resolveAccountDisplayNames,
   resolveAccountForIdentity,
@@ -283,19 +284,84 @@ describe('resolveAccountForIdentity', () => {
   })
 })
 
-describe('listIdentitySubjectsForAccount', () => {
-  it('returns every linked provider subject for the Account', async () => {
+// WORLDS-LOADING REGRESSION (generic OIDC identity linking), fixed here.
+// This function used to be listIdentitySubjectsForAccount and returned
+// EVERY linked provider's subject unfiltered -- correct only because
+// every provider_subject in this store happened to be a Directus user id
+// (hence uuid-shaped) until OIDC identity linking made it possible to
+// link a second, non-Directus identity. That unfiltered set flowed into
+// server/utils/authorization.ts's accountLookupKeys and from there into
+// world_memberships.account_id / roll_events.roller_user_id's own `_in`
+// filters against a uuid-typed column -- Postgres rejected the first
+// non-UUID value outright ("invalid input syntax for type uuid"),
+// production evidence: a 64-character hex OIDC `sub` claim,
+// '10d35c7e1ec63ca2b15b573d236bf75434b93b0e605ad30ed98e0a56f100847d'.
+describe('listLegacyDirectusUuidSubjectsForAccount', () => {
+  it('returns linked Directus user ids (uuid-shaped, provider "directus") for the Account', async () => {
     installStore({
       links: [
         { id: 'l1', account_id: ELDRA_ACCOUNT_ID, provider: 'directus', provider_subject: DIRECTUS_USER_ID },
-        { id: 'l2', account_id: ELDRA_ACCOUNT_ID, provider: 'directus', provider_subject: 'second-subject' },
         { id: 'l3', account_id: 'someone-else', provider: 'directus', provider_subject: 'not-mine' }
       ]
     })
 
-    const subjects = await listIdentitySubjectsForAccount(ELDRA_ACCOUNT_ID)
+    const subjects = await listLegacyDirectusUuidSubjectsForAccount(ELDRA_ACCOUNT_ID)
 
-    expect(subjects).toEqual([DIRECTUS_USER_ID, 'second-subject'])
+    expect(subjects).toEqual([DIRECTUS_USER_ID])
+  })
+
+  it('excludes a linked OIDC identity\'s subject entirely, even though it is linked to this exact Account', async () => {
+    const oidcSubject = '10d35c7e1ec63ca2b15b573d236bf75434b93b0e605ad30ed98e0a56f100847d'
+    installStore({
+      links: [
+        { id: 'l1', account_id: ELDRA_ACCOUNT_ID, provider: 'directus', provider_subject: DIRECTUS_USER_ID },
+        { id: 'l2', account_id: ELDRA_ACCOUNT_ID, provider: 'https://idp.example.com/application/o/eldra/', provider_subject: oidcSubject }
+      ]
+    })
+
+    const subjects = await listLegacyDirectusUuidSubjectsForAccount(ELDRA_ACCOUNT_ID)
+
+    expect(subjects).toEqual([DIRECTUS_USER_ID])
+    expect(subjects).not.toContain(oidcSubject)
+  })
+
+  it('excludes a Directus-provider row whose subject is not UUID-shaped -- the provider check alone is not the guard', async () => {
+    installStore({
+      links: [
+        { id: 'l1', account_id: ELDRA_ACCOUNT_ID, provider: 'directus', provider_subject: 'not-a-uuid-at-all' }
+      ]
+    })
+
+    expect(await listLegacyDirectusUuidSubjectsForAccount(ELDRA_ACCOUNT_ID)).toEqual([])
+  })
+
+  it('returns an empty array when the Account has no Directus-linked identity at all (e.g. an OIDC-only first login)', async () => {
+    const oidcSubject = 'subject-abc'
+    installStore({
+      links: [
+        { id: 'l1', account_id: ELDRA_ACCOUNT_ID, provider: 'https://idp.example.com/', provider_subject: oidcSubject }
+      ]
+    })
+
+    expect(await listLegacyDirectusUuidSubjectsForAccount(ELDRA_ACCOUNT_ID)).toEqual([])
+  })
+})
+
+describe('isUuid', () => {
+  it('accepts a real Directus-generated uuid', () => {
+    expect(isUuid(DIRECTUS_USER_ID)).toBe(true)
+    expect(isUuid(ELDRA_ACCOUNT_ID)).toBe(true)
+  })
+
+  it('rejects the exact production failure value -- a 64-character OIDC sub claim', () => {
+    expect(isUuid('10d35c7e1ec63ca2b15b573d236bf75434b93b0e605ad30ed98e0a56f100847d')).toBe(false)
+  })
+
+  it('rejects other non-uuid shapes', () => {
+    expect(isUuid('')).toBe(false)
+    expect(isUuid('not-a-uuid')).toBe(false)
+    expect(isUuid('12345')).toBe(false)
+    expect(isUuid('user@example.com')).toBe(false)
   })
 })
 
@@ -450,7 +516,7 @@ describe('identity-store error boundary', () => {
     const logged = failingStore(directusForbidden())
 
     await expect(resolveAccountDisplayNames([ELDRA_ACCOUNT_ID])).rejects.toMatchObject({ statusCode: 503 })
-    await expect(listIdentitySubjectsForAccount(ELDRA_ACCOUNT_ID)).rejects.toMatchObject({ statusCode: 503 })
+    await expect(listLegacyDirectusUuidSubjectsForAccount(ELDRA_ACCOUNT_ID)).rejects.toMatchObject({ statusCode: 503 })
     logged.mockRestore()
   })
 

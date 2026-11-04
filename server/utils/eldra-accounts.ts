@@ -92,6 +92,19 @@ export function buildGrantKey(accountId: string, capability: string): string {
   return `${accountId}|${capability}`
 }
 
+// General UUID shape (any version/variant -- not pinned to v4) -- the
+// boundary check for everything below `listLegacyDirectusUuidSubjectsForAccount`.
+// Directus's own `uuid` field special always produces this shape; an
+// OIDC/social provider's `sub` claim is an opaque string with NO shape
+// guarantee at all (a 64-character hex digest, an email-like string, a
+// numeric id -- whatever that provider happens to use) and must never be
+// assumed to look like one just because some values incidentally could.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value)
+}
+
 function normalizeAccount(row: any): EldraAccount {
   return {
     id: String(row?.id ?? ''),
@@ -273,20 +286,47 @@ export async function linkIdentityToAccount(input: LinkIdentityInput): Promise<L
   return { outcome: 'linked' }
 }
 
-// Every provider subject currently linked to this Account.
+// Legacy Directus user ids linked to this Account, for the ONLY use this
+// function's result is safe for: a `_in` filter against a UUID-typed
+// column that predates the Eldra Account id -- world_memberships.account_id
+// and roll_events.roller_user_id, both `uuid` in Directus's own schema
+// (scripts/directus/create-world-memberships-schema.mjs,
+// create-roll-events-schema.mjs). Those stores are Directus-owned and are
+// not re-keyed by Phase 1 (a bulk re-key of live content is its own
+// explicitly-approved migration), so a read against them must still match
+// the DIRECTUS user id a row was written with, alongside the Eldra
+// Account id new rows use.
 //
-// WHY THIS IS EXPOSED. Rows written before Phase 1 key an account by its
-// DIRECTUS user id -- world_memberships.account_id and
-// roll_events.roller_user_id both do. Those stores are Directus-owned and
-// are not re-keyed by this phase (a bulk re-key of live content is its own
-// explicitly-approved migration), so reads against them must look for
-// either identifier. Returning the subjects lets
-// server/utils/authorization.ts build that lookup set once per request
-// instead of every call site re-deriving it. Writes always use the Eldra
-// Account id, so the legacy half of the set shrinks to nothing over time.
-export async function listIdentitySubjectsForAccount(accountId: string): Promise<string[]> {
+// WORLDS-LOADING REGRESSION, FIXED HERE (generic OIDC identity linking).
+// This function used to be `listIdentitySubjectsForAccount` and returned
+// EVERY linked provider's subject, unfiltered -- correct only by
+// accident, because every provider_subject in this store was a Directus
+// user id (hence a UUID) until OIDC identity linking (server/utils/eldra-accounts.ts's
+// own linkIdentityToAccount) made it possible to link a second,
+// NON-Directus identity to an Account whose `provider` is an OIDC issuer
+// URL and whose `provider_subject` is that provider's own opaque `sub`
+// claim -- a 64-character hex digest in the production failure, but
+// structurally no particular shape at all. That value flowed, unfiltered,
+// into server/utils/authorization.ts's `accountLookupKeys`, and from
+// there into world_memberships' and roll_events' own `_in` filters against
+// a `uuid`-typed column, which Postgres (via Directus) rejects outright --
+// "invalid input syntax for type uuid" -- taking down the Worlds list (and
+// private-roll history) for the ACCOUNT THAT LINKED THE IDENTITY, the
+// moment resolvePrincipal next ran for them.
+//
+// THE FIX: filter to links whose provider is Directus AND whose subject
+// is UUID-shaped (isUuid, above) -- defense in depth, since a Directus
+// user id should always be a UUID, but "should always be" is exactly the
+// assumption that broke here once a second provider existed. An OIDC (or
+// any future non-Directus) provider's subject is categorically EXCLUDED,
+// never merely filtered by shape -- a provider is free to use UUID-shaped
+// subjects of its own, and those must still never be trusted as a
+// Directus user id just because they happen to parse as one.
+export async function listLegacyDirectusUuidSubjectsForAccount(accountId: string): Promise<string[]> {
   const links = await findIdentityLinksByAccount(accountId)
-  return links.map((link) => link.providerSubject).filter(Boolean)
+  return links
+    .filter((link) => link.provider === DIRECTUS_PROVIDER && isUuid(link.providerSubject))
+    .map((link) => link.providerSubject)
 }
 
 // The Account's explicitly granted platform capabilities, as raw strings.

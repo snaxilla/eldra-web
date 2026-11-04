@@ -71,6 +71,7 @@
 
 import {
   OWNERLESS_BACKFILL_FLAG,
+  PLATFORM_CAPABILITIES,
   formatPlan,
   planPlatformAdminBootstrap
 } from './lib/platform-admin-plan.mjs'
@@ -86,25 +87,6 @@ const DIRECTUS_TOKEN =
   process.env.NUXT_DIRECTUS_TOKEN ||
   process.env.NITRO_DIRECTUS_TOKEN ||
   ''
-
-// Must match PlatformCapability in server/utils/authorization.ts. A value
-// here that is not in that union is inert: resolvePlatformCapabilities
-// filters unknown grants out rather than trusting them, so a drift between
-// the two lists fails closed.
-export const PLATFORM_CAPABILITIES = [
-  'platform.account.manage',
-  'platform.package.install',
-  'platform.package.publish',
-  'platform.package.remove',
-  'platform.contentpack.install',
-  'platform.contentpack.publish',
-  'platform.contentpack.remove',
-  'platform.world.create',
-  'platform.world.list',
-  'platform.world.delete',
-  'platform.settings.manage',
-  'platform.breakglass.enter'
-]
 
 const PROVIDER = 'directus'
 

@@ -10,9 +10,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock, resolveAccountDisplayNamesMock } = vi.hoisted(() => ({
+const { directusServiceRequestMock, resolveAccountDisplayNamesMock, getAccountByIdMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
-  resolveAccountDisplayNamesMock: vi.fn()
+  resolveAccountDisplayNamesMock: vi.fn(),
+  getAccountByIdMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -26,7 +27,8 @@ vi.mock('../../../server/utils/directus', () => ({
 // resolves nothing, so every existing test still exercises the Directus
 // fallback path exactly as before.
 vi.mock('../../../server/utils/eldra-accounts', () => ({
-  resolveAccountDisplayNames: resolveAccountDisplayNamesMock
+  resolveAccountDisplayNames: resolveAccountDisplayNamesMock,
+  getAccountById: getAccountByIdMock
 }))
 
 import {
@@ -42,6 +44,12 @@ beforeEach(() => {
   directusServiceRequestMock.mockReset()
   resolveAccountDisplayNamesMock.mockReset()
   resolveAccountDisplayNamesMock.mockResolvedValue(new Map())
+  getAccountByIdMock.mockReset()
+  // Default: every accountId these tests pass resolves to a real, active
+  // Account -- so existing tests that predate the validation keep passing
+  // unchanged, and only the tests that specifically exercise rejection
+  // override this.
+  getAccountByIdMock.mockResolvedValue({ id: 'account-2', displayName: 'Account Two', status: 'active' })
 })
 
 function jsonResponse(data: unknown) {
@@ -309,6 +317,32 @@ describe('addMember', () => {
 
     const postCalls = directusServiceRequestMock.mock.calls.filter(([, options]) => options.method === 'POST')
     expect(postCalls).toHaveLength(0)
+  })
+
+  // Player Management identity-boundary fix: accountId is no longer
+  // trusted on faith -- it must resolve to a real, active Eldra Account
+  // before a membership row is ever written.
+  it('refuses an accountId that does not resolve to a real Account', async () => {
+    getAccountByIdMock.mockResolvedValue(null)
+
+    await expect(addMember(5, 'not-a-real-account', 'player')).rejects.toMatchObject({ statusCode: 400 })
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses an accountId for a suspended Account', async () => {
+    getAccountByIdMock.mockResolvedValue({ id: 'account-2', displayName: 'Suspended', status: 'suspended' })
+
+    await expect(addMember(5, 'account-2', 'player')).rejects.toMatchObject({ statusCode: 400 })
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('checks the Account exists BEFORE checking for a duplicate membership', async () => {
+    getAccountByIdMock.mockResolvedValue(null)
+    directusServiceRequestMock.mockImplementation(async () => {
+      throw new Error('should not query world_memberships at all')
+    })
+
+    await expect(addMember(5, 'not-a-real-account', 'player')).rejects.toMatchObject({ statusCode: 400 })
   })
 })
 

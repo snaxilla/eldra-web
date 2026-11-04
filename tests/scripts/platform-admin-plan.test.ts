@@ -299,3 +299,23 @@ describe('directusDisplayName', () => {
     expect(directusDisplayName({ id: SUBJECT })).toBe(SUBJECT)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Capability drift guard. This module hand-copies the capability
+// vocabulary rather than importing server/utils/authorization.ts (a .mjs
+// script importing a .ts module under ts-node/tsx is more machinery than
+// this warrants) -- which means nothing stops the two lists from silently
+// diverging as capabilities are added. This is that stop. Imported from
+// lib/platform-admin-plan.mjs specifically, NOT from the operational
+// script file, which exits the process at import time when no Directus
+// token is configured (exactly the environment this test runs in).
+// ---------------------------------------------------------------------------
+
+describe('PLATFORM_CAPABILITIES -- stays in sync with authorization.ts', () => {
+  it('matches ALL_PLATFORM_CAPABILITIES exactly, as a set', async () => {
+    const { PLATFORM_CAPABILITIES } = await import('../../scripts/directus/lib/platform-admin-plan.mjs')
+    const { ALL_PLATFORM_CAPABILITIES } = await import('../../server/utils/authorization')
+
+    expect([...PLATFORM_CAPABILITIES].sort()).toEqual([...ALL_PLATFORM_CAPABILITIES].sort())
+  })
+})

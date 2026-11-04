@@ -42,7 +42,7 @@
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
 import { formatAccountDisplayName } from './accounts'
-import { resolveAccountDisplayNames } from './eldra-accounts'
+import { getAccountById, resolveAccountDisplayNames } from './eldra-accounts'
 
 // The five roles ownership-and-permissions.md §8.5/§8.7 defines. Kept as a
 // plain union (not a Directus enum) matching this project's existing
@@ -76,7 +76,13 @@ function normalizeMembership(row: any): WorldMembershipRecord {
 // (world_id, account_id). Exposed so createOwnerMembership can guard
 // against calling this twice for the same World -- e.g. a retried
 // request -- without producing two membership rows for the same account.
-async function membershipExists(worldId: string | number, accountId: string): Promise<boolean> {
+//
+// Exported (Player Management ownership): server/utils/character-ownership.ts
+// reuses this exact check to validate "does the account I am about to make
+// an owner hold a current membership in this World" -- the same
+// (world_id, account_id) exact-match question, asked about an Eldra
+// Account id rather than re-deriving its own copy.
+export async function membershipExists(worldId: string | number, accountId: string): Promise<boolean> {
   const res = await directusServiceRequest('/items/world_memberships', {
     method: 'GET',
     query: {
@@ -264,6 +270,18 @@ export async function listMembersForWorld(worldId: string | number): Promise<Wor
 // Adds an existing account to a World with the given role. Never `owner`
 // -- see the OWNER INVARIANT note at the top of this file; assigning
 // ownership is `world.transfer_ownership`, out of this task's scope.
+//
+// VALIDATES THE ACCOUNT EXISTS NOW (Player Management identity-boundary
+// fix). Before this, `accountId` was written straight into
+// `world_memberships.account_id` with no check beyond uniqueness --
+// harmless when the caller was always `server/api/accounts/search`'s own
+// result (a real id, by construction), but nothing enforced that
+// invariant here. Now that `searchAccounts` resolves Eldra Account ids
+// rather than handing back whatever a Directus user row happened to carry
+// (see server/utils/accounts.ts's own header), this is the one place that
+// confirms the id a client supplies is still a real, active Account --
+// the same validation server/utils/character-ownership.ts performs before
+// assigning a character owner, kept consistent rather than reinvented.
 export async function addMember(
   worldId: string | number,
   accountId: string,
@@ -274,6 +292,14 @@ export async function addMember(
       statusCode: 400,
       statusMessage: 'Cannot add a member with role "owner" -- a World already has exactly one, assigned at creation.'
     })
+  }
+
+  const account = await getAccountById(accountId)
+  if (!account) {
+    throw createError({ statusCode: 400, statusMessage: `Account ${accountId} does not exist` })
+  }
+  if (account.status !== 'active') {
+    throw createError({ statusCode: 400, statusMessage: `Account ${accountId} is not active` })
   }
 
   if (await membershipExists(worldId, accountId)) {

@@ -2,14 +2,18 @@
 // (Revision 2) §5.3/§6.1/§10.3. This task's OBJECTIVE: an administrator
 // creates a new Player entirely from Eldra, without ever opening Directus.
 //
-// A "Player" IS an Account (server/utils/accounts.ts) IS a Directus user --
-// unchanged from every other place this codebase already established that
-// identity (Principal.accountId in server/utils/authorization.ts,
-// world_memberships.account_id). This module's only job is the one thing
-// accounts.ts didn't need until now: WRITING a new one, while keeping
-// every Directus-specific detail entirely server-side and out of the UI's
-// vocabulary (this task's own IMPORTANT section: "The product should stop
-// exposing that implementation detail").
+// A "Player" IS an Account -- but since Phase 1 (Eldra Account Foundation),
+// that Account is an Eldra Account, not the Directus user this module still
+// creates underneath it. `createPlayer` now resolves/provisions the Eldra
+// Account behind the just-created Directus user (server/utils/eldra-accounts.ts's
+// resolveAccountForIdentity -- the same resolution a first login performs)
+// before returning, so `accountId` here is the SAME value a later
+// searchAccounts()/login would resolve for this same person, not the
+// Directus id it would have been before Phase 1. This module's job is
+// otherwise unchanged: WRITING a new Directus user, while keeping every
+// Directus-specific detail entirely server-side and out of the UI's
+// vocabulary (the original task's own IMPORTANT section: "The product
+// should stop exposing that implementation detail").
 //
 // USERNAME, NOT EMAIL. Verified live against the deployed instance:
 // Directus's `email` field enforces real email-format validation at write
@@ -40,6 +44,7 @@
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
 import { formatAccountDisplayName, type AccountSearchResult } from './accounts'
+import { resolveAccountForIdentity } from './eldra-accounts'
 
 const USERNAME_EMAIL_DOMAIN = 'players.eldra.app'
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/
@@ -173,8 +178,26 @@ export async function createPlayer(input: CreatePlayerInput): Promise<Player> {
   }
 
   const row = res?.data ?? res
-  return {
-    accountId: String(row?.id ?? ''),
+
+  // Player Management identity-boundary fix: resolves (and, on this first
+  // sight, creates) the Eldra Account behind this brand-new Directus user
+  // -- the SAME resolution a first login performs. Without this, a
+  // just-created Player's `accountId` would be the Directus id, while
+  // every later lookup of that same person (searchAccounts, a login)
+  // resolves the ELDRA id -- two different values naming one person,
+  // exactly the inconsistency Phase 1 exists to eliminate. This is what
+  // keeps "Create Player -> immediately searchable -> immediately
+  // addable to a World" (this module's own Player Directory workflow
+  // guarantee) intact now that addMember validates its accountId against
+  // a real Eldra Account rather than trusting it on faith.
+  const account = await resolveAccountForIdentity({
+    provider: 'directus',
+    providerSubject: String(row?.id ?? ''),
     displayName: formatAccountDisplayName(row)
+  })
+
+  return {
+    accountId: account.id,
+    displayName: account.displayName
   }
 }

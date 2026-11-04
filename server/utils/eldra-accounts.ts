@@ -230,6 +230,93 @@ export async function listPlatformGrants(accountId: string): Promise<string[]> {
     .filter(Boolean)
 }
 
+// Looks up one Account by id, with no side effects -- never creates one.
+// For callers that must validate a CALLER-SUPPLIED id (an ownership
+// assignment, a membership write): "this string does not name a real
+// Account" is a validation failure for them, never a reason to mint one.
+// `resolveAccountForIdentity` is the only function in this module allowed
+// to create.
+export async function getAccountById(accountId: string): Promise<EldraAccount | null> {
+  const id = String(accountId ?? '').trim()
+  if (!id) return null
+  return await findAccountById(id)
+}
+
+export type IdentitySubject = {
+  providerSubject: string
+  // Seed data for first-sight provisioning only, exactly like
+  // ResolveAccountInput.displayName -- never a lookup key.
+  displayName: string
+}
+
+// Batch form of resolveAccountForIdentity, for a caller that needs the
+// Account behind many identities in one pass (searchAccounts, below --
+// up to 20 Directus users per query). Two round trips cover the common
+// case where every subject has already been seen; a subject with no
+// existing link falls through to resolveAccountForIdentity one at a
+// time, which is what makes an identity's SECOND and later appearances in
+// a search cheap while its FIRST stays exactly as safe (race-checked,
+// never matched by name/email) as a first login.
+//
+// Keyed by providerSubject in the result map -- never by displayName or
+// any other field a caller might be tempted to merge on.
+export async function resolveAccountsForIdentities(
+  provider: IdentityProvider,
+  subjects: readonly IdentitySubject[]
+): Promise<Map<string, EldraAccount>> {
+  const bySubject = new Map<string, IdentitySubject>()
+  for (const subject of subjects) {
+    const providerSubject = String(subject?.providerSubject ?? '').trim()
+    if (providerSubject) {
+      bySubject.set(providerSubject, { providerSubject, displayName: String(subject?.displayName ?? '') })
+    }
+  }
+
+  if (bySubject.size === 0) {
+    return new Map()
+  }
+
+  const identityKeys = [...bySubject.keys()].map((providerSubject) => buildIdentityKey(provider, providerSubject))
+  const links = await findIdentityLinksByKeys(identityKeys)
+
+  const accountIdBySubject = new Map<string, string>()
+  for (const link of links) {
+    accountIdBySubject.set(link.providerSubject, link.accountId)
+  }
+
+  const accountIds = [...new Set(accountIdBySubject.values())]
+  const accounts = await findAccountsByIds(accountIds)
+  const accountsById = new Map(accounts.map((account) => [account.id, account]))
+
+  const result = new Map<string, EldraAccount>()
+  const unresolved: IdentitySubject[] = []
+
+  for (const [providerSubject, info] of bySubject) {
+    const accountId = accountIdBySubject.get(providerSubject)
+    const account = accountId ? accountsById.get(accountId) : undefined
+    if (account) {
+      result.set(providerSubject, account)
+    } else {
+      // No link yet (never authenticated, never searched before) -- or a
+      // link whose Account row is missing, which resolveAccountForIdentity
+      // treats as the orphan case it already fails loudly on. Either way,
+      // the one-at-a-time path is what owns deciding.
+      unresolved.push(info)
+    }
+  }
+
+  for (const info of unresolved) {
+    const account = await resolveAccountForIdentity({
+      provider,
+      providerSubject: info.providerSubject,
+      displayName: info.displayName
+    })
+    result.set(info.providerSubject, account)
+  }
+
+  return result
+}
+
 // Display names for Eldra Account ids. Ids that are NOT Eldra Accounts --
 // a legacy Directus-keyed membership or roll row -- are simply absent from
 // the returned map, which is what lets the caller fall back to its
@@ -359,6 +446,38 @@ async function findIdentityLinkByKey(identityKey: string): Promise<EldraIdentity
 
   const row = Array.isArray(res?.data) ? res.data[0] : null
   return row ? normalizeIdentityLink(row) : null
+}
+
+// Batch counterpart of findIdentityLinkByKey, for resolveAccountsForIdentities.
+async function findIdentityLinksByKeys(identityKeys: readonly string[]): Promise<EldraIdentityLink[]> {
+  if (identityKeys.length === 0) return []
+
+  const res: any = await identityStoreRequest('findIdentityLinksByKeys', `/items/${IDENTITY_LINKS_COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: { identity_key: { _in: identityKeys as string[] } },
+      limit: -1,
+      fields: IDENTITY_LINK_FIELDS
+    }
+  })
+
+  return (Array.isArray(res?.data) ? res.data : []).map(normalizeIdentityLink)
+}
+
+// Batch counterpart of findAccountById, for resolveAccountsForIdentities.
+async function findAccountsByIds(accountIds: readonly string[]): Promise<EldraAccount[]> {
+  if (accountIds.length === 0) return []
+
+  const res: any = await identityStoreRequest('findAccountsByIds', `/items/${ACCOUNTS_COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: { id: { _in: accountIds as string[] } },
+      limit: -1,
+      fields: ACCOUNT_FIELDS
+    }
+  })
+
+  return (Array.isArray(res?.data) ? res.data : []).map(normalizeAccount)
 }
 
 async function findIdentityLinksByAccount(accountId: string): Promise<EldraIdentityLink[]> {

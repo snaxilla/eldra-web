@@ -48,6 +48,16 @@ const contextDrawerOpen = ref(false)
 // below), means no card's own height ever depends on this state at all.
 const managingEntity = ref<any | null>(null)
 
+// Player Management ownership + deletion: the drawer confirms a delete
+// itself (its own impact-preview + "Yes, Delete" flow) and emits this
+// once it has actually happened server-side -- all this page does is
+// refresh the roster so the removed character disappears from the grid,
+// the same "always refresh from the server, never patch optimistically"
+// convention the rest of this page already follows for grants/transfers.
+function onCharacterDeleted() {
+  refreshParty()
+}
+
 const grantTargetEntityId = ref('')
 const itemSearch = ref('')
 const itemSearchPending = ref(false)
@@ -1435,10 +1445,12 @@ async function refreshAdmin() {
          was opened from. -->
     <AdminPlayerCharacterDrawer
       :entity="managingEntity"
+      :world-id="worldId"
       :entity-id="entityId"
       :entity-title="entityTitle"
       :entity-type-label="entityTypeLabel"
       @close="managingEntity = null"
+      @deleted="onCharacterDeleted"
     />
   </div>
 </template>

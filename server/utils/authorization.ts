@@ -92,6 +92,25 @@ export type PlatformCapability =
   | 'platform.world.delete'
   | 'platform.settings.manage'
   | 'platform.breakglass.enter'
+  // Player Management (Game Admin): reassign or delete a Player Character
+  // regardless of which account currently owns it, or which (if any)
+  // World role the admin performing the action holds. PLATFORM scope,
+  // not world scope -- deliberately, because "regardless of... ordinary
+  // World role" is exactly the property a world.* capability cannot give:
+  // can()'s world branch is authoritative only when a membership row
+  // exists for that World, and a Platform Admin may hold none at all
+  // (architecture doc §8.1 -- Platform Admin is not a World superuser).
+  // Granting world.character.edit_any instead would have silently handed
+  // this authority to every ordinary GM/Owner too, which the brief this
+  // capability was added for explicitly rules out ("do not silently
+  // broaden World GM capabilities"). A fresh, narrow capability --
+  // nobody, including the already-bootstrapped platform administrator,
+  // holds it until it is explicitly granted (see
+  // scripts/directus/bootstrap-eldra-platform-admin.mjs's own
+  // PLATFORM_CAPABILITIES list, which this value was added to in the same
+  // change, kept in sync by tests/scripts/platform-admin-plan.test.ts's
+  // drift check).
+  | 'platform.character.manage'
 
 export type WorldCapability =
   | 'world.read'
@@ -124,7 +143,12 @@ export type WorldCapability =
 
 export type Capability = PlatformCapability | WorldCapability
 
-const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
+// Exported so a provisioning script (scripts/directus/bootstrap-eldra-platform-admin.mjs)
+// and its own test (tests/scripts/platform-admin-plan.test.ts) can assert
+// their hand-copied PLATFORM_CAPABILITIES list never drifts from this one
+// -- the actual vocabulary resolvePlatformCapabilities filters grants
+// against lives here, once.
+export const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.account.manage',
   'platform.package.install',
   'platform.package.publish',
@@ -136,7 +160,8 @@ const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.world.list',
   'platform.world.delete',
   'platform.settings.manage',
-  'platform.breakglass.enter'
+  'platform.breakglass.enter',
+  'platform.character.manage'
 ]
 
 // Exported so a route can compute "every capability this Principal holds

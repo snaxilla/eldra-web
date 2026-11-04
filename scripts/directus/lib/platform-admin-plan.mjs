@@ -40,6 +40,28 @@
 
 export const OWNERLESS_BACKFILL_FLAG = '--backfill-ownerless-worlds'
 
+// Must match ALL_PLATFORM_CAPABILITIES in server/utils/authorization.ts --
+// the actual vocabulary resolvePlatformCapabilities filters grants
+// against. Kept here (rather than inline in the operational script) so
+// tests/scripts/platform-admin-plan.test.ts can import it with no
+// side effects; the script re-exports it unchanged so nothing that
+// imported it from there before has to change.
+export const PLATFORM_CAPABILITIES = [
+  'platform.account.manage',
+  'platform.package.install',
+  'platform.package.publish',
+  'platform.package.remove',
+  'platform.contentpack.install',
+  'platform.contentpack.publish',
+  'platform.contentpack.remove',
+  'platform.world.create',
+  'platform.world.list',
+  'platform.world.delete',
+  'platform.settings.manage',
+  'platform.breakglass.enter',
+  'platform.character.manage'
+]
+
 /**
  * Resolves the display name for a Directus user row the same way
  * server/utils/accounts.ts's formatAccountDisplayName does, so a bootstrapped

@@ -10,12 +10,23 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock } = vi.hoisted(() => ({
-  directusServiceRequestMock: vi.fn()
+const { directusServiceRequestMock, resolveAccountForIdentityMock } = vi.hoisted(() => ({
+  directusServiceRequestMock: vi.fn(),
+  resolveAccountForIdentityMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
+}))
+
+// Player Management identity-boundary fix: createPlayer now resolves the
+// Eldra Account behind the Directus user it just created. Mocked at the
+// boundary here -- resolveAccountForIdentity has its own dedicated tests
+// (tests/server/utils/eldra-accounts.test.ts); what this file tests is
+// that createPlayer CALLS it correctly and returns ITS result, not that
+// resolution itself works.
+vi.mock('../../../server/utils/eldra-accounts', () => ({
+  resolveAccountForIdentity: resolveAccountForIdentityMock
 }))
 
 import { createPlayer, isValidUsername, normalizeUsername, resolveLoginEmail, usernameToEmail } from '../../../server/utils/players'
@@ -26,6 +37,16 @@ function jsonResponse(data: unknown) {
 
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
+  resolveAccountForIdentityMock.mockReset()
+  // Default: resolves to an Eldra Account id DIFFERENT from the Directus
+  // user id the fake Directus below returns -- so a test that fails to
+  // distinguish "Directus id" from "Eldra id" fails loudly instead of
+  // passing by coincidence.
+  resolveAccountForIdentityMock.mockImplementation(async (input: any) => ({
+    id: `eldra-${input.providerSubject}`,
+    displayName: input.displayName,
+    status: 'active'
+  }))
 })
 
 describe('normalizeUsername / isValidUsername / usernameToEmail -- pure', () => {
@@ -111,7 +132,10 @@ describe('createPlayer -- creation', () => {
 
     const player = await createPlayer({ displayName: 'Johnny Silverhand', username: 'Silverhand', password: 'longenough1' })
 
-    expect(player.accountId).toBe('account-42')
+    // THE PHASE 1 FIX: accountId is the resolved ELDRA Account id, never
+    // the raw Directus user id the fake Directus above returned.
+    expect(player.accountId).toBe('eldra-account-42')
+    expect(player.accountId).not.toBe('account-42')
     expect(player.displayName).toBe('Johnny Silverhand')
 
     const postCall = directusServiceRequestMock.mock.calls.find(([, options]) => options.method === 'POST')
@@ -120,6 +144,21 @@ describe('createPlayer -- creation', () => {
       password: 'longenough1',
       first_name: 'Johnny',
       last_name: 'Silverhand'
+    })
+  })
+
+  it('resolves the Eldra Account using the NEW Directus user id as the provider subject', async () => {
+    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+      if (options.method === 'GET') return jsonResponse([])
+      return jsonResponse({ id: 'account-99', email: options.body.email, first_name: options.body.first_name, last_name: options.body.last_name })
+    })
+
+    await createPlayer({ displayName: 'V', username: 'v-valerie', password: 'longenough1' })
+
+    expect(resolveAccountForIdentityMock).toHaveBeenCalledWith({
+      provider: 'directus',
+      providerSubject: 'account-99',
+      displayName: 'V'
     })
   })
 

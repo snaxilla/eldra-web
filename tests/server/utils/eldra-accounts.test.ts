@@ -23,10 +23,12 @@ vi.mock('../../../server/utils/directus', () => ({
 import {
   buildGrantKey,
   buildIdentityKey,
+  getAccountById,
   listIdentitySubjectsForAccount,
   listPlatformGrants,
   resolveAccountDisplayNames,
-  resolveAccountForIdentity
+  resolveAccountForIdentity,
+  resolveAccountsForIdentities
 } from '../../../server/utils/eldra-accounts'
 
 const DIRECTUS_USER_ID = '12dbac5d-476b-4933-819a-c83de299239a'
@@ -54,7 +56,9 @@ function installStore(options: { links?: any[]; accounts?: any[]; grants?: any[]
 
     if (path === '/items/eldra_identity_links' && opts.method === 'GET') {
       const key = filter?.identity_key?._eq
+      const keys = filter?.identity_key?._in
       const accountId = filter?.account_id?._eq
+      if (keys) return jsonResponse(links.filter((l) => keys.includes(l.identity_key)))
       if (key !== undefined) return jsonResponse(links.filter((l) => l.identity_key === key))
       return jsonResponse(links.filter((l) => l.account_id === accountId))
     }
@@ -495,5 +499,126 @@ describe('identity-store error boundary', () => {
     expect(account.id).toBe('winner-account')
     expect(logged).not.toHaveBeenCalled()
     logged.mockRestore()
+  })
+})
+
+describe('getAccountById', () => {
+  it('returns the Account for a real id', async () => {
+    installStore({ accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam Ledoux', status: 'active' }] })
+
+    const account = await getAccountById(ELDRA_ACCOUNT_ID)
+
+    expect(account).toEqual({ id: ELDRA_ACCOUNT_ID, displayName: 'Sam Ledoux', status: 'active' })
+  })
+
+  it('returns null for an unknown id -- never throws, never creates one', async () => {
+    const store = installStore()
+
+    const account = await getAccountById('not-a-real-account')
+
+    expect(account).toBeNull()
+    expect(store.createdCount()).toBe(0)
+  })
+
+  it('returns null for a blank id without querying the store', async () => {
+    const account = await getAccountById('   ')
+
+    expect(account).toBeNull()
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveAccountsForIdentities', () => {
+  it('resolves every subject that already has a link, in two batched calls', async () => {
+    const store = installStore({
+      accounts: [
+        { id: 'account-a', display_name: 'Alice', status: 'active' },
+        { id: 'account-b', display_name: 'Bob', status: 'active' }
+      ],
+      links: [
+        { id: 'l1', account_id: 'account-a', provider: 'directus', provider_subject: 'subject-a', identity_key: 'directus|subject-a' },
+        { id: 'l2', account_id: 'account-b', provider: 'directus', provider_subject: 'subject-b', identity_key: 'directus|subject-b' }
+      ]
+    })
+
+    const result = await resolveAccountsForIdentities('directus', [
+      { providerSubject: 'subject-a', displayName: 'Alice' },
+      { providerSubject: 'subject-b', displayName: 'Bob' }
+    ])
+
+    expect(result.get('subject-a')?.id).toBe('account-a')
+    expect(result.get('subject-b')?.id).toBe('account-b')
+    expect(store.createdCount()).toBe(0)
+    // One batched link lookup, one batched account lookup -- not one pair per subject.
+    const getCalls = directusServiceRequestMock.mock.calls.filter(([, opts]) => opts.method === 'GET')
+    expect(getCalls).toHaveLength(2)
+  })
+
+  it('provisions a brand-new Account for a subject with no existing link', async () => {
+    const store = installStore()
+
+    const result = await resolveAccountsForIdentities('directus', [
+      { providerSubject: DIRECTUS_USER_ID, displayName: 'New Player' }
+    ])
+
+    expect(result.get(DIRECTUS_USER_ID)?.displayName).toBe('New Player')
+    expect(store.createdCount()).toBe(1)
+  })
+
+  it('mixes the batched-lookup path and the create path in one call', async () => {
+    const store = installStore({
+      accounts: [{ id: 'account-a', display_name: 'Alice', status: 'active' }],
+      links: [
+        { id: 'l1', account_id: 'account-a', provider: 'directus', provider_subject: 'subject-a', identity_key: 'directus|subject-a' }
+      ]
+    })
+
+    const result = await resolveAccountsForIdentities('directus', [
+      { providerSubject: 'subject-a', displayName: 'Alice' },
+      { providerSubject: 'subject-new', displayName: 'Brand New' }
+    ])
+
+    expect(result.get('subject-a')?.id).toBe('account-a')
+    expect(result.get('subject-new')?.displayName).toBe('Brand New')
+    expect(store.createdCount()).toBe(1)
+  })
+
+  it('never merges two different subjects into one Account, even with identical display names', async () => {
+    installStore()
+
+    const result = await resolveAccountsForIdentities('directus', [
+      { providerSubject: 'subject-x', displayName: 'Bob Smith' },
+      { providerSubject: 'subject-y', displayName: 'Bob Smith' }
+    ])
+
+    expect(result.get('subject-x')!.id).not.toBe(result.get('subject-y')!.id)
+  })
+
+  it('is idempotent -- resolving the same batch twice never creates a second Account', async () => {
+    const store = installStore()
+
+    await resolveAccountsForIdentities('directus', [{ providerSubject: DIRECTUS_USER_ID, displayName: 'X' }])
+    await resolveAccountsForIdentities('directus', [{ providerSubject: DIRECTUS_USER_ID, displayName: 'Renamed' }])
+
+    expect(store.createdCount()).toBe(1)
+  })
+
+  it('returns an empty map for an empty subject list, with no store call', async () => {
+    const result = await resolveAccountsForIdentities('directus', [])
+
+    expect(result.size).toBe(0)
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('deduplicates repeated subjects in the input', async () => {
+    const store = installStore()
+
+    const result = await resolveAccountsForIdentities('directus', [
+      { providerSubject: DIRECTUS_USER_ID, displayName: 'X' },
+      { providerSubject: DIRECTUS_USER_ID, displayName: 'X' }
+    ])
+
+    expect(result.size).toBe(1)
+    expect(store.createdCount()).toBe(1)
   })
 })

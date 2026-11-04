@@ -940,10 +940,14 @@ is a single module with its Directus adapter isolated behind an internal divider
 *Future phase — not started.*
 
 **Phase 4 — Entity ownership.** Owning Account on entities; `character.edit_own` vs `.edit_any`.
-*Future phase — not started, and deliberately excluded from Phase 1.* It is now **unblocked**: a
-stable, provider-neutral Account id is the thing it needed and did not have. What it still needs is
-its own linked-record semantics and tests (what happens to a character when its owning Account is
-removed), which is why it was not bundled in.
+*Partially done.* `entities.owner_account_id` (nullable, unassigned by default, no backfill) and the
+append-only `entity_ownership_changes` history exist —
+`scripts/directus/create-character-ownership-schema.mjs`, registered in `bootstrap.mjs` — and Game
+Admin can assign/reassign/unassign a Player Character's owner through `server/utils/character-ownership.ts`,
+gated by the new `platform.character.manage` capability (deliberately **not** granted to any role by
+default — it is a fresh grant, not inherited from the existing `platform.settings.manage` bootstrap).
+`world.character.edit_own` is still **not** wired up anywhere — that remains future work, now
+unblocked by the same column but not implemented here.
 
 **Phase 5 — External providers.** OAuth/OIDC per provider as additional `CredentialVerifier`
 implementations. *Future phase — not started. No provider is configured, chosen, or named in code:*

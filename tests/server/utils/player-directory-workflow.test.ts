@@ -6,16 +6,23 @@
 // TESTING section ("Player immediately searchable", "Player immediately
 // addable to a World").
 //
-// server/utils/players.ts, server/utils/accounts.ts, and
-// server/utils/world-memberships.ts each have their own dedicated unit
-// tests (tests/server/utils/players.test.ts,
-// tests/server/utils/world-memberships.test.ts). This file exists
-// specifically to prove the THREE compose correctly end-to-end against a
-// single shared fake Directus backing store: createPlayer's write and
+// server/utils/players.ts, server/utils/accounts.ts,
+// server/utils/world-memberships.ts, and server/utils/eldra-accounts.ts
+// each have their own dedicated unit tests. This file exists specifically
+// to prove all four compose correctly end-to-end against a single shared
+// fake Directus backing store: createPlayer's write and
 // searchAccounts'/addMember's reads all go through the SAME mocked
 // directusServiceRequest with no caching layer anywhere in between, which
 // is the actual code-level guarantee behind "no page refresh should be
 // required" -- there is nothing that COULD go stale.
+//
+// PLAYER MANAGEMENT IDENTITY-BOUNDARY FIX adds the Eldra Account layer to
+// this same fake store (eldra_accounts, eldra_identity_links) rather than
+// mocking it away -- the whole point of this file is proving the REAL
+// chain composes, and that chain now runs THROUGH that layer:
+// createPlayer provisions an Account, searchAccounts/addMember resolve
+// and validate against it. A Player's `accountId` is therefore the Eldra
+// Account id end-to-end, never the Directus user id underneath it.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -40,8 +47,11 @@ import { addMember } from '../../../server/utils/world-memberships'
 function createFakeDirectus() {
   const users: any[] = []
   const memberships: any[] = []
+  const eldraAccounts: any[] = []
+  const identityLinks: any[] = []
   let nextUserId = 1
   let nextMembershipId = 1
+  let nextAccountId = 1
 
   async function handle(path: string, options: any) {
     const method = options?.method ?? 'GET'
@@ -57,6 +67,8 @@ function createFakeDirectus() {
       let results = users
       if (filter?.id?._in) {
         results = users.filter((u) => filter.id._in.includes(u.id))
+      } else if (filter?.id?._eq) {
+        results = users.filter((u) => u.id === filter.id._eq)
       } else if (filter?.email?._eq) {
         results = users.filter((u) => u.email === filter.email._eq)
       } else if (filter?._or) {
@@ -71,6 +83,45 @@ function createFakeDirectus() {
       return { data: results }
     }
 
+    // --- Eldra Account layer (server/utils/eldra-accounts.ts) ----------
+
+    if (path === '/items/eldra_identity_links' && method === 'GET') {
+      const filter = options?.query?.filter
+      let results = identityLinks
+      if (filter?.identity_key?._in) {
+        results = identityLinks.filter((l) => filter.identity_key._in.includes(l.identity_key))
+      } else if (filter?.identity_key?._eq !== undefined) {
+        results = identityLinks.filter((l) => l.identity_key === filter.identity_key._eq)
+      }
+      return { data: results }
+    }
+
+    if (path === '/items/eldra_identity_links' && method === 'POST') {
+      if (identityLinks.some((l) => l.identity_key === options.body.identity_key)) {
+        throw Object.assign(new Error('unique'), { data: { errors: [{ message: 'identity_key has to be unique.' }] } })
+      }
+      const row = { id: `link-${identityLinks.length + 1}`, ...options.body }
+      identityLinks.push(row)
+      return { data: row }
+    }
+
+    if (path === '/items/eldra_accounts' && method === 'GET') {
+      const filter = options?.query?.filter
+      let results = eldraAccounts
+      if (filter?.id?._in) {
+        results = eldraAccounts.filter((a) => filter.id._in.includes(a.id))
+      } else if (filter?.id?._eq !== undefined) {
+        results = eldraAccounts.filter((a) => a.id === filter.id._eq)
+      }
+      return { data: results }
+    }
+
+    if (path === '/items/eldra_accounts' && method === 'POST') {
+      const row = { id: `eldra-account-${nextAccountId++}`, status: 'active', ...options.body }
+      eldraAccounts.push(row)
+      return { data: row }
+    }
+
     if (path === '/items/world_memberships' && method === 'GET') {
       const filter = options?.query?.filter
       let results = memberships
@@ -78,6 +129,8 @@ function createFakeDirectus() {
         const worldId = filter._and[0]?.world_id?._eq
         const accountId = filter._and[1]?.account_id?._eq
         results = memberships.filter((m) => m.world_id === worldId && m.account_id === accountId)
+      } else if (filter?.account_id?._in) {
+        results = memberships.filter((m) => filter.account_id._in.includes(m.account_id))
       }
       return { data: results }
     }
@@ -91,7 +144,7 @@ function createFakeDirectus() {
     throw new Error(`fake Directus: unhandled ${method} ${path}`)
   }
 
-  return { handle, users, memberships }
+  return { handle, users, memberships, eldraAccounts, identityLinks }
 }
 
 beforeEach(() => {

@@ -18,15 +18,21 @@ const {
   getSessionTokenMock,
   listMembershipsForAccountMock,
   resolveAccountForIdentityMock,
+  getAccountByIdMock,
   listIdentitySubjectsForAccountMock,
-  listPlatformGrantsMock
+  listPlatformGrantsMock,
+  getEldraSessionTokenMock,
+  resolveEldraSessionMock
 } = vi.hoisted(() => ({
   fetchDirectusMeMock: vi.fn(),
   getSessionTokenMock: vi.fn(),
   listMembershipsForAccountMock: vi.fn(),
   resolveAccountForIdentityMock: vi.fn(),
+  getAccountByIdMock: vi.fn(),
   listIdentitySubjectsForAccountMock: vi.fn(),
-  listPlatformGrantsMock: vi.fn()
+  listPlatformGrantsMock: vi.fn(),
+  getEldraSessionTokenMock: vi.fn(),
+  resolveEldraSessionMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
@@ -44,9 +50,21 @@ vi.mock('../../../server/utils/world-memberships', () => ({
 // Both are mocked at the module boundary, the same way the Directus and
 // membership modules already are.
 vi.mock('../../../server/utils/eldra-accounts', () => ({
+  DIRECTUS_PROVIDER: 'directus',
   resolveAccountForIdentity: resolveAccountForIdentityMock,
+  getAccountById: getAccountByIdMock,
   listIdentitySubjectsForAccount: listIdentitySubjectsForAccountMock,
   listPlatformGrants: listPlatformGrantsMock
+}))
+
+// OIDC (this task): resolvePrincipal now checks an Eldra-issued session
+// FIRST, before ever looking at the Directus cookie. Mocked at the
+// boundary like everything else here; the default below (empty token) is
+// what makes every EXISTING Directus-path test keep passing unchanged --
+// it is exactly "no Eldra session cookie present."
+vi.mock('../../../server/utils/eldra-sessions', () => ({
+  getEldraSessionToken: getEldraSessionTokenMock,
+  resolveEldraSession: resolveEldraSessionMock
 }))
 
 vi.mock('../../../server/utils/accounts', () => ({
@@ -136,8 +154,11 @@ beforeEach(() => {
   getSessionTokenMock.mockReset()
   listMembershipsForAccountMock.mockReset()
   resolveAccountForIdentityMock.mockReset()
+  getAccountByIdMock.mockReset()
   listIdentitySubjectsForAccountMock.mockReset()
   listPlatformGrantsMock.mockReset()
+  getEldraSessionTokenMock.mockReset()
+  resolveEldraSessionMock.mockReset()
 
   listMembershipsForAccountMock.mockResolvedValue([]) // no memberships, unless a test overrides it
   resolveAccountForIdentityMock.mockResolvedValue({
@@ -147,6 +168,10 @@ beforeEach(() => {
   })
   listIdentitySubjectsForAccountMock.mockResolvedValue([])
   listPlatformGrantsMock.mockResolvedValue([]) // no platform grants, unless a test overrides it
+  // No Eldra session cookie by default -- every EXISTING test below is a
+  // Directus-session test and must fall through to that branch exactly
+  // as before OIDC existed.
+  getEldraSessionTokenMock.mockReturnValue('')
 })
 
 describe('resolvePrincipal', () => {
@@ -388,6 +413,100 @@ describe('resolvePrincipal', () => {
     listPlatformGrantsMock.mockRejectedValue(new Error('grants unavailable'))
 
     await expect(resolvePrincipal(fakeEvent)).rejects.toThrow('grants unavailable')
+  })
+})
+
+// ---------------------------------------------------------------------
+// OIDC (this task): resolvePrincipal now resolves an Account from EITHER
+// an Eldra-issued session OR a Directus one. These pin that the two
+// branches are mutually exclusive (the Eldra-session branch, when a
+// token is present, is checked FIRST and never falls through to
+// Directus), and that an OIDC-authenticated Principal is built through
+// the exact same path (accountLookupKeys, world/platform capabilities,
+// buildPrincipal) as a Directus one -- proving OIDC authentication
+// cannot bypass or shortcut Eldra's own authorization resolution.
+// ---------------------------------------------------------------------
+
+describe('resolvePrincipal -- Eldra-issued session (OIDC)', () => {
+  it('resolves a Principal from an Eldra session token, never touching Directus at all', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-eldra-token')
+    resolveEldraSessionMock.mockResolvedValue({ accountId: ELDRA_ACCOUNT_ID })
+    getAccountByIdMock.mockResolvedValue({ id: ELDRA_ACCOUNT_ID, displayName: 'OIDC User', status: 'active' })
+    listPlatformGrantsMock.mockResolvedValue(['platform.world.list'])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.accountId).toBe(ELDRA_ACCOUNT_ID)
+    expect(can(principal, 'platform.world.list', { kind: 'platform' })).toBe(true)
+    expect(fetchDirectusMeMock).not.toHaveBeenCalled()
+    expect(getSessionTokenMock).not.toHaveBeenCalled()
+    expect(resolveAccountForIdentityMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null for an invalid/expired/revoked Eldra session token -- fail closed, never falls through to Directus', async () => {
+    getEldraSessionTokenMock.mockReturnValue('stale-or-revoked-token')
+    resolveEldraSessionMock.mockResolvedValue(null)
+    getSessionTokenMock.mockReturnValue('a-directus-token-that-must-be-ignored')
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).toBeNull()
+    expect(fetchDirectusMeMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null when the session resolves but its Account no longer exists', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-eldra-token')
+    resolveEldraSessionMock.mockResolvedValue({ accountId: 'deleted-account' })
+    getAccountByIdMock.mockResolvedValue(null)
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).toBeNull()
+  })
+
+  it('returns null for a suspended Account, even with a valid Eldra session token', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-eldra-token')
+    resolveEldraSessionMock.mockResolvedValue({ accountId: ELDRA_ACCOUNT_ID })
+    getAccountByIdMock.mockResolvedValue({ id: ELDRA_ACCOUNT_ID, displayName: 'X', status: 'suspended' })
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).toBeNull()
+  })
+
+  it('a first-login OIDC Account with no grants and no memberships holds zero capabilities -- never a default/elevated Principal', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-eldra-token')
+    resolveEldraSessionMock.mockResolvedValue({ accountId: ELDRA_ACCOUNT_ID })
+    getAccountByIdMock.mockResolvedValue({ id: ELDRA_ACCOUNT_ID, displayName: 'New OIDC User', status: 'active' })
+    listPlatformGrantsMock.mockResolvedValue([])
+    listMembershipsForAccountMock.mockResolvedValue([])
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.platformCapabilities.size).toBe(0)
+    expect(can(principal, 'platform.settings.manage', { kind: 'platform' })).toBe(false)
+    expect(can(principal, 'world.read', { kind: 'world', worldId: 'any-world' })).toBe(false)
+  })
+
+  it('fails closed (propagates) when the Eldra session store itself cannot be read', async () => {
+    getEldraSessionTokenMock.mockReturnValue('raw-eldra-token')
+    resolveEldraSessionMock.mockRejectedValue(new Error('session store unavailable'))
+
+    await expect(resolvePrincipal(fakeEvent)).rejects.toThrow('session store unavailable')
+  })
+
+  it('an EMPTY Eldra session token cookie falls through to the Directus branch, exactly like no cookie at all', async () => {
+    getEldraSessionTokenMock.mockReturnValue('')
+    getSessionTokenMock.mockReturnValue('a-real-directus-token')
+    fetchDirectusMeMock.mockResolvedValue(directusAdminUser())
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(resolveEldraSessionMock).not.toHaveBeenCalled()
+    expect(fetchDirectusMeMock).toHaveBeenCalled()
   })
 })
 

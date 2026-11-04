@@ -26,6 +26,7 @@ const SCRIPTS = [
   'create-roll-events-schema.mjs',
   'create-world-presentation-settings-schema.mjs',
   'create-eldra-accounts-schema.mjs',
+  'create-eldra-sessions-schema.mjs',
   'create-character-ownership-schema.mjs'
 ]
 

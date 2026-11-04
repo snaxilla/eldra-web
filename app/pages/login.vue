@@ -36,6 +36,46 @@ const password = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
 
+// OIDC (provider-agnostic Beta identity provider sign-in). The button
+// below is shown ONLY when GET /api/auth/oidc/config reports `configured:
+// true` -- server/utils/oidc.ts's own isOidcConfigured(), never a
+// client-side guess. No issuer URL, client id, or secret ever reaches
+// this page; `configured` is the only field that endpoint returns.
+const { data: oidcConfig } = await useFetch('/api/auth/oidc/config')
+const oidcConfigured = computed(() => !!oidcConfig.value?.configured)
+
+// Carries the SAME `?redirect=` this page already honors for the
+// Directus form through to the OIDC flow, so "sign in with your identity
+// provider" lands a visitor wherever middleware/auth.ts or admin.ts
+// originally sent them here from. server/api/auth/oidc/login.get.ts
+// re-validates this with the same safeRedirectTarget this page already
+// imports -- a tampered value here is simply dropped server-side, never
+// trusted because it round-tripped through this page first.
+const oidcLoginHref = computed(() => {
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  return redirect ? `/api/auth/oidc/login?redirect=${encodeURIComponent(redirect)}` : '/api/auth/oidc/login'
+})
+
+// Generic, user-facing text for the reason codes
+// server/api/auth/oidc/callback.get.ts redirects back with -- every one of
+// those codes was already scrubbed of provider/library detail server-side
+// (see server/utils/oidc.ts's completeAuthorizationCodeGrant); this is
+// purely a code-to-sentence mapping, not a second place that decides what
+// is safe to show.
+const OIDC_ERROR_MESSAGES: Record<string, string> = {
+  cancelled: 'Sign-in was cancelled.',
+  'invalid-state': 'Your sign-in session could not be verified. Please try again.',
+  'invalid-response': 'Identity provider response was incomplete. Please try again.',
+  'not-configured': 'Identity provider sign-in is not configured.',
+  'no-flow': 'Your sign-in session expired before it finished. Please try again.',
+  'account-inactive': 'This account is inactive. Contact an administrator.'
+}
+
+const oidcErrorCode = typeof route.query.oidc_error === 'string' ? route.query.oidc_error : ''
+if (oidcErrorCode) {
+  errorMessage.value = OIDC_ERROR_MESSAGES[oidcErrorCode] || 'Sign-in was not completed. Please try again.'
+}
+
 async function submit() {
   errorMessage.value = ''
   loading.value = true
@@ -121,6 +161,26 @@ async function submit() {
             {{ loading ? 'Signing in...' : 'Sign In' }}
           </button>
         </form>
+
+        <!-- Shown only when an OIDC provider (e.g. Authentik, Zitadel --
+             never named here, per this task's provider-agnostic
+             requirement) is configured server-side. A plain navigation,
+             not a form submit: the browser needs to actually leave this
+             page for the provider's own login UI. -->
+        <template v-if="oidcConfigured">
+          <div class="my-6 flex items-center gap-3 text-xs uppercase tracking-wide text-slate-500">
+            <span class="h-px flex-1 bg-slate-800" />
+            <span>or</span>
+            <span class="h-px flex-1 bg-slate-800" />
+          </div>
+
+          <a
+            :href="oidcLoginHref"
+            class="block w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-center font-semibold text-slate-100 transition hover:border-slate-500"
+          >
+            Sign in with your identity provider
+          </a>
+        </template>
       </div>
     </div>
   </div>

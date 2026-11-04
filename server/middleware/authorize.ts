@@ -38,7 +38,21 @@ import { resolvePrincipal } from '../utils/authorization'
 // already reading the session cookie -- restated here as a literal
 // allowlist rather than a prefix match, so a future route under
 // /api/auth/** does not silently become public by accident.
-export const PUBLIC_API_ROUTES = new Set(['/api/auth/login', '/api/auth/logout', '/api/auth/me'])
+// OIDC (this task) added three routes, and deliberately NOT a fourth:
+// /api/auth/oidc/config, /login, and /callback all run before (or without)
+// any Eldra session existing -- a provider redirect to /callback carries
+// no Eldra cookie of its own. /api/auth/oidc/link is intentionally absent
+// here: starting a 'link' flow requires an already-authenticated caller
+// (see that route's own header), so it stays behind this middleware's
+// deny-by-default enforcement like any other non-public route.
+export const PUBLIC_API_ROUTES = new Set([
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/me',
+  '/api/auth/oidc/config',
+  '/api/auth/oidc/login',
+  '/api/auth/oidc/callback'
+])
 
 // Nuxt/Nitro modules that register their own server routes under /api/**
 // (a naming convention this app's own routes never use) -- e.g.

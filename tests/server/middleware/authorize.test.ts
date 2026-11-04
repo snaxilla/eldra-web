@@ -49,15 +49,33 @@ describe('isApiRoute / isPublicApiRoute / requiresAuthentication -- pure routing
     expect(isApiRoute('/_nuxt/entry.js')).toBe(false)
   })
 
-  it('the public allow-list is exactly the three routes that already read the session', () => {
+  it('the public allow-list is exactly the original three routes that already read the session', () => {
     expect(isPublicApiRoute('/api/auth/login')).toBe(true)
     expect(isPublicApiRoute('/api/auth/logout')).toBe(true)
     expect(isPublicApiRoute('/api/auth/me')).toBe(true)
   })
 
-  it('a route merely under /api/auth/ is NOT public unless it is exactly one of the three -- no prefix match', () => {
+  // OIDC (this task) -- config/login/callback all run before, or without,
+  // any Eldra session existing (a provider redirect to /callback carries
+  // no Eldra cookie of its own), so all three had to join the allow-list.
+  it('the OIDC login/discovery/callback routes are public', () => {
+    expect(isPublicApiRoute('/api/auth/oidc/config')).toBe(true)
+    expect(isPublicApiRoute('/api/auth/oidc/login')).toBe(true)
+    expect(isPublicApiRoute('/api/auth/oidc/callback')).toBe(true)
+  })
+
+  // /link is deliberately absent: starting a 'link' flow requires an
+  // ALREADY-authenticated caller (server/api/auth/oidc/link.get.ts's own
+  // header), so it stays behind deny-by-default like any other route.
+  it('the OIDC link route is deliberately NOT public -- linking requires an already-authenticated caller', () => {
+    expect(isPublicApiRoute('/api/auth/oidc/link')).toBe(false)
+    expect(requiresAuthentication('/api/auth/oidc/link')).toBe(true)
+  })
+
+  it('a route merely under /api/auth/ is NOT public unless it is exactly one of the allow-listed ones -- no prefix match', () => {
     expect(isPublicApiRoute('/api/auth/register')).toBe(false)
     expect(isPublicApiRoute('/api/auth/')).toBe(false)
+    expect(isPublicApiRoute('/api/auth/oidc/')).toBe(false)
   })
 
   it('non-API paths never require authentication, regardless of the allow-list', () => {

@@ -1,6 +1,17 @@
 import { directusRequest, getSessionToken } from '../../utils/directus'
+import { clearEldraSessionCookie, getEldraSessionToken, revokeEldraSession } from '../../utils/eldra-sessions'
 
 export default defineEventHandler(async (event) => {
+  // OIDC-issued session, if any. Checked and cleared independently of the
+  // Directus branch below -- a given login only ever set one of the two
+  // cookies, but logout must be safe to call regardless of which one (or
+  // neither, or a stale leftover from switching auth methods) is present.
+  const eldraSessionToken = getEldraSessionToken(event)
+  if (eldraSessionToken) {
+    await revokeEldraSession(eldraSessionToken)
+  }
+  clearEldraSessionCookie(event)
+
   const accessToken = getSessionToken(event)
   const refreshToken = getCookie(event, 'eldra_refresh') || ''
 

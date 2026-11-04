@@ -17,9 +17,48 @@
 // this phase's job.
 import { fetchDirectusMe } from '../../utils/directus'
 import { formatAccountDisplayName } from '../../utils/accounts'
-import { listPlatformGrants, resolveAccountForIdentity } from '../../utils/eldra-accounts'
+import { getAccountById, listPlatformGrants, resolveAccountForIdentity } from '../../utils/eldra-accounts'
+import { clearEldraSessionCookie, getEldraSessionToken, resolveEldraSession } from '../../utils/eldra-sessions'
 
 export default defineEventHandler(async (event) => {
+  // OIDC-issued session, checked FIRST and never cross-trusted with the
+  // Directus branch below -- same fixed order and "never both"
+  // reasoning as server/utils/authorization.ts's own
+  // resolveAuthenticatedAccount, which this duplicates rather than calls
+  // directly only because this route additionally needs to clear a
+  // bad/expired cookie, which that shared function (used by every OTHER
+  // route via the deny-by-default middleware) deliberately does not do.
+  const eldraSessionToken = getEldraSessionToken(event)
+  if (eldraSessionToken) {
+    const session = await resolveEldraSession(eldraSessionToken)
+    const account = session ? await getAccountById(session.accountId) : null
+
+    if (!account || account.status !== 'active') {
+      clearEldraSessionCookie(event)
+      return {
+        authenticated: false,
+        user: null,
+        accountId: null,
+        platformCapabilities: []
+      }
+    }
+
+    const platformCapabilities = await listPlatformGrants(account.id)
+
+    return {
+      authenticated: true,
+      // No Directus user record exists for an OIDC-only identity -- `email`
+      // is the one display field app/composables/useAuth.ts's displayName
+      // computed falls back to, seeded from the Account's own display
+      // name rather than left null (which would otherwise render as
+      // "Guest User" for a signed-in Account). Never the provider's raw
+      // claims, and no token/secret of any kind.
+      user: { email: account.displayName },
+      accountId: account.id,
+      platformCapabilities
+    }
+  }
+
   const token = getCookie(event, 'eldra_session')
 
   if (!token) {

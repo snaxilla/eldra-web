@@ -48,11 +48,22 @@ export const ACCOUNTS_COLLECTION = 'eldra_accounts'
 export const IDENTITY_LINKS_COLLECTION = 'eldra_identity_links'
 export const PLATFORM_GRANTS_COLLECTION = 'eldra_platform_grants'
 
-// Beta has exactly one provider. External providers (google, microsoft,
-// facebook, an OIDC broker) are deferred to a later phase and arrive as
-// additional values here -- never as a change to this module's shape, and
-// never as an input to any capability decision (§6.2 rule 4).
-export type IdentityProvider = 'directus'
+// WIDENED FOR OIDC (this task). Was a one-value literal union
+// (`'directus'`) through Phase 1; an OIDC-authenticated identity's
+// `provider` value is the VALIDATED ID TOKEN'S OWN `iss` (issuer) string
+// -- e.g. whatever `.well-known/openid-configuration` an operator's
+// configured OIDC_ISSUER_URL resolves to (server/utils/oidc.ts) -- so the
+// provider space is now genuinely open-ended, never a fixed enum. This
+// is the entire mechanism behind "Resolve identity by the validated
+// (issuer, subject) pair": `provider` IS the issuer, `providerSubject`
+// IS the subject, and `(provider, provider_subject)` was already this
+// module's own identity key before OIDC existed -- no new concept, no
+// schema change, just a value that is no longer always the literal
+// `'directus'`. Nothing in this file, or any caller, special-cases a
+// specific issuer string; an operator pointing OIDC_ISSUER_URL at a
+// different OIDC-compliant provider needs no code change here.
+export const DIRECTUS_PROVIDER = 'directus' as const
+export type IdentityProvider = string
 
 export type EldraAccount = {
   id: string
@@ -190,6 +201,76 @@ export async function resolveAccountForIdentity(input: ResolveAccountInput): Pro
   }
 
   return account
+}
+
+export type LinkIdentityInput = {
+  accountId: string
+  provider: IdentityProvider
+  providerSubject: string
+}
+
+export type LinkIdentityResult =
+  | { outcome: 'linked' }
+  | { outcome: 'already-linked' } // idempotent: this exact (provider, subject) was already linked to this exact account
+  | { outcome: 'collision'; linkedAccountId: string } // already linked, but to a DIFFERENT account
+
+// Links a VERIFIED external identity to a SPECIFIC, ALREADY-EXISTING
+// Eldra Account -- never creates a new one. The counterpart to
+// resolveAccountForIdentity, for the opposite case: "I know exactly which
+// Account this is for (the caller is already authenticated as it); I am
+// only recording that this identity ALSO belongs to it," as opposed to
+// "resolve or create whichever Account this identity belongs to."
+// server/api/auth/oidc/callback.get.ts's own header explains why the
+// target account for a link is always re-derived from the caller's own
+// LIVE session at call time, never carried through anything client-
+// influenced -- this function only ever receives an already-trusted
+// accountId, the same discipline server/utils/character-ownership.ts's
+// assignCharacterOwner already follows for its own accountId parameter.
+//
+// NEVER MATCHES BY EMAIL OR DISPLAY NAME -- this function has no such
+// parameter, structurally, same as resolveAccountForIdentity.
+export async function linkIdentityToAccount(input: LinkIdentityInput): Promise<LinkIdentityResult> {
+  const accountId = String(input.accountId ?? '').trim()
+  const providerSubject = String(input.providerSubject ?? '').trim()
+  if (!accountId || !providerSubject) {
+    throw createError({ statusCode: 500, statusMessage: 'Cannot link an identity without an account and a provider subject' })
+  }
+
+  const identityKey = buildIdentityKey(input.provider, providerSubject)
+
+  const existingLink = await findIdentityLinkByKey(identityKey)
+  if (existingLink) {
+    if (existingLink.accountId === accountId) {
+      return { outcome: 'already-linked' }
+    }
+    // COLLISION. This identity is real and verified, but it already
+    // names a DIFFERENT Account -- refusing here is what "never grant or
+    // transfer platform permissions during linking" and "never create a
+    // duplicate for an existing admin" actually mean in code: this
+    // function makes NO write in this branch at all.
+    return { outcome: 'collision', linkedAccountId: existingLink.accountId }
+  }
+
+  try {
+    await insertIdentityLink({
+      accountId,
+      provider: input.provider,
+      providerSubject,
+      identityKey
+    })
+  } catch (error: any) {
+    // Two concurrent attempts to link the SAME identity (to the same or
+    // different accounts) can still race past the check above and hit
+    // identity_key's own unique-index rejection. Re-read the winner and
+    // report the same outcome a non-racing caller would have seen.
+    const winner = await findIdentityLinkByKey(identityKey)
+    if (!winner) {
+      throw error
+    }
+    return winner.accountId === accountId ? { outcome: 'already-linked' } : { outcome: 'collision', linkedAccountId: winner.accountId }
+  }
+
+  return { outcome: 'linked' }
 }
 
 // Every provider subject currently linked to this Account.

@@ -24,6 +24,7 @@ import {
   buildGrantKey,
   buildIdentityKey,
   getAccountById,
+  linkIdentityToAccount,
   listIdentitySubjectsForAccount,
   listPlatformGrants,
   resolveAccountDisplayNames,
@@ -630,5 +631,128 @@ describe('lookupActiveAccountsForIdentities -- read-only, never creates', () => 
 
     expect(result.size).toBe(1)
     expect(store.createdCount()).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------
+// linkIdentityToAccount (OIDC, this task) -- attaching a VERIFIED
+// external identity to a SPECIFIC, already-existing Account, as opposed
+// to resolveAccountForIdentity's "resolve or create whichever Account
+// this identity belongs to." The target account is always a trusted
+// input here (the caller -- server/api/auth/oidc/link.get.ts -- derives
+// it from the CALLER'S OWN live session, never from anything the OIDC
+// flow itself carried) -- these tests are about the (provider, subject)
+// matching rules, never about re-deriving which account is "mine."
+// ---------------------------------------------------------------------
+
+const OIDC_ISSUER = 'https://idp.example.com/application/o/eldra/'
+const OIDC_SUBJECT = 'oidc-subject-001'
+
+describe('linkIdentityToAccount', () => {
+  it('links a brand-new identity to the given account', async () => {
+    const store = installStore({ accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' }] })
+
+    const result = await linkIdentityToAccount({
+      accountId: ELDRA_ACCOUNT_ID,
+      provider: OIDC_ISSUER,
+      providerSubject: OIDC_SUBJECT
+    })
+
+    expect(result).toEqual({ outcome: 'linked' })
+    expect(store.links).toHaveLength(1)
+    expect(store.links[0]).toMatchObject({
+      account_id: ELDRA_ACCOUNT_ID,
+      provider: OIDC_ISSUER,
+      provider_subject: OIDC_SUBJECT,
+      identity_key: `${OIDC_ISSUER}|${OIDC_SUBJECT}`
+    })
+  })
+
+  it('never creates a new Eldra Account -- only links to the one given', async () => {
+    const store = installStore({ accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' }] })
+
+    await linkIdentityToAccount({ accountId: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, providerSubject: OIDC_SUBJECT })
+
+    expect(store.createdCount()).toBe(0)
+  })
+
+  it('is idempotent: linking the SAME identity to the SAME account again reports already-linked, with no new row', async () => {
+    const store = installStore({
+      accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' }],
+      links: [{ id: 'l1', account_id: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, provider_subject: OIDC_SUBJECT, identity_key: `${OIDC_ISSUER}|${OIDC_SUBJECT}` }]
+    })
+
+    const result = await linkIdentityToAccount({ accountId: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, providerSubject: OIDC_SUBJECT })
+
+    expect(result).toEqual({ outcome: 'already-linked' })
+    expect(store.links).toHaveLength(1)
+  })
+
+  // THE COLLISION CASE: the identity is real and verified, but it
+  // already belongs to a DIFFERENT account. No write may happen.
+  it('refuses with a collision when the identity is already linked to a DIFFERENT account, and writes nothing', async () => {
+    const store = installStore({
+      accounts: [
+        { id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' },
+        { id: 'someone-elses-account', display_name: 'Other Person', status: 'active' }
+      ],
+      links: [{ id: 'l1', account_id: 'someone-elses-account', provider: OIDC_ISSUER, provider_subject: OIDC_SUBJECT, identity_key: `${OIDC_ISSUER}|${OIDC_SUBJECT}` }]
+    })
+
+    const result = await linkIdentityToAccount({ accountId: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, providerSubject: OIDC_SUBJECT })
+
+    expect(result).toEqual({ outcome: 'collision', linkedAccountId: 'someone-elses-account' })
+    expect(store.links).toHaveLength(1) // unchanged
+  })
+
+  // THE EXPLICIT PRODUCT RULE: email equality must never link accounts.
+  // Two different (issuer, subject) identities that happen to carry the
+  // SAME email claim remain fully separate -- this function has no email
+  // parameter at all, structurally, the same way resolveAccountForIdentity
+  // does not.
+  it('never matches or merges by email -- the function has no email parameter to do so with', async () => {
+    const store = installStore({ accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' }] })
+
+    const result = await linkIdentityToAccount({
+      accountId: ELDRA_ACCOUNT_ID,
+      provider: OIDC_ISSUER,
+      providerSubject: OIDC_SUBJECT
+    })
+
+    expect(result).toEqual({ outcome: 'linked' })
+    expect(Object.keys(store.links[0])).not.toContain('email')
+  })
+
+  it('rejects a blank account id or provider subject rather than guessing', async () => {
+    installStore()
+
+    await expect(
+      linkIdentityToAccount({ accountId: '   ', provider: OIDC_ISSUER, providerSubject: OIDC_SUBJECT })
+    ).rejects.toMatchObject({ statusCode: 500 })
+
+    await expect(
+      linkIdentityToAccount({ accountId: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, providerSubject: '   ' })
+    ).rejects.toMatchObject({ statusCode: 500 })
+  })
+
+  it('a concurrent link attempt that loses the unique-index race reports the winner\'s outcome, never throws', async () => {
+    const store = installStore({ accounts: [{ id: ELDRA_ACCOUNT_ID, display_name: 'Sam', status: 'active' }] })
+
+    let preChecked = false
+    const base = directusServiceRequestMock.getMockImplementation()!
+    directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
+      if (path === '/items/eldra_identity_links' && opts.method === 'GET' && !preChecked) {
+        preChecked = true
+        return { data: [] }
+      }
+      if (path === '/items/eldra_identity_links' && opts.method === 'POST' && preChecked && store.links.length === 0) {
+        store.links.push({ id: 'link-winner', account_id: 'someone-elses-account', provider: OIDC_ISSUER, provider_subject: OIDC_SUBJECT, identity_key: `${OIDC_ISSUER}|${OIDC_SUBJECT}` })
+      }
+      return base(path, opts)
+    })
+
+    const result = await linkIdentityToAccount({ accountId: ELDRA_ACCOUNT_ID, provider: OIDC_ISSUER, providerSubject: OIDC_SUBJECT })
+
+    expect(result).toEqual({ outcome: 'collision', linkedAccountId: 'someone-elses-account' })
   })
 })

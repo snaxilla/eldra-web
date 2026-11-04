@@ -33,19 +33,40 @@
 // propagates, resolvePrincipal fails the request, and no caller can
 // mistake "I could not read your memberships" for "you have none."
 //
-// WHAT THIS FILE STILL DELIBERATELY DOES NOT DO: no credential storage, no
-// Eldra-issued sessions, no external providers, no Invitations, no
-// repository extraction, no entity/character ownership. Directus remains
-// the credential verifier and session issuer during Beta (§6.3) --
-// `eldra_session` still carries a Directus access token, and
-// resolvePrincipal still validates it by calling Directus. Eldra owning
-// the Account id does NOT make authentication Directus-independent; it
-// makes the identity authorization decisions are ABOUT independent of
-// Directus's user model. can() stays a pure function with no I/O; the
-// membership DATA it reads is fetched by resolvePrincipal (already
-// infrastructure-adjacent, per §9.3) before can() ever runs, matching the
-// architecture doc's rule that policy is domain logic and data access is a
-// port (§9.1/§9.2).
+// OIDC (this task) ADDED ONE THING: resolvePrincipal now resolves an
+// Account from EITHER a Directus session OR an Eldra-issued one
+// (server/utils/eldra-sessions.ts), via the shared
+// `resolveAuthenticatedAccount` below. Directus remains the credential
+// verifier for its own session kind (§6.3) -- `eldra_session` still
+// carries a raw Directus access token, validated by calling Directus,
+// completely unchanged. An OIDC-authenticated session was the one case
+// with no Directus credential to validate at all, which is why it needed
+// its own session mechanism rather than reusing this one.
+//
+// WHAT STILL DID NOT NEED TO CHANGE, AND WHY THAT MATTERS: everything
+// below `resolveAuthenticatedAccount` -- accountLookupKeys,
+// resolveWorldCapabilities, listPlatformGrants, buildPrincipal, can() --
+// operates ONLY on an already-resolved `EldraAccount`, never on how it
+// was authenticated. Tracing confirmed that no business-data read or
+// write anywhere in this codebase depends on a user's own Directus
+// credential either (directusRequest, the user-scoped Directus client,
+// has exactly 5 call sites, all inside login/logout/session-validation
+// itself) -- every actual data operation already goes through the
+// service-token client, independent of which human is signed in. That is
+// why adding a second, provider-neutral way to arrive at a Principal did
+// not require touching the authorization boundary, can()'s semantics, or
+// a single one of the 62+ directusServiceRequest call sites: that
+// boundary was never coupled to Directus's own per-user credential in
+// the first place.
+//
+// WHAT THIS FILE STILL DELIBERATELY DOES NOT DO: no credential storage
+// for OIDC (no OIDC access/refresh token is ever written to a cookie or a
+// database row -- see server/utils/oidc.ts's own header), no
+// Invitations, no repository extraction, no entity/character ownership.
+// can() stays a pure function with no I/O; the membership DATA it reads
+// is fetched by resolvePrincipal (already infrastructure-adjacent, per
+// §9.3) before can() ever runs, matching the architecture doc's rule
+// that policy is domain logic and data access is a port (§9.1/§9.2).
 
 // createError is imported explicitly (rather than relied on as a Nitro
 // auto-import, the convention server/utils/directus.ts uses) because this
@@ -57,10 +78,14 @@ import { createError, type H3Event } from 'h3'
 import { fetchDirectusMe, getSessionToken } from './directus'
 import { formatAccountDisplayName } from './accounts'
 import {
+  DIRECTUS_PROVIDER,
+  getAccountById,
   listIdentitySubjectsForAccount,
   listPlatformGrants,
-  resolveAccountForIdentity
+  resolveAccountForIdentity,
+  type EldraAccount
 } from './eldra-accounts'
+import { getEldraSessionToken, resolveEldraSession } from './eldra-sessions'
 import { listMembershipsForAccount, type WorldMembershipRole } from './world-memberships'
 
 // ---------------------------------------------------------------------------
@@ -412,7 +437,43 @@ async function resolveWorldCapabilities(
 //              row.
 // ---------------------------------------------------------------------------
 
-export async function resolvePrincipal(event: H3Event): Promise<Principal | null> {
+// TWO SESSION KINDS, RESOLVED IN A DEFINED ORDER (OIDC, this task).
+// Directus-authenticated sessions still carry a raw Directus access
+// token in `eldra_session`, validated via Directus `/users/me` --
+// completely unchanged. An OIDC-authenticated session instead carries an
+// Eldra-ISSUED opaque token in a SEPARATE cookie
+// (server/utils/eldra-sessions.ts's ELDRA_SESSION_COOKIE), because there
+// is no Directus credential to validate it against. The two cookies are
+// checked independently, in a fixed order, and NEVER cross-trusted: a
+// request with a valid Eldra-session cookie is never ALSO re-validated
+// against Directus, and vice versa.
+//
+// Exported so server/api/auth/me.get.ts can ask the SAME question
+// ("which Account, if any, authenticates this request") without
+// re-implementing either branch -- the one thing that must never drift
+// between the two is which cookie wins when (it can't: only one will
+// ever be present for a given login, but a stale leftover from switching
+// auth methods must not silently grant something the live method
+// didn't).
+export async function resolveAuthenticatedAccount(event: H3Event): Promise<EldraAccount | null> {
+  const eldraSessionToken = getEldraSessionToken(event)
+  if (eldraSessionToken) {
+    // Not wrapped in try/catch: a session-STORE failure (not "no
+    // session," an actual read error) must fail the request, the same
+    // fail-loud choice the Directus branch below already makes for its
+    // own /users/me call failing for a reason other than "invalid token."
+    const session = await resolveEldraSession(eldraSessionToken)
+    if (!session) {
+      return null
+    }
+
+    const account = await getAccountById(session.accountId)
+    if (!account || account.status !== 'active') {
+      return null
+    }
+    return account
+  }
+
   const token = getSessionToken(event)
   if (!token) {
     return null
@@ -456,7 +517,7 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
   // cannot tell which Account you are", which must fail the request rather
   // than degrade to an anonymous or empty Principal.
   const account = await resolveAccountForIdentity({
-    provider: 'directus',
+    provider: DIRECTUS_PROVIDER,
     providerSubject: String(directusUserId),
     displayName: formatAccountDisplayName(user)
   })
@@ -467,6 +528,15 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
     // as unauthenticated is the fail-closed reading, and keeps
     // suspension a single Eldra-owned fact rather than something that
     // also has to be mirrored into Directus.
+    return null
+  }
+
+  return account
+}
+
+export async function resolvePrincipal(event: H3Event): Promise<Principal | null> {
+  const account = await resolveAuthenticatedAccount(event)
+  if (!account) {
     return null
   }
 

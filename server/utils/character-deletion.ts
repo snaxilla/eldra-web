@@ -16,58 +16,99 @@
 // one from a live delete button. This module is the one place both now
 // go through.
 //
-// THE DEPENDENCY MAP, AND WHY EACH DECISION IS THE ONE IT IS -- traced
-// against the live Directus schema (GET /fields/<collection>,
-// GET /relations), not assumed:
+// COMPLETE PURGE (revision 2, this task). The design below replaces the
+// previous detach/mark/preserve policy entirely: User Decision for THIS
+// task is explicit -- "deleting them should remove everything tied to
+// the character... Do not leave detached, marked, or preserved rows that
+// still describe the deleted character." There is no "test vs. real"
+// flag anywhere in this data model, so this is now how EVERY character
+// deletion behaves, through both callers (the standalone Characters page
+// and the Player Management drawer -- see index.delete.ts, the one route
+// both already share).
+//
+// THE DEPENDENCY MAP, RE-TRACED FOR THIS REVISION -- a fresh schema sweep
+// (GET /fields across every non-system collection, GET /relations), not a
+// reuse of the prior investigation's list:
 //
 //   character_sheets, character_sheet_inventory,
 //   block_instances, entity_actions, entity_statblocks, monster_profiles
-//     CASCADE DELETE. Meaningless without the entity; nothing else reads
-//     them independently. The latter four reuse the exact precedent
-//     already proven safe by the generic entity-delete route; the first
-//     two are this module's own addition (the generic route never
-//     cascaded character_sheets at all -- the gap that let a sheet
-//     outlive its own entity).
-//
-//   roll_events
-//     PRESERVED, UNTOUCHED. `actor_character_id` is a snapshot, never
-//     joined back to a live entity on read (server/utils/roll-events.ts's
-//     listRollEvents filters by world/visibility only) -- this is dice
-//     history, not live state, and the brief is explicit: preserve it.
-//
-//   map_pins
-//     UNTOUCHED, DELIBERATELY. The only real database-level relation to
-//     `entities` in this schema (`map_pins.entity_id`, verified via
-//     GET /relations) is already `ON DELETE SET NULL`. Deleting the
-//     entities row below triggers it automatically; this module must not
-//     also touch map_pins, or it would duplicate/race a referential
-//     action Directus already owns.
+//     HARD DELETE. Unchanged from revision 1 -- meaningless without the
+//     entity, nothing else reads them independently.
 //
 //   character_sheet_inventory_transfers
-//     DETACHED, NOT DELETED. Reuses `source_cleared_at`/`target_cleared_at`
-//     -- an EXISTING, already-shipped, already-tested mechanism
-//     (clearInventoryTransferHistory in
-//     server/utils/character-sheet-inventory-transfers.ts) for "this side
-//     no longer needs to see this transfer in their history," applied
-//     per-side. The departing character's side is marked cleared; the
-//     counterparty's side, and the row itself (item_name, item_snapshot,
-//     quantity, every timestamp), survive untouched. This was NOT invented
-//     for this task -- it is the schema's own existing answer to "how do I
-//     make a transfer stop appearing for one party without destroying it
-//     for the other."
+//     HARD DELETE (changed from "detach"). Matched by EITHER the
+//     character's own entity_id (source_entity_id/target_entity_id) OR
+//     either of its sheet ids (source_sheet_id/target_sheet_id) -- the
+//     brief's own instruction to check both, since nothing in this
+//     schema guarantees the two always move together, and missing a row
+//     reachable only by sheet id would leave exactly the kind of
+//     "preserved row describing the deleted character" this revision
+//     exists to eliminate. One combined OR query per collection (never
+//     two separate queries unioned), so a row matching through BOTH
+//     criteria is still counted and deleted exactly once. Deleting the
+//     whole row necessarily also removes the counterparty's copy of that
+//     transfer -- an explicit, accepted tradeoff of "complete purge,"
+//     not an oversight.
 //
 //   entity_relationships
-//     MARKED, NOT DELETED. `status` is free-text (confirmed: the only
-//     client that edits it, WorldEntityRelationshipsPanel.vue, renders it
-//     as a plain text input, and no code anywhere branches on a specific
-//     status string) -- safe to extend with a new value,
-//     'character_deleted', without touching any existing display or
-//     filter logic. The row, its label/notes/metadata, and the SURVIVING
-//     side's own identity all remain exactly as `normalizeRelationship`
-//     (server/utils/entity-relationships.ts) already renders them when one
-//     side is missing: `other: null`, no crash -- confirmed by tracing,
-//     not assumed. The departing side's own entity_id is left as-is: a
-//     historical fact, not something to scrub.
+//     HARD DELETE (changed from "mark + note"). Same reasoning and same
+//     counterparty tradeoff as transfers above.
+//
+//   roll_events
+//     HARD DELETE (changed from "preserve"). Matched by
+//     actor_character_id. This is now the one place in the codebase that
+//     deletes roll history -- a deliberate exception to
+//     server/utils/roll-events.ts's own "dice history is never deleted"
+//     assumption, made ONLY because this task's explicit instruction
+//     names "roll history" among what a complete purge must remove.
+//
+//   map_pins
+//     HARD DELETE (changed from "leave to the ON DELETE SET NULL
+//     relation"). The relation still exists and would have merely
+//     nulled entity_id, leaving the pin itself behind -- which satisfies
+//     "no dangling reference" but not this task's literal instruction to
+//     delete "map pins" outright. Deleted explicitly, before the entities
+//     row, so the relation never has anything left to act on.
+//
+//   entity_ownership_changes
+//     HARD DELETE (new -- this collection did not exist when character
+//     deletion was first built). Matched by entity_id. Deleting a
+//     character's ownership history is exactly "ownership history," named
+//     explicitly in this task's own purge list.
+//
+//   A GENUINE GAP, FOUND AND DELIBERATELY NOT CLOSED HERE: an Encounter's
+//   `encounter_state` block (app/lib/encounters/encounter.ts) stores its
+//   combatants as a JSON array of `{ characterId, ... }` objects on the
+//   ENCOUNTER's own entity, not as a relational row keyed by the
+//   character's id -- so no schema-level sweep or entity_id-column
+//   filter can find it, and deleting a character currently listed as a
+//   combatant would leave a dangling characterId inside that JSON,
+//   exactly the kind of "preserved description" this revision is
+//   otherwise built to eliminate. NOT implemented: verified live,
+//   zero entities of entity_type 'encounter' exist in this deployment
+//   (`filter_count: 0`), and `joinEncounter` has no API route or client
+//   UI calling it anywhere in this codebase -- the feature that would
+//   ever populate a combatant list has not shipped. Closing this would
+//   mean querying every Encounter entity in the World, loading and
+//   patching its state via the already-existing, already-tested
+//   `leaveEncounter` (the correct reuse, not a new mechanism) -- real
+//   work, for a path nothing can reach today. Reported here rather than
+//   silently built around or silently ignored; revisit once Encounters
+//   ship a join flow.
+//
+//   NOT FOLLOWED, DELIBERATELY: character_sheets.class_entity_id/
+//   species_entity_id/background_entity_id and
+//   character_sheet_inventory(_transfers).item_entity_id all reference
+//   SHARED CONTENT (class/species/background/item definitions), never the
+//   character itself. This task's own instruction is explicit that these
+//   must survive a character's deletion -- confirmed by this fresh sweep
+//   that nothing in this module ever queries or deletes by these columns.
+//
+//   NEVER TOUCHED, BY DESIGN: eldra_accounts, eldra_identity_links,
+//   eldra_platform_grants, world_memberships -- a character's owner
+//   (Account, IdentityLinks, Directus user/credentials behind it, and
+//   every World membership) is a different aggregate entirely, and
+//   nothing below ever names any of these four collections.
 //
 // PLAN, THEN EXECUTE -- the same shape as
 // scripts/directus/lib/platform-admin-plan.mjs, for the same reason: the
@@ -94,24 +135,29 @@ function isDeletableCharacterEntityType(value: string): boolean {
   return DELETABLE_CHARACTER_ENTITY_TYPES.includes(value.toLowerCase())
 }
 
+// Every field below counts rows that WILL BE HARD-DELETED -- there is no
+// "preserved"/"detached"/"marked" category any more (revision 2, this
+// task). Each `ids` list is built from exactly one combined-filter query
+// per collection, so a row matching more than one OR'd condition (e.g. a
+// transfer reachable by both its entity_id and its sheet_id) still
+// appears, and is deleted, exactly once -- never double-counted, never
+// double-deleted.
 export type CharacterDeletionPlan = {
   worldId: string
   entityId: string
   title: string
   entityType: string
-  // Rows that will be hard-deleted.
   sheets: { count: number; ids: string[] }
   inventoryRows: { count: number; ids: string[] }
   blockInstances: number
   entityActions: number
   entityStatblocks: number
   monsterProfiles: number
-  // Rows that will be marked/detached, never deleted.
-  transfersToDetach: { count: number; ids: string[] }
-  relationshipsToMark: { count: number; ids: string[] }
-  // Informational only -- untouched by execution.
-  rollEventsPreserved: number
-  mapPinsToUnlink: number
+  transfers: { count: number; ids: string[] }
+  relationships: { count: number; ids: string[] }
+  rollEvents: { count: number; ids: string[] }
+  mapPins: { count: number; ids: string[] }
+  ownershipChanges: { count: number; ids: string[] }
 }
 
 async function listIds(collection: string, filter: Record<string, unknown>): Promise<string[]> {
@@ -150,11 +196,10 @@ export async function planCharacterDeletion(
   const sheetIds = await listIds('character_sheets', {
     _and: [{ world_id: { _eq: Number(worldId) } }, { entity_id: { _eq: Number(entityId) } }]
   })
+  const sheetIdNumbers = sheetIds.map(Number)
 
   const inventoryRowIds =
-    sheetIds.length === 0
-      ? []
-      : await listIds('character_sheet_inventory', { sheet_id: { _in: sheetIds.map(Number) } })
+    sheetIds.length === 0 ? [] : await listIds('character_sheet_inventory', { sheet_id: { _in: sheetIdNumbers } })
 
   const [blockInstances, entityActions, entityStatblocks, monsterProfiles] = await Promise.all([
     countRows('block_instances', { entity_id: { _eq: Number(entityId) } }),
@@ -163,11 +208,25 @@ export async function planCharacterDeletion(
     countRows('monster_profiles', { entity_id: { _eq: Number(entityId) } })
   ])
 
+  // Matched by EITHER the character's own entity_id OR either of its
+  // sheet ids -- one combined filter, never two separate queries, so a
+  // row satisfying more than one branch is still returned (and later
+  // deleted) exactly once. The sheet-id branches are omitted entirely
+  // when the character has no sheet, rather than sending an empty
+  // `_in: []` (which some Directus filter paths treat inconsistently).
+  const transferEntityOrSheetMatch: any[] = [
+    { source_entity_id: { _eq: Number(entityId) } },
+    { target_entity_id: { _eq: Number(entityId) } }
+  ]
+  if (sheetIdNumbers.length > 0) {
+    transferEntityOrSheetMatch.push(
+      { source_sheet_id: { _in: sheetIdNumbers } },
+      { target_sheet_id: { _in: sheetIdNumbers } }
+    )
+  }
+
   const transferIds = await listIds('character_sheet_inventory_transfers', {
-    _and: [
-      { world_id: { _eq: Number(worldId) } },
-      { _or: [{ source_entity_id: { _eq: Number(entityId) } }, { target_entity_id: { _eq: Number(entityId) } }] }
-    ]
+    _and: [{ world_id: { _eq: Number(worldId) } }, { _or: transferEntityOrSheetMatch }]
   })
 
   const relationshipIds = await listIds('entity_relationships', {
@@ -177,9 +236,10 @@ export async function planCharacterDeletion(
     ]
   })
 
-  const [rollEventsPreserved, mapPinsToUnlink] = await Promise.all([
-    countRows('roll_events', { actor_character_id: { _eq: Number(entityId) } }),
-    countRows('map_pins', { entity_id: { _eq: Number(entityId) } })
+  const [rollEventIds, mapPinIds, ownershipChangeIds] = await Promise.all([
+    listIds('roll_events', { actor_character_id: { _eq: Number(entityId) } }),
+    listIds('map_pins', { entity_id: { _eq: Number(entityId) } }),
+    listIds('entity_ownership_changes', { entity_id: { _eq: Number(entityId) } })
   ])
 
   return {
@@ -193,10 +253,11 @@ export async function planCharacterDeletion(
     entityActions,
     entityStatblocks,
     monsterProfiles,
-    transfersToDetach: { count: transferIds.length, ids: transferIds },
-    relationshipsToMark: { count: relationshipIds.length, ids: relationshipIds },
-    rollEventsPreserved,
-    mapPinsToUnlink
+    transfers: { count: transferIds.length, ids: transferIds },
+    relationships: { count: relationshipIds.length, ids: relationshipIds },
+    rollEvents: { count: rollEventIds.length, ids: rollEventIds },
+    mapPins: { count: mapPinIds.length, ids: mapPinIds },
+    ownershipChanges: { count: ownershipChangeIds.length, ids: ownershipChangeIds }
   }
 }
 
@@ -223,76 +284,16 @@ async function deleteByIds(collection: string, ids: readonly string[]): Promise<
   }
 }
 
-async function detachTransfers(entityId: string, transferIds: readonly string[]): Promise<void> {
-  if (transferIds.length === 0) return
-
-  const res: any = await directusServiceRequest('/items/character_sheet_inventory_transfers', {
-    method: 'GET',
-    query: {
-      filter: { id: { _in: transferIds.map(Number) } },
-      limit: -1,
-      fields: 'id,source_entity_id,target_entity_id,source_cleared_at,target_cleared_at'
-    }
-  })
-
-  const now = new Date().toISOString()
-  for (const row of Array.isArray(res?.data) ? res.data : []) {
-    const patch: Record<string, string> = {}
-    if (String(row.source_entity_id) === entityId && !row.source_cleared_at) {
-      patch.source_cleared_at = now
-    }
-    if (String(row.target_entity_id) === entityId && !row.target_cleared_at) {
-      patch.target_cleared_at = now
-    }
-    if (Object.keys(patch).length > 0) {
-      await directusServiceRequest(`/items/character_sheet_inventory_transfers/${row.id}`, {
-        method: 'PATCH',
-        body: patch
-      })
-    }
-  }
-}
-
-function deletedCharacterNote(title: string): string {
-  return `[Automatic] "${title}" was deleted on ${new Date().toISOString()}. This relationship record is preserved for history; the character it references no longer exists.`
-}
-
-// IDEMPOTENT: a relationship already marked 'character_deleted' is
-// skipped entirely, not re-marked. Without this, retrying a deletion that
-// failed partway through (after some relationships were already marked
-// in an earlier attempt) would append a SECOND copy of the same
-// "[Automatic]... was deleted..." note to those rows every retry.
-async function markRelationships(relationshipIds: readonly string[], title: string): Promise<void> {
-  for (const id of relationshipIds) {
-    const res: any = await directusServiceRequest(`/items/entity_relationships/${id}`, {
-      method: 'GET',
-      query: { fields: 'id,notes,status' }
-    })
-
-    if (res?.data?.status === 'character_deleted') {
-      continue // already marked by an earlier attempt -- nothing to do
-    }
-
-    const existingNotes = String(res?.data?.notes ?? '').trim()
-    const notes = existingNotes ? `${existingNotes}\n\n${deletedCharacterNote(title)}` : deletedCharacterNote(title)
-
-    await directusServiceRequest(`/items/entity_relationships/${id}`, {
-      method: 'PATCH',
-      body: { status: 'character_deleted', notes }
-    })
-  }
-}
-
 export type CharacterDeletionResult = {
   plan: CharacterDeletionPlan
 }
 
 // Executes exactly the plan planCharacterDeletion already described.
-// Order matters: detach/mark BEFORE the hard deletes (both read rows this
-// function is about to make unreachable by entity_id lookups once the
-// sheets/entity are gone), and the `entities` row itself is deleted LAST
-// so map_pins' own ON DELETE SET NULL relation fires only once everything
-// else has already been handled.
+// Order: every dependent row is deleted first, by id lists this function
+// never re-derives (it deletes exactly the ids the plan already found --
+// see the module header's own note on why double-counting/double-
+// deleting is structurally ruled out upstream, in the plan's own
+// combined-filter queries). The `entities` row itself is deleted LAST.
 //
 // Takes an ALREADY-COMPUTED plan rather than re-deriving one, so a caller
 // that needed the plan anyway (e.g. to decide authorization by entity
@@ -301,8 +302,8 @@ export type CharacterDeletionResult = {
 // caller that has not computed one yet.
 // WRITE-SAFETY REVIEW: no cross-collection Postgres transaction is
 // available for this cascade (re-verified, not assumed -- see this
-// module's header). The nine Directus requests below are therefore
-// EXACTLY NINE INDEPENDENT WRITES, not one atomic operation, and a
+// module's header). Every collection touched below is its own
+// independent set of Directus requests, not one atomic operation, and a
 // partial failure is a real, reachable outcome: a network blip, a
 // timeout, or Directus itself erroring partway through can leave some
 // dependents removed and others not. Claiming the overall cascade is
@@ -312,13 +313,13 @@ export type CharacterDeletionResult = {
 // would be exactly the false claim this review asked to rule out.
 //
 // THE RECOVERABLE DESIGN, instead of a transaction that does not exist:
-// every step is made safe to RE-RUN to completion.
-//   - deleteByIds/deleteManyByFilter tolerate "already gone" (404) as
-//     success, not an error -- a retry that finds some rows already
-//     deleted by an earlier, partially-failed attempt simply continues.
-//   - detachTransfers only patches a side that is not already cleared.
-//   - markRelationships skips a relationship already marked
-//     'character_deleted'.
+// every step is made safe to RE-RUN to completion. deleteByIds/
+// deleteManyByFilter tolerate "already gone" (404) as success, not an
+// error -- a retry that finds some rows already deleted by an earlier,
+// partially-failed attempt simply continues; every delete below is
+// idempotent for exactly this reason, with no collection-specific
+// exceptions left (the prior revision's detach/mark steps needed their
+// own bespoke idempotency logic -- plain deletes do not).
 // So if any step throws, the caller sees a real, honest error -- the
 // character may be left PARTIALLY deleted -- and the correct recovery is
 // simply to call this same deletion again: every already-completed step
@@ -337,8 +338,16 @@ export async function executeCharacterDeletion(plan: CharacterDeletionPlan): Pro
   }
 
   try {
-    await detachTransfers(plan.entityId, plan.transfersToDetach.ids)
-    await markRelationships(plan.relationshipsToMark.ids, plan.title)
+    // Transfers, relationships, roll history, map pins, ownership
+    // history -- every row that directly references this character,
+    // deleted outright (revision 2: no detach/mark/preserve category
+    // remains). Order among these five has no dependency on each other,
+    // only on running before the entity itself.
+    await deleteByIds('character_sheet_inventory_transfers', plan.transfers.ids)
+    await deleteByIds('entity_relationships', plan.relationships.ids)
+    await deleteByIds('roll_events', plan.rollEvents.ids)
+    await deleteByIds('map_pins', plan.mapPins.ids)
+    await deleteByIds('entity_ownership_changes', plan.ownershipChanges.ids)
 
     await deleteByIds('character_sheet_inventory', plan.inventoryRows.ids)
 
@@ -396,7 +405,9 @@ export async function executeCharacterDeletion(plan: CharacterDeletionPlan): Pro
     })
   }
 
-  // The entities row, last -- triggers map_pins' own SET NULL relation.
+  // The entities row, last -- every map_pins row that referenced it was
+  // already deleted above, so the collection's own ON DELETE SET NULL
+  // relation finds nothing left to act on by the time this runs.
   try {
     await directusServiceRequest(`/items/entities/${plan.entityId}`, { method: 'DELETE' })
   } catch (error: any) {

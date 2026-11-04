@@ -174,6 +174,13 @@ function formatChangedAt(value: string | null) {
 // Deletion
 // ---------------------------------------------------------------------
 
+// Revision 2 (complete purge): every field below is a count of rows that
+// WILL BE PERMANENTLY DELETED -- there is no longer a "preserved" or
+// "detached" category to word differently. The owner's Eldra Account is
+// never part of this plan at all (server/utils/character-deletion.ts
+// never names eldra_accounts/eldra_identity_links), which is why the
+// confirmation copy below states that explicitly rather than listing it
+// as "unaffected" alongside things that actually ARE being removed.
 type DeletionImpactPlan = {
   sheets: { count: number }
   inventoryRows: { count: number }
@@ -181,10 +188,11 @@ type DeletionImpactPlan = {
   entityActions: number
   entityStatblocks: number
   monsterProfiles: number
-  transfersToDetach: { count: number }
-  relationshipsToMark: { count: number }
-  rollEventsPreserved: number
-  mapPinsToUnlink: number
+  transfers: { count: number }
+  relationships: { count: number }
+  rollEvents: { count: number }
+  mapPins: { count: number }
+  ownershipChanges: { count: number }
 }
 
 // Three explicit stages, not a boolean -- "show impact" and "actually
@@ -423,8 +431,9 @@ function close() {
 
               <template v-if="deletionStage === 'idle'">
                 <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                  Permanently removes {{ title }} and its sheet/inventory. Roll history is preserved; related
-                  transfers and relationships are preserved and marked, never deleted.
+                  Permanently removes {{ title }} and everything tied to it -- sheet, inventory, roll history,
+                  relationships, inventory transfers, map pins, and ownership history. This account's owner
+                  (if any) is never affected.
                 </p>
                 <button
                   type="button"
@@ -443,35 +452,40 @@ function close() {
 
               <template v-else-if="deletionStage === 'confirming' && deletionImpact">
                 <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                  Deleting <span class="text-[#fff7df]">{{ title }}</span> will:
+                  Deleting <span class="text-[#fff7df]">{{ title }}</span> will permanently remove:
                 </p>
                 <ul class="mt-2 grid gap-1 text-xs text-[#d8ceb8]">
+                  <li>The character itself</li>
                   <li v-if="deletionImpact.sheets.count">
-                    Delete {{ deletionImpact.sheets.count }} character sheet(s)
+                    {{ deletionImpact.sheets.count }} character sheet(s)
                   </li>
                   <li v-if="deletionImpact.inventoryRows.count">
-                    Delete {{ deletionImpact.inventoryRows.count }} inventory item(s)
+                    {{ deletionImpact.inventoryRows.count }} inventory item(s)
                   </li>
                   <li v-if="deletionImpact.blockInstances || deletionImpact.entityActions || deletionImpact.entityStatblocks || deletionImpact.monsterProfiles">
-                    Delete {{ deletionImpact.blockInstances + deletionImpact.entityActions + deletionImpact.entityStatblocks + deletionImpact.monsterProfiles }} supporting record(s) (blocks/actions/statblocks)
+                    {{ deletionImpact.blockInstances + deletionImpact.entityActions + deletionImpact.entityStatblocks + deletionImpact.monsterProfiles }} supporting record(s) (blocks/actions/statblocks)
                   </li>
-                  <li v-if="deletionImpact.transfersToDetach.count">
-                    Detach {{ deletionImpact.transfersToDetach.count }} inventory transfer(s) -- preserved for the other party, hidden from this character's side
+                  <li v-if="deletionImpact.transfers.count">
+                    {{ deletionImpact.transfers.count }} inventory transfer record(s) -- including the counterparty's copy of each
                   </li>
-                  <li v-if="deletionImpact.relationshipsToMark.count">
-                    Mark {{ deletionImpact.relationshipsToMark.count }} relationship(s) as referencing a deleted character -- preserved, not deleted
+                  <li v-if="deletionImpact.relationships.count">
+                    {{ deletionImpact.relationships.count }} relationship record(s)
                   </li>
-                  <li v-if="deletionImpact.rollEventsPreserved">
-                    Preserve {{ deletionImpact.rollEventsPreserved }} roll history row(s) -- unaffected
+                  <li v-if="deletionImpact.rollEvents.count">
+                    {{ deletionImpact.rollEvents.count }} roll history row(s)
                   </li>
-                  <li v-if="deletionImpact.mapPinsToUnlink">
-                    Unlink {{ deletionImpact.mapPinsToUnlink }} map pin(s) -- the pin stays, its character reference is cleared
+                  <li v-if="deletionImpact.mapPins.count">
+                    {{ deletionImpact.mapPins.count }} map pin(s)
                   </li>
-                  <li v-if="!deletionImpact.sheets.count && !deletionImpact.inventoryRows.count && !deletionImpact.transfersToDetach.count && !deletionImpact.relationshipsToMark.count">
-                    No dependent records -- only the character itself will be removed
+                  <li v-if="deletionImpact.ownershipChanges.count">
+                    {{ deletionImpact.ownershipChanges.count }} ownership history record(s)
                   </li>
                 </ul>
-                <p class="mt-3 text-xs font-semibold uppercase tracking-[0.15em] text-red-300">
+                <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                  The owner's Eldra Account, sign-in, and World membership are NOT affected -- only this
+                  character and the records listed above.
+                </p>
+                <p class="mt-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-300">
                   This cannot be undone.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-2">

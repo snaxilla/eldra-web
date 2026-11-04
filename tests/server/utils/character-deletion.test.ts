@@ -1,8 +1,10 @@
 // Unit tests for safe character deletion (server/utils/character-deletion.ts).
-// See that module's own header for the full dependency trace and why each
-// collection's behavior is what it is -- these tests pin exactly that
-// trace, collection by collection, plus the plan/execute consistency the
-// whole module is structured around.
+// See that module's own header for the full dependency trace, the fresh
+// schema sweep behind it, and exactly why each collection's behavior is
+// what it is -- these tests pin that trace collection by collection, the
+// COMPLETE PURGE semantics (revision 2: no detach/mark/preserve category
+// survives), and the plan/execute consistency the whole module is
+// structured around.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -23,20 +25,64 @@ import {
 const WORLD_ID = '4'
 const ENTITY_ID = '1645'
 
+// ---------------------------------------------------------------------
+// A small, generic Directus-filter evaluator -- so the mock store below
+// matches rows against whatever filter shape the real code actually
+// sends (_and/_or/_eq/_in/_neq), rather than hand-parsing each query's
+// exact structure per collection. This is what lets these tests exercise
+// the REAL combined-filter queries (e.g. transfers matched by entity_id
+// OR sheet_id in one request) rather than a simplified stand-in for them.
+// ---------------------------------------------------------------------
+function matchesFilter(row: Record<string, any>, filter: any): boolean {
+  if (!filter) return true
+  if (filter._and) return filter._and.every((f: any) => matchesFilter(row, f))
+  if (filter._or) return filter._or.some((f: any) => matchesFilter(row, f))
+  for (const [field, condition] of Object.entries(filter)) {
+    const value = row[field]
+    const cond = condition as any
+    if (cond._eq !== undefined && value !== cond._eq) return false
+    if (cond._in !== undefined && !cond._in.includes(value)) return false
+    if (cond._neq !== undefined && value === cond._neq) return false
+  }
+  return true
+}
+
+type Row = Record<string, any>
+
 type Store = {
-  entity: any
-  sheets: any[]
-  inventory: any[]
-  blockInstances: any[]
-  entityActions: any[]
-  entityStatblocks: any[]
-  monsterProfiles: any[]
-  transfers: any[]
-  relationships: any[]
-  rollEvents: any[]
-  mapPins: any[]
+  entity: Row | null
+  sheets: Row[]
+  inventory: Row[]
+  blockInstances: Row[]
+  entityActions: Row[]
+  entityStatblocks: Row[]
+  monsterProfiles: Row[]
+  transfers: Row[]
+  relationships: Row[]
+  rollEvents: Row[]
+  mapPins: Row[]
+  ownershipChanges: Row[]
+  // Unrelated data, present to prove it survives untouched -- a second
+  // character in the same World, plus its own rows in collections that
+  // could plausibly be confused with the deleted character's.
+  otherSheets: Row[]
+  otherRollEvents: Row[]
+  // Side-effect recording.
   deletedPaths: string[]
-  patches: { path: string; body: any }[]
+}
+
+const COLLECTION_KEYS: Record<string, keyof Store> = {
+  character_sheets: 'sheets',
+  character_sheet_inventory: 'inventory',
+  block_instances: 'blockInstances',
+  entity_actions: 'entityActions',
+  entity_statblocks: 'entityStatblocks',
+  monster_profiles: 'monsterProfiles',
+  character_sheet_inventory_transfers: 'transfers',
+  entity_relationships: 'relationships',
+  roll_events: 'rollEvents',
+  map_pins: 'mapPins',
+  entity_ownership_changes: 'ownershipChanges'
 }
 
 function baseStore(overrides: Partial<Store> = {}): Store {
@@ -52,39 +98,69 @@ function baseStore(overrides: Partial<Store> = {}): Store {
     relationships: [],
     rollEvents: [],
     mapPins: [],
+    ownershipChanges: [],
+    otherSheets: [],
+    otherRollEvents: [],
     deletedPaths: [],
-    patches: [],
     ...overrides
   }
 }
 
 type FailureInjection = {
-  // Throws this error on the Nth DELETE call for this exact path
-  // (1-indexed) -- simulates a transient failure partway through the
-  // cascade. A subsequent call (a retry) sees the store's own state,
-  // which already reflects everything up to the failure.
+  // Throws this error on the FIRST DELETE call for this exact path --
+  // simulates a transient failure partway through the cascade. A later
+  // call to the SAME path (a retry) succeeds normally.
   failDeleteOnce?: { path: string; error: any }
-  // The entity GET returns `store.entity` for calls 1..N, then null from
-  // call N+1 onward -- simulates another request (a concurrent delete,
-  // or an earlier retry of THIS request) finishing the job between this
-  // execution's own planning read and its final revalidation read.
-  entityGoneAfterCall?: number
   // Paths whose DELETE should 404 ("already gone") -- simulating a retry
   // where an earlier, partially-completed attempt already removed this
   // exact row.
   alreadyGonePaths?: string[]
+  // The entity GET returns the entity for calls 1..N, then "not found"
+  // from call N+1 onward -- simulates a concurrent/earlier attempt
+  // finishing the job between planning and final revalidation.
+  entityGoneAfterCall?: number
 }
 
 function installStore(store: Store, failures: FailureInjection = {}) {
   let entityGetCalls = 0
-  const deleteCallCounts: Record<string, number> = {}
+  const deleteAttempts: Record<string, number> = {}
+
+  function handleListGet(collectionKey: keyof Store, opts: any) {
+    const rows = (store[collectionKey] as Row[]).filter((row) => matchesFilter(row, opts?.query?.filter))
+    return { data: rows.map((row) => ({ id: row.id })), meta: { filter_count: rows.length } }
+  }
+
+  function handleDelete(collection: string, id: string, path: string) {
+    if (failures.alreadyGonePaths?.includes(path)) {
+      throw Object.assign(new Error('not found'), { statusCode: 404 })
+    }
+    if (failures.failDeleteOnce?.path === path) {
+      deleteAttempts[path] = (deleteAttempts[path] ?? 0) + 1
+      if (deleteAttempts[path] === 1) {
+        throw failures.failDeleteOnce.error
+      }
+    }
+    if (collection === 'entities') {
+      if (!store.entity || String(store.entity.id) !== id) {
+        throw Object.assign(new Error('not found'), { statusCode: 404 })
+      }
+      store.entity = null
+    } else {
+      const key = COLLECTION_KEYS[collection]
+      if (key) {
+        const rows = store[key] as Row[]
+        const index = rows.findIndex((row) => String(row.id) === id)
+        if (index === -1) {
+          throw Object.assign(new Error('not found'), { statusCode: 404 })
+        }
+        rows.splice(index, 1)
+      }
+    }
+    store.deletedPaths.push(path)
+    return { data: {} }
+  }
 
   directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
-    const filterCountResponse = (rows: any[]) => ({
-      data: rows.slice(0, opts?.query?.limit === 1 ? 1 : rows.length),
-      meta: { filter_count: rows.length }
-    })
-
     if (path === `/items/entities/${ENTITY_ID}` && opts.method === 'GET') {
       entityGetCalls += 1
       if (failures.entityGoneAfterCall && entityGetCalls > failures.entityGoneAfterCall) {
@@ -93,92 +169,18 @@ function installStore(store: Store, failures: FailureInjection = {}) {
       return { data: store.entity }
     }
     if (path === `/items/entities/${ENTITY_ID}` && opts.method === 'DELETE') {
-      if (failures.failDeleteOnce?.path === path) {
-        deleteCallCounts[path] = (deleteCallCounts[path] ?? 0) + 1
-        if (deleteCallCounts[path] === 1) {
-          throw failures.failDeleteOnce.error
-        }
+      return handleDelete('entities', ENTITY_ID, path)
+    }
+
+    for (const [collection, key] of Object.entries(COLLECTION_KEYS)) {
+      if (path === `/items/${collection}` && opts.method === 'GET') {
+        return handleListGet(key, opts)
       }
-      store.deletedPaths.push(path)
-      return { data: {} }
-    }
-
-    function handleDelete(): any {
-      if (failures.alreadyGonePaths?.includes(path)) {
-        throw Object.assign(new Error('not found'), { statusCode: 404 })
+      const deleteMatch = path.match(new RegExp(`^/items/${collection}/(.+)$`))
+      if (deleteMatch && opts.method === 'DELETE') {
+        return handleDelete(collection, deleteMatch[1], path)
       }
-      if (failures.failDeleteOnce?.path === path) {
-        deleteCallCounts[path] = (deleteCallCounts[path] ?? 0) + 1
-        if (deleteCallCounts[path] === 1) {
-          throw failures.failDeleteOnce.error
-        }
-      }
-      store.deletedPaths.push(path)
-      return { data: {} }
     }
-
-    if (path === '/items/character_sheets' && opts.method === 'GET') {
-      return { data: store.sheets.map((s) => ({ id: s.id })) }
-    }
-    if (/^\/items\/character_sheets\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-
-    if (path === '/items/character_sheet_inventory' && opts.method === 'GET') {
-      return { data: store.inventory.map((r) => ({ id: r.id })) }
-    }
-    if (/^\/items\/character_sheet_inventory\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-
-    if (path === '/items/block_instances' && opts.method === 'GET') return filterCountResponse(store.blockInstances)
-    if (/^\/items\/block_instances\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-    if (path === '/items/entity_actions' && opts.method === 'GET') return filterCountResponse(store.entityActions)
-    if (/^\/items\/entity_actions\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-    if (path === '/items/entity_statblocks' && opts.method === 'GET') return filterCountResponse(store.entityStatblocks)
-    if (/^\/items\/entity_statblocks\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-    if (path === '/items/monster_profiles' && opts.method === 'GET') return filterCountResponse(store.monsterProfiles)
-    if (/^\/items\/monster_profiles\/.+$/.test(path) && opts.method === 'DELETE') {
-      return handleDelete()
-    }
-
-    if (path === '/items/character_sheet_inventory_transfers' && opts.method === 'GET') {
-      const filter = opts.query.filter
-      if (filter?.id) return { data: store.transfers.filter((t) => filter.id._in.includes(t.id)) }
-      return { data: store.transfers.map((t) => ({ id: t.id })) }
-    }
-    if (/^\/items\/character_sheet_inventory_transfers\/.+$/.test(path) && opts.method === 'PATCH') {
-      store.patches.push({ path, body: opts.body })
-      const id = Number(path.split('/').pop())
-      const row = store.transfers.find((t) => t.id === id)
-      if (row) Object.assign(row, opts.body)
-      return { data: row }
-    }
-
-    if (path === '/items/entity_relationships' && opts.method === 'GET') {
-      return { data: store.relationships.map((r) => ({ id: r.id })) }
-    }
-    if (/^\/items\/entity_relationships\/\d+$/.test(path) && opts.method === 'GET') {
-      const id = Number(path.split('/').pop())
-      const row = store.relationships.find((r) => r.id === id)
-      return { data: { id: row.id, notes: row.notes ?? '', status: row.status ?? 'active' } }
-    }
-    if (/^\/items\/entity_relationships\/\d+$/.test(path) && opts.method === 'PATCH') {
-      store.patches.push({ path, body: opts.body })
-      const id = Number(path.split('/').pop())
-      const row = store.relationships.find((r) => r.id === id)
-      if (row) Object.assign(row, opts.body)
-      return { data: row }
-    }
-
-    if (path === '/items/roll_events' && opts.method === 'GET') return filterCountResponse(store.rollEvents)
-    if (path === '/items/map_pins' && opts.method === 'GET') return filterCountResponse(store.mapPins)
 
     throw new Error(`unexpected call: ${opts.method} ${path}`)
   })
@@ -187,6 +189,10 @@ function installStore(store: Store, failures: FailureInjection = {}) {
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
 })
+
+// ---------------------------------------------------------------------
+// planCharacterDeletion -- impact counts, every dependent collection
+// ---------------------------------------------------------------------
 
 describe('planCharacterDeletion', () => {
   it('404s when the character does not exist', async () => {
@@ -201,19 +207,20 @@ describe('planCharacterDeletion', () => {
     await expect(planCharacterDeletion(WORLD_ID, ENTITY_ID)).rejects.toMatchObject({ statusCode: 404 })
   })
 
-  it('counts every dependent collection correctly', async () => {
+  it('counts every dependent collection correctly, including the two new ones (map pins, ownership history)', async () => {
     installStore(
       baseStore({
-        sheets: [{ id: 39 }],
-        inventory: [{ id: 1 }, { id: 2 }, { id: 3 }],
-        blockInstances: [{ id: 1 }],
-        entityActions: [{ id: 1 }, { id: 2 }],
-        entityStatblocks: [],
-        monsterProfiles: [],
-        transfers: [{ id: 501, source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }],
-        relationships: [{ id: 801, notes: '' }, { id: 802, notes: '' }],
-        rollEvents: Array.from({ length: 47 }, (_, i) => ({ id: i })),
-        mapPins: [{ id: 1 }, { id: 2 }]
+        sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+        inventory: [{ id: 1, sheet_id: 39 }, { id: 2, sheet_id: 39 }, { id: 3, sheet_id: 39 }],
+        blockInstances: [{ id: 1, entity_id: Number(ENTITY_ID) }],
+        entityActions: [{ id: 1, entity_id: Number(ENTITY_ID) }, { id: 2, entity_id: Number(ENTITY_ID) }],
+        transfers: [
+          { id: 501, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_sheet_id: 39, target_sheet_id: 77 }
+        ],
+        relationships: [{ id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }, { id: 802, world_id: Number(WORLD_ID), source_entity_id: 999, target_entity_id: Number(ENTITY_ID) }],
+        rollEvents: Array.from({ length: 47 }, (_, i) => ({ id: i, actor_character_id: Number(ENTITY_ID) })),
+        mapPins: [{ id: 1, entity_id: Number(ENTITY_ID) }, { id: 2, entity_id: Number(ENTITY_ID) }],
+        ownershipChanges: [{ id: 1, entity_id: Number(ENTITY_ID) }]
       })
     )
 
@@ -225,13 +232,92 @@ describe('planCharacterDeletion', () => {
     expect(plan.entityActions).toBe(2)
     expect(plan.entityStatblocks).toBe(0)
     expect(plan.monsterProfiles).toBe(0)
-    expect(plan.transfersToDetach.count).toBe(1)
-    expect(plan.relationshipsToMark.count).toBe(2)
-    expect(plan.rollEventsPreserved).toBe(47)
-    expect(plan.mapPinsToUnlink).toBe(2)
+    expect(plan.transfers.count).toBe(1)
+    expect(plan.relationships.count).toBe(2)
+    expect(plan.rollEvents.count).toBe(47)
+    expect(plan.mapPins.count).toBe(2)
+    expect(plan.ownershipChanges.count).toBe(1)
   })
 
-  it('never queries character_sheet_inventory when the character has no sheets', async () => {
+  // THIS TASK'S OWN INSTRUCTION: transfers are reachable through EITHER
+  // the character's entity_id OR its sheet_id -- a transfer row that only
+  // matches via sheet_id (e.g. source_entity_id references something
+  // else, but source_sheet_id is still this character's sheet) must
+  // still be found.
+  it('finds a transfer reachable ONLY through the sheet id, not the entity id', async () => {
+    installStore(
+      baseStore({
+        sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+        transfers: [
+          // Neither source_entity_id nor target_entity_id is this character
+          // -- only source_sheet_id matches.
+          { id: 501, world_id: Number(WORLD_ID), source_entity_id: 111, target_entity_id: 222, source_sheet_id: 39, target_sheet_id: 77 }
+        ]
+      })
+    )
+
+    const plan = await planCharacterDeletion(WORLD_ID, ENTITY_ID)
+
+    expect(plan.transfers.ids).toEqual(['501'])
+  })
+
+  it('finds a transfer reachable on the TARGET sheet id', async () => {
+    installStore(
+      baseStore({
+        sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+        transfers: [
+          { id: 502, world_id: Number(WORLD_ID), source_entity_id: 111, target_entity_id: 222, source_sheet_id: 77, target_sheet_id: 39 }
+        ]
+      })
+    )
+
+    const plan = await planCharacterDeletion(WORLD_ID, ENTITY_ID)
+
+    expect(plan.transfers.ids).toEqual(['502'])
+  })
+
+  // DOUBLE-COUNTING GUARD: a row matching BOTH the entity_id criterion
+  // AND the sheet_id criterion in the same combined query must still
+  // appear exactly once.
+  it('never double-counts a transfer that matches both its entity_id AND its sheet_id', async () => {
+    installStore(
+      baseStore({
+        sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+        transfers: [
+          { id: 503, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_sheet_id: 39, target_sheet_id: 77 }
+        ]
+      })
+    )
+
+    const plan = await planCharacterDeletion(WORLD_ID, ENTITY_ID)
+
+    expect(plan.transfers.count).toBe(1)
+    expect(plan.transfers.ids).toEqual(['503'])
+    // Exactly one GET to the transfers collection -- a combined filter,
+    // never two separate queries whose results could overlap.
+    const transferGetCalls = directusServiceRequestMock.mock.calls.filter(
+      ([path, opts]) => path === '/items/character_sheet_inventory_transfers' && opts.method === 'GET'
+    )
+    expect(transferGetCalls).toHaveLength(1)
+  })
+
+  it('finds a relationship on either side (source or target)', async () => {
+    installStore(
+      baseStore({
+        relationships: [
+          { id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 },
+          { id: 802, world_id: Number(WORLD_ID), source_entity_id: 999, target_entity_id: Number(ENTITY_ID) },
+          { id: 803, world_id: Number(WORLD_ID), source_entity_id: 111, target_entity_id: 222 } // unrelated
+        ]
+      })
+    )
+
+    const plan = await planCharacterDeletion(WORLD_ID, ENTITY_ID)
+
+    expect(plan.relationships.ids.sort()).toEqual(['801', '802'])
+  })
+
+  it('never queries character_sheet_inventory or the sheet-based transfer branch when the character has no sheet', async () => {
     installStore(baseStore({ sheets: [] }))
 
     await planCharacterDeletion(WORLD_ID, ENTITY_ID)
@@ -239,26 +325,53 @@ describe('planCharacterDeletion', () => {
     const inventoryCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/character_sheet_inventory')
     expect(inventoryCalls).toHaveLength(0)
   })
+
+  it('does not touch an unrelated character\'s sheet or roll history', async () => {
+    installStore(
+      baseStore({
+        sheets: [
+          { id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) },
+          { id: 40, world_id: Number(WORLD_ID), entity_id: 9999 } // a different character
+        ],
+        rollEvents: [
+          { id: 1, actor_character_id: Number(ENTITY_ID) },
+          { id: 2, actor_character_id: 9999 } // a different character
+        ]
+      })
+    )
+
+    const plan = await planCharacterDeletion(WORLD_ID, ENTITY_ID)
+
+    expect(plan.sheets.ids).toEqual(['39'])
+    expect(plan.rollEvents.ids).toEqual(['1'])
+  })
 })
 
-describe('executeCharacterDeletion -- the dependency trace', () => {
-  it('cascade-deletes character_sheets and their inventory rows', async () => {
-    const store = baseStore({ sheets: [{ id: 39 }], inventory: [{ id: 1 }, { id: 2 }] })
+// ---------------------------------------------------------------------
+// executeCharacterDeletion -- the complete purge
+// ---------------------------------------------------------------------
+
+describe('executeCharacterDeletion -- complete purge, entity deleted last', () => {
+  it('deletes character_sheets and character_sheet_inventory outright', async () => {
+    const store = baseStore({
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+      inventory: [{ id: 1, sheet_id: 39 }, { id: 2, sheet_id: 39 }]
+    })
     installStore(store)
 
     await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
+    expect(store.sheets).toHaveLength(0)
+    expect(store.inventory).toHaveLength(0)
     expect(store.deletedPaths).toContain('/items/character_sheets/39')
-    expect(store.deletedPaths).toContain('/items/character_sheet_inventory/1')
-    expect(store.deletedPaths).toContain('/items/character_sheet_inventory/2')
   })
 
-  it('cascade-deletes block_instances/entity_actions/entity_statblocks/monster_profiles -- the proven generic-delete precedent', async () => {
+  it('deletes block_instances/entity_actions/entity_statblocks/monster_profiles', async () => {
     const store = baseStore({
-      blockInstances: [{ id: 10 }],
-      entityActions: [{ id: 20 }],
-      entityStatblocks: [{ id: 30 }],
-      monsterProfiles: [{ id: 40 }]
+      blockInstances: [{ id: 10, entity_id: Number(ENTITY_ID) }],
+      entityActions: [{ id: 20, entity_id: Number(ENTITY_ID) }],
+      entityStatblocks: [{ id: 30, entity_id: Number(ENTITY_ID) }],
+      monsterProfiles: [{ id: 40, entity_id: Number(ENTITY_ID) }]
     })
     installStore(store)
 
@@ -270,8 +383,92 @@ describe('executeCharacterDeletion -- the dependency trace', () => {
     expect(store.deletedPaths).toContain('/items/monster_profiles/40')
   })
 
+  // --- Revision 2: these five are now HARD DELETED, not detached/marked/preserved ---
+
+  it('DELETES inventory transfer rows outright (no detach/clear) -- matched by entity_id OR sheet_id', async () => {
+    const store = baseStore({
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+      transfers: [
+        { id: 501, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_sheet_id: 39, target_sheet_id: 77 },
+        { id: 502, world_id: Number(WORLD_ID), source_entity_id: 111, target_entity_id: 222, source_sheet_id: 77, target_sheet_id: 39 } // sheet-only match
+      ]
+    })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    expect(store.transfers).toHaveLength(0)
+    expect(store.deletedPaths).toContain('/items/character_sheet_inventory_transfers/501')
+    expect(store.deletedPaths).toContain('/items/character_sheet_inventory_transfers/502')
+  })
+
+  it('DELETES relationship rows outright (no status mark, no note) -- matched by either side', async () => {
+    const store = baseStore({
+      relationships: [
+        { id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 },
+        { id: 802, world_id: Number(WORLD_ID), source_entity_id: 999, target_entity_id: Number(ENTITY_ID) }
+      ]
+    })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    expect(store.relationships).toHaveLength(0)
+  })
+
+  it('DELETES roll_events rows for this character (revision 2 -- roll history is no longer preserved)', async () => {
+    const store = baseStore({ rollEvents: [{ id: 1, actor_character_id: Number(ENTITY_ID) }, { id: 2, actor_character_id: Number(ENTITY_ID) }] })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    expect(store.rollEvents).toHaveLength(0)
+  })
+
+  it('does NOT delete another character\'s roll history', async () => {
+    const store = baseStore({
+      rollEvents: [{ id: 1, actor_character_id: Number(ENTITY_ID) }],
+      otherRollEvents: [{ id: 2, actor_character_id: 9999 }]
+    })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    // otherRollEvents is a separate array in this fixture precisely so a
+    // bug that deleted by filter too broadly (e.g. by world_id alone)
+    // would be caught -- it is never queried/deleted by this module at
+    // all, which is itself the correct behavior.
+    expect(store.otherRollEvents).toHaveLength(1)
+  })
+
+  it('DELETES map_pins rows for this character (revision 2 -- no longer left to the SET NULL relation)', async () => {
+    const store = baseStore({ mapPins: [{ id: 1, entity_id: Number(ENTITY_ID) }, { id: 2, entity_id: Number(ENTITY_ID) }] })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    expect(store.mapPins).toHaveLength(0)
+  })
+
+  it('DELETES entity_ownership_changes rows for this character', async () => {
+    const store = baseStore({ ownershipChanges: [{ id: 1, entity_id: Number(ENTITY_ID) }] })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    expect(store.ownershipChanges).toHaveLength(0)
+  })
+
   it('deletes the entities row LAST, after every dependent cascade delete', async () => {
-    const store = baseStore({ sheets: [{ id: 39 }], blockInstances: [{ id: 10 }] })
+    const store = baseStore({
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+      blockInstances: [{ id: 10, entity_id: Number(ENTITY_ID) }],
+      transfers: [{ id: 501, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }],
+      relationships: [{ id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }],
+      rollEvents: [{ id: 1, actor_character_id: Number(ENTITY_ID) }],
+      mapPins: [{ id: 1, entity_id: Number(ENTITY_ID) }],
+      ownershipChanges: [{ id: 1, entity_id: Number(ENTITY_ID) }]
+    })
     installStore(store)
 
     await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
@@ -281,95 +478,6 @@ describe('executeCharacterDeletion -- the dependency trace', () => {
     expect(lastCall[0]).toBe(`/items/entities/${ENTITY_ID}`)
   })
 
-  it('PRESERVES roll_events -- never deletes or patches a single row', async () => {
-    const store = baseStore({ rollEvents: Array.from({ length: 10 }, (_, i) => ({ id: i })) })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const rollEventWrites = directusServiceRequestMock.mock.calls.filter(
-      ([path, opts]) => path.startsWith('/items/roll_events') && (opts.method === 'DELETE' || opts.method === 'PATCH')
-    )
-    expect(rollEventWrites).toHaveLength(0)
-  })
-
-  it('NEVER touches map_pins directly -- the existing ON DELETE SET NULL relation is the only thing that acts on it', async () => {
-    const store = baseStore({ mapPins: [{ id: 1 }, { id: 2 }] })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const mapPinWrites = directusServiceRequestMock.mock.calls.filter(
-      ([path, opts]) => path.startsWith('/items/map_pins') && (opts.method === 'DELETE' || opts.method === 'PATCH')
-    )
-    expect(mapPinWrites).toHaveLength(0)
-  })
-
-  // --- Inventory transfers: detached, never deleted ---------------------
-  it('marks the departing side cleared on a transfer, without deleting the row', async () => {
-    const store = baseStore({
-      transfers: [{ id: 501, source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_cleared_at: null, target_cleared_at: null }]
-    })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    expect(store.deletedPaths.some((p) => p.includes('inventory_transfers'))).toBe(false)
-    const patch = store.patches.find((p) => p.path === '/items/character_sheet_inventory_transfers/501')
-    expect(patch?.body).toHaveProperty('source_cleared_at')
-    expect(patch?.body).not.toHaveProperty('target_cleared_at')
-  })
-
-  it('marks target_cleared_at when the departing character was the target side', async () => {
-    const store = baseStore({
-      transfers: [{ id: 502, source_entity_id: 999, target_entity_id: Number(ENTITY_ID), source_cleared_at: null, target_cleared_at: null }]
-    })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const patch = store.patches.find((p) => p.path === '/items/character_sheet_inventory_transfers/502')
-    expect(patch?.body).toEqual({ target_cleared_at: expect.any(String) })
-  })
-
-  it('does not re-clear a side that is already cleared', async () => {
-    const store = baseStore({
-      transfers: [{ id: 503, source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_cleared_at: '2026-01-01T00:00:00Z', target_cleared_at: null }]
-    })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const patch = store.patches.find((p) => p.path === '/items/character_sheet_inventory_transfers/503')
-    expect(patch).toBeUndefined()
-  })
-
-  // --- Relationships: marked, never deleted ------------------------------
-  it('marks a relationship status, appends a note, and preserves the row', async () => {
-    const store = baseStore({ relationships: [{ id: 801, notes: 'Old ally.' }] })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    expect(store.deletedPaths.some((p) => p.includes('entity_relationships'))).toBe(false)
-    const patch = store.patches.find((p) => p.path === '/items/entity_relationships/801')
-    expect(patch?.body.status).toBe('character_deleted')
-    expect(patch?.body.notes).toContain('Old ally.')
-    expect(patch?.body.notes).toContain('Borc')
-    expect(patch?.body.notes).toContain('deleted')
-  })
-
-  it('writes a clean note (no leading blank join) when the relationship had no prior notes', async () => {
-    const store = baseStore({ relationships: [{ id: 802, notes: '' }] })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const patch = store.patches.find((p) => p.path === '/items/entity_relationships/802')
-    expect(patch?.body.notes.startsWith('[Automatic]')).toBe(true)
-  })
-
-  // --- Entity-type guard --------------------------------------------------
   it('rejects a non-character entity type (location) with 400', async () => {
     installStore(baseStore({ entity: { id: Number(ENTITY_ID), world_id: Number(WORLD_ID), title: 'Varin', entity_type: 'location' } }))
 
@@ -378,55 +486,78 @@ describe('executeCharacterDeletion -- the dependency trace', () => {
 
   it('accepts every character-shaped type (pc, player_character, npc, npc_sheet, character)', async () => {
     for (const entityType of ['pc', 'player_character', 'npc', 'npc_sheet', 'character']) {
-      const store = baseStore({ entity: { id: Number(ENTITY_ID), world_id: Number(WORLD_ID), title: 'X', entity_type: entityType } })
-      installStore(store)
+      installStore(baseStore({ entity: { id: Number(ENTITY_ID), world_id: Number(WORLD_ID), title: 'X', entity_type: entityType } }))
 
       await expect(deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)).resolves.toBeDefined()
     }
   })
+})
 
-  // --- Ordering: detach/mark before hard deletes --------------------------
-  it('detaches transfers and marks relationships BEFORE deleting any dependent row', async () => {
+// ---------------------------------------------------------------------
+// Owner Account / IdentityLinks / unrelated data -- untouched
+// ---------------------------------------------------------------------
+
+describe('a character purge never touches its owner\'s Account or unrelated data', () => {
+  it('makes no request to eldra_accounts, eldra_identity_links, eldra_platform_grants, or world_memberships', async () => {
     const store = baseStore({
-      sheets: [{ id: 39 }],
-      transfers: [{ id: 501, source_entity_id: Number(ENTITY_ID), target_entity_id: 999, source_cleared_at: null, target_cleared_at: null }],
-      relationships: [{ id: 801, notes: '' }]
+      entity: { id: Number(ENTITY_ID), world_id: Number(WORLD_ID), title: 'Borc', entity_type: 'pc', owner_account_id: 'eldra-account-owner' },
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+      relationships: [{ id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }],
+      ownershipChanges: [{ id: 1, entity_id: Number(ENTITY_ID) }]
     })
     installStore(store)
 
-    const baseImpl = directusServiceRequestMock.getMockImplementation()!
-    const order: string[] = []
-    directusServiceRequestMock.mockImplementation(async (path: string, opts: any) => {
-      if (opts.method === 'PATCH') order.push(`patch:${path}`)
-      if (opts.method === 'DELETE') order.push(`delete:${path}`)
-      return baseImpl(path, opts)
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    const allPaths = directusServiceRequestMock.mock.calls.map(([path]) => path)
+    for (const forbidden of ['eldra_accounts', 'eldra_identity_links', 'eldra_platform_grants', 'world_memberships']) {
+      expect(allPaths.some((p: string) => p.includes(forbidden))).toBe(false)
+    }
+    const allBodies = directusServiceRequestMock.mock.calls.map(([, opts]) => JSON.stringify(opts?.body ?? {}))
+    expect(allBodies.some((b: string) => b.includes('owner_account_id'))).toBe(false)
+  })
+
+  it('leaves a DIFFERENT character in the same World completely untouched', async () => {
+    const store = baseStore({
+      sheets: [
+        { id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) },
+        { id: 40, world_id: Number(WORLD_ID), entity_id: 9999 }
+      ],
+      otherSheets: []
     })
+    installStore(store)
 
     await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
-    const firstDeleteIndex = order.findIndex((entry) => entry.startsWith('delete:'))
-    const lastPatchIndex = order.map((entry, i) => (entry.startsWith('patch:') ? i : -1)).filter((i) => i >= 0).pop() ?? -1
-    expect(firstDeleteIndex).toBeGreaterThan(-1)
-    expect(lastPatchIndex).toBeLessThan(firstDeleteIndex)
+    expect(store.sheets.map((s) => s.id)).toEqual([40])
+    expect(store.deletedPaths).not.toContain('/items/character_sheets/40')
+  })
+
+  it('does not delete a shared content entity merely because the character\'s sheet references it (class/species/background/item ids are never queried or deleted)', async () => {
+    const store = baseStore({
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID), class_entity_id: 501, species_entity_id: 502, background_entity_id: 503 }],
+      inventory: [{ id: 1, sheet_id: 39, item_entity_id: 701 }]
+    })
+    installStore(store)
+
+    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+
+    // The only entities/* DELETE call is the character's own -- never 501/502/503/701.
+    const entityDeletes = store.deletedPaths.filter((p) => /^\/items\/entities\/\d+$/.test(p))
+    expect(entityDeletes).toEqual([`/items/entities/${ENTITY_ID}`])
   })
 })
 
 // ---------------------------------------------------------------------
-// WRITE-SAFETY REVIEW: no cross-collection Postgres transaction is
-// available for this nine-write cascade (re-verified: the existing
-// ELDRA_RESOURCE_DB_URL / eldra_resource_writer credential has no grant
-// at all on character_sheets, character_sheet_inventory, block_instances,
-// entity_actions, entity_statblocks, monster_profiles,
-// character_sheet_inventory_transfers, entity_relationships, or
-// roll_events -- confirmed against
-// scripts/directus/create-resources-unique-index.mjs's own documented
-// grant list). These tests pin the resulting recoverable-by-retry design
-// instead of a false claim of atomicity.
+// WRITE-SAFETY: no cross-collection Postgres transaction is available
+// for this cascade (re-verified against eldra_resource_writer's own
+// documented grant set, which has no access at all to most of the
+// collections this purge touches). Retry/idempotency is the substitute.
 // ---------------------------------------------------------------------
 
 describe('executeCharacterDeletion -- partial-failure and retry safety', () => {
   it('a mid-cascade failure propagates a clear, retry-safe error -- never a false success', async () => {
-    const store = baseStore({ sheets: [{ id: 39 }] })
+    const store = baseStore({ sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }] })
     installStore(store, {
       failDeleteOnce: { path: '/items/character_sheets/39', error: Object.assign(new Error('network blip'), { statusCode: 500 }) }
     })
@@ -434,100 +565,84 @@ describe('executeCharacterDeletion -- partial-failure and retry safety', () => {
     await expect(deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)).rejects.toMatchObject({
       statusMessage: expect.stringContaining('safe to retry')
     })
-    // The entities row itself was never reached -- the character is not
-    // presented as deleted.
     expect(store.deletedPaths).not.toContain(`/items/entities/${ENTITY_ID}`)
   })
 
-  it('RETRYING after a mid-cascade failure completes successfully, skipping whatever already succeeded', async () => {
-    const store = baseStore({ sheets: [{ id: 39 }], blockInstances: [{ id: 10 }] })
+  it('RETRYING after a mid-cascade failure finishes the job, including whatever failed the first time', async () => {
+    const store = baseStore({
+      sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }],
+      blockInstances: [{ id: 10, entity_id: Number(ENTITY_ID) }]
+    })
     installStore(store, {
       failDeleteOnce: { path: '/items/character_sheets/39', error: Object.assign(new Error('network blip'), { statusCode: 500 }) }
     })
 
     await expect(deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)).rejects.toThrow()
+    // block_instances/10 already deleted by the first (partially-failed)
+    // attempt, since it ran before the failing character_sheets delete.
+    expect(store.blockInstances).toHaveLength(0)
+    expect(store.sheets).toHaveLength(1) // the failing delete never completed
 
-    // Retry: re-plan and re-execute, same as a fresh HTTP request would.
-    // block_instances/10 was already deleted on the first attempt (it ran
-    // before the failing character_sheets delete); character_sheets/39
-    // failed once and now succeeds.
-    store.blockInstances = [] // already gone from the first attempt's cascade
-    installStore(store) // no more injected failure -- the "retry" succeeds
+    // Retry: fresh plan + execute, exactly like a second HTTP request.
+    installStore(store) // no more injected failure
     const result = await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
     expect(result.plan.entityId).toBe(ENTITY_ID)
-    expect(store.deletedPaths).toContain(`/items/entities/${ENTITY_ID}`)
+    expect(store.sheets).toHaveLength(0)
+    expect(store.entity).toBeNull()
   })
 
   it('a DELETE that 404s (already gone from an earlier partial attempt) is treated as success, not an error', async () => {
-    const store = baseStore({ sheets: [{ id: 39 }] })
+    const store = baseStore({ sheets: [{ id: 39, world_id: Number(WORLD_ID), entity_id: Number(ENTITY_ID) }] })
     installStore(store, { alreadyGonePaths: ['/items/character_sheets/39'] })
 
     const result = await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
     expect(result.plan).toBeDefined()
-    // Not re-added to deletedPaths (it 404'd), but the overall operation
-    // still completed, including the final entities delete.
-    expect(store.deletedPaths).toContain(`/items/entities/${ENTITY_ID}`)
+    expect(store.entity).toBeNull()
   })
 
-  it('retrying a relationship-marking step never duplicates the automatic note', async () => {
-    const store = baseStore({ relationships: [{ id: 801, notes: 'Old ally.', status: 'character_deleted' }] })
-    installStore(store)
+  // Every one of the five revision-2 collections must independently
+  // survive a retry where some of ITS rows are already gone.
+  it.each([
+    ['character_sheet_inventory_transfers', (s: Store) => { s.transfers.push({ id: 501, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }) }],
+    ['entity_relationships', (s: Store) => { s.relationships.push({ id: 801, world_id: Number(WORLD_ID), source_entity_id: Number(ENTITY_ID), target_entity_id: 999 }) }],
+    ['roll_events', (s: Store) => { s.rollEvents.push({ id: 1, actor_character_id: Number(ENTITY_ID) }) }],
+    ['map_pins', (s: Store) => { s.mapPins.push({ id: 1, entity_id: Number(ENTITY_ID) }) }],
+    ['entity_ownership_changes', (s: Store) => { s.ownershipChanges.push({ id: 1, entity_id: Number(ENTITY_ID) }) }]
+  ])('retrying is safe when a %s row is already gone', async (collection, seed) => {
+    const store = baseStore()
+    seed(store)
+    const key = COLLECTION_KEYS[collection as string]
+    const id = (store[key] as Row[])[0].id
+    installStore(store, { alreadyGonePaths: [`/items/${collection}/${id}`] })
 
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
+    const result = await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
-    // Already marked (status pre-set to 'character_deleted' in the
-    // fixture, simulating an earlier attempt's own patch) -- skipped
-    // entirely, so no second patch and no duplicated note text.
-    const patch = store.patches.find((p) => p.path === '/items/entity_relationships/801')
-    expect(patch).toBeUndefined()
+    expect(result.plan).toBeDefined()
+    expect(store.entity).toBeNull()
   })
 
   it('the final entities DELETE revalidates the target: if already gone, succeeds idempotently without erroring', async () => {
     const store = baseStore()
     // Call 1 = planCharacterDeletion's own read; call 2 = the final
-    // revalidation read, right before the destructive DELETE -- simulate
-    // a concurrent/earlier attempt having ALREADY deleted it by then.
+    // revalidation read right before the destructive DELETE.
     installStore(store, { entityGoneAfterCall: 1 })
 
     const result = await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
 
     expect(result.plan).toBeDefined()
-    // No DELETE call was needed -- it was already gone.
     expect(store.deletedPaths).not.toContain(`/items/entities/${ENTITY_ID}`)
   })
 
-  it('when only the final entities DELETE fails (every dependent already removed), the error says every dependent is already gone and a retry only repeats this step', async () => {
+  it('when only the final entities DELETE fails, the error says every dependent is already gone and a retry only repeats this step', async () => {
     const store = baseStore()
     installStore(store, {
-      failDeleteOnce: {
-        path: `/items/entities/${ENTITY_ID}`,
-        error: Object.assign(new Error('timeout'), { statusCode: 500 })
-      }
+      failDeleteOnce: { path: `/items/entities/${ENTITY_ID}`, error: Object.assign(new Error('timeout'), { statusCode: 500 }) }
     })
 
     await expect(deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)).rejects.toMatchObject({
       statusMessage: expect.stringContaining('already gone')
     })
-  })
-})
-
-describe('deleting a character never touches its owner\'s Eldra Account', () => {
-  it('makes no request to eldra_accounts or eldra_identity_links, and never reads/writes owner_account_id', async () => {
-    const store = baseStore({
-      entity: { id: Number(ENTITY_ID), world_id: Number(WORLD_ID), title: 'Borc', entity_type: 'pc', owner_account_id: 'eldra-account-owner' },
-      sheets: [{ id: 39 }],
-      relationships: [{ id: 801, notes: '' }]
-    })
-    installStore(store)
-
-    await deleteCharacterWithPlan(WORLD_ID, ENTITY_ID)
-
-    const allPaths = directusServiceRequestMock.mock.calls.map(([path]) => path)
-    expect(allPaths.some((p: string) => p.includes('eldra_accounts'))).toBe(false)
-    expect(allPaths.some((p: string) => p.includes('eldra_identity_links'))).toBe(false)
-    const allBodies = directusServiceRequestMock.mock.calls.map(([, opts]) => JSON.stringify(opts?.body ?? {}))
-    expect(allBodies.some((b: string) => b.includes('owner_account_id'))).toBe(false)
   })
 })

@@ -9,7 +9,7 @@
 // up the safe cascade below.
 //
 // See server/utils/character-deletion.ts for the full dependency trace
-// (what cascades, what is detached, what is preserved, and why) and
+// (every collection this purge deletes, and why) and
 // server/api/worlds/[id]/characters/[characterId]/deletion-impact.get.ts
 // for the preview endpoint the Player Management drawer calls before
 // this one.

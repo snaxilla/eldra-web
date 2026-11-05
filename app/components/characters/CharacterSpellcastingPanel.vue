@@ -245,38 +245,71 @@ const groupedSpells = computed<SpellGroup[]>(() => {
       <template #body>
         <div class="grid gap-3">
           <div class="grid gap-3">
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+            <div class="block">
+              <label
+                for="spell-add-search"
+                class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint"
+              >
                 Search published spells
-              </span>
+              </label>
               <input
+                id="spell-add-search"
                 v-model="search"
                 type="search"
                 class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
                 :placeholder="searchPlaceholder"
                 :disabled="!options.length"
               >
-              <select
-                v-model="selectedKey"
-                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+
+              <!-- Inventory bug-fix pass (follow-up) -- mirrors
+                   CharacterInventoryPanel.vue's own identical fix: real,
+                   directly-rendered rows, not a native <select> whose
+                   <option> list a search term only ever filtered
+                   indirectly. -->
+              <fieldset
+                class="max-h-48 overflow-y-auto rounded-none border border-eldra-accent/24 bg-eldra-ink/60"
                 :disabled="!options.length"
               >
-                <option
-                  value=""
-                  class="bg-eldra-ink text-eldra-accent-text"
+                <legend class="sr-only">Published spell</legend>
+                <label
+                  class="flex min-h-11 cursor-pointer items-center gap-2 border-b border-eldra-accent/12 px-3 py-2 text-sm text-eldra-text-faint last:border-b-0 hover:bg-eldra-accent/8"
                 >
+                  <input
+                    type="radio"
+                    name="spell-add-option"
+                    class="shrink-0"
+                    value=""
+                    :checked="selectedKey === ''"
+                    @change="selectedKey = ''"
+                  >
                   No published spell selected
-                </option>
-                <option
+                </label>
+                <label
                   v-for="option in filteredOptions"
                   :key="optionKey(option)"
-                  :value="optionKey(option)"
-                  class="bg-eldra-ink text-eldra-accent-text"
+                  class="flex min-h-11 cursor-pointer items-center gap-2 border-b border-eldra-accent/12 px-3 py-2 text-sm text-white last:border-b-0 hover:bg-eldra-accent/8"
+                  :class="selectedKey === optionKey(option) ? 'bg-eldra-accent/14' : ''"
                 >
-                  {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
-                </option>
-              </select>
-            </label>
+                  <input
+                    type="radio"
+                    name="spell-add-option"
+                    class="shrink-0"
+                    :value="optionKey(option)"
+                    :checked="selectedKey === optionKey(option)"
+                    @change="selectedKey = optionKey(option)"
+                  >
+                  <span class="min-w-0 truncate">
+                    {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
+                  </span>
+                </label>
+              </fieldset>
+              <p
+                v-if="options.length && !filteredOptions.length"
+                class="mt-1 text-xs text-eldra-text-faint"
+              >
+                No published spells match “{{ search }}”.
+              </p>
+            </div>
 
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">

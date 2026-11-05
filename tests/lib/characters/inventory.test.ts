@@ -14,12 +14,14 @@ import {
   changeInventoryQuantity,
   clampQuantity,
   emptyInventory,
+  itemDetailLines,
   nextInstanceId,
   normalizeStoredInventory,
   removeInventoryItem,
   setInventoryQuantity,
   toggleInventoryFlag,
   unresolvedItemLabel,
+  type AssembledInventoryItem,
   type StoredInventoryItem
 } from '../../../app/lib/characters/inventory'
 
@@ -212,5 +214,71 @@ describe('nothing here computes a rules consequence', () => {
     expect(Object.keys(next[0]!).sort()).toEqual(
       ['attuned', 'equipped', 'instanceId', 'quantity', 'ref'].sort()
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// itemDetailLines -- the Item Detail panel's player-facing content
+// ---------------------------------------------------------------------------
+// Character Purgatory follow-up. The real reported bug:
+// `Resolved from: eldra.solaris.xphb@1.0.37` -- internal package-resolution
+// plumbing -- leaked into the player-facing item detail panel. These pin
+// that `entry.packageId`/`packageVersion` can never reach this list, while
+// `entry.sourceBook` (useful, human-readable provenance) still does.
+// ---------------------------------------------------------------------------
+
+function resolvedItem(overrides: Partial<AssembledInventoryItem> = {}): AssembledInventoryItem {
+  return {
+    instanceId: 'item-1',
+    quantity: 1,
+    equipped: false,
+    attuned: false,
+    status: 'resolved',
+    title: 'Shortsword',
+    entry: {
+      packageId: 'eldra.solaris.xphb',
+      packageVersion: '1.0.37',
+      title: 'Shortsword',
+      slug: 'shortsword-xphb',
+      sourceBook: 'XPHB'
+    },
+    ...overrides
+  }
+}
+
+describe('itemDetailLines', () => {
+  it('never includes the raw package locator -- the exact reported leak', () => {
+    const lines = itemDetailLines(resolvedItem())
+
+    expect(lines.join(' | ')).not.toContain('eldra.solaris.xphb')
+    expect(lines.join(' | ')).not.toContain('1.0.37')
+    expect(lines.some((line) => line.startsWith('Resolved from'))).toBe(false)
+  })
+
+  it('keeps the human-readable Source line when the catalogue entry has one', () => {
+    const lines = itemDetailLines(resolvedItem())
+    expect(lines).toContain('Source: XPHB')
+  })
+
+  it('omits the Source line entirely when the entry has none -- never a blank "Source:"', () => {
+    const lines = itemDetailLines(resolvedItem({ entry: { packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37', title: 'Shortsword', slug: 'shortsword-xphb' } }))
+    expect(lines.some((line) => line.startsWith('Source:'))).toBe(false)
+  })
+
+  it('a custom item (no catalogue entry at all) never gets a Source or package line', () => {
+    const lines = itemDetailLines(resolvedItem({ status: 'custom', entry: undefined }))
+    expect(lines.some((line) => line.startsWith('Source:') || line.startsWith('Resolved from'))).toBe(false)
+  })
+
+  it('always leads with Quantity, and includes Container/notes when present', () => {
+    const lines = itemDetailLines(resolvedItem({ quantity: 3, container: 'Backpack', notes: 'A gift from the blacksmith' }))
+    expect(lines[0]).toBe('Quantity: 3')
+    expect(lines).toContain('Container: Backpack')
+    expect(lines).toContain('A gift from the blacksmith')
+  })
+
+  it('a missing (broken reference) item includes its own reason', () => {
+    const lines = itemDetailLines(resolvedItem({ status: 'missing', reason: 'No longer published by any bound Content Pack', entry: undefined }))
+    expect(lines).toContain('No longer published by any bound Content Pack')
   })
 })

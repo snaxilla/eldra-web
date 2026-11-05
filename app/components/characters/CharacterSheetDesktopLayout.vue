@@ -123,9 +123,29 @@ const mainSections = computed(() => props.sections.filter((section) => section.p
 </template>
 
 <style scoped>
-/* Sizes are the sheet CONTAINER's (the page's @container/sheet). */
+/* Sizes are the sheet CONTAINER's (the page's @container/sheet).
+   CHARACTER PURGATORY FOLLOW-UP -- ACTUAL CONFIRMED ROOT CAUSE of the
+   Abilities-column truncation: `--sheet-rail-w` used to be its OWN,
+   SMALLER constant (17rem) than `--sheet-side-w` (20rem). The two columns
+   share one value below, "rail" and "skills" shared the SAME column
+   (`--sheet-side-w`, 20rem) -- but crossing >= 1240px (where the layout
+   switches to three SEPARATE columns, "rail skills main") narrowed the
+   rail specifically, from 20rem down to 17rem, while skills stayed at
+   20rem. A WIDER browser window -- the exact "the screen has room"
+   complaint -- made the Abilities column SMALLER, not bigger. The prior
+   pass's label-wrap fix (CharacterAbilityGrid.vue, still in place below
+   as a safety net) could not fully compensate: at 17rem minus the rail's
+   own 1rem/side padding (.eldra-sheet-panel), 3 columns leave roughly
+   80px per tile, tight enough that "Intelligence"/"Constitution" could
+   still clip even across two wrapped lines depending on exact font
+   metrics. `--sheet-rail-w` is gone; "rail" now uses the SAME
+   `--sheet-side-w` variable "skills" already did, at every breakpoint, so
+   widening the viewport can never shrink this column again, and the
+   Abilities grid gets roughly 288px of content width (20rem rail minus
+   padding) at every supported desktop size -- comfortably one line for
+   every real ability name at this component's current font size, with
+   the wrap fallback still there if a future label is ever longer. */
 .eldra-sheet-desktop {
-  --sheet-rail-w: 17rem;
   --sheet-side-w: 20rem;
 }
 
@@ -158,7 +178,7 @@ const mainSections = computed(() => props.sections.filter((section) => section.p
 
 @container sheet (min-width: 1240px) {
   .eldra-sheet-desktop__body {
-    grid-template-columns: var(--sheet-rail-w) var(--sheet-side-w) minmax(0, 1fr);
+    grid-template-columns: var(--sheet-side-w) var(--sheet-side-w) minmax(0, 1fr);
     grid-template-rows: auto;
     grid-template-areas: "rail skills main";
   }

@@ -214,13 +214,37 @@ export function resolveCreationContentChoices(
       // `grants` entry, never a choice, for every real Weapon Mastery class) -- `weaponValueId`
       // (P1's own vocabulary) turns each of the item's own generic `proficiencyGroups` into the
       // exact Value id to check, never inferred from class name.
+      //
+      // STRUCTURAL PRE-FILTER (Character Purgatory follow-up -- the real
+      // reported bug: Weapon Mastery's option list showed every piece of
+      // equipment the World's catalogue carries -- Alchemist's Supplies,
+      // Arrows, Bagpipes, Breastplate -- not just weapons). item-mechanics/types.ts's
+      // own `CanonicalItemMechanics.kind` is a `'weapon'` literal: a
+      // non-weapon entry (armor, a tool, ammunition, a trade good) ALWAYS
+      // resolves to `itemMechanics: null` ("MILESTONE A SCOPE: only
+      // WEAPONS are resolved" -- that module's own header), which already
+      // made every one of those entries permanently ineligible
+      // (itemOptionVerdict's own `no-mechanics` branch) -- so this
+      // `continue` changes NOTHING about what is SELECTABLE, only what is
+      // even OFFERED at all. The prior code pushed every catalogue item
+      // into `offered` regardless, and CharacterChoiceSetPicker.vue's own
+      // documented contract is to show every offered option, eligible or
+      // not, disabled with a reason -- correct for a choice like a
+      // Fighting Style feat (where "already picked"/"not yet eligible" is
+      // meaningful), wrong for Weapon Mastery, where a non-weapon can
+      // NEVER become eligible and showing it is pure noise. This is a
+      // structural check on the resolved mechanics shape, never a
+      // display-name heuristic (no string match against "sword"/"armor"
+      // anywhere).
       for (const entry of items) {
-        const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
         const mechanics = entry.itemMechanics
+        if (!mechanics) continue
+
+        const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
         const verdict = itemOptionVerdict({
           mechanics,
           filter: selector.filter as ItemCatalogueFilter,
-          proficient: () => (mechanics?.proficiencyGroups ?? []).some((group) => featureActive.has(weaponValueId(group))),
+          proficient: () => mechanics.proficiencyGroups.some((group) => featureActive.has(weaponValueId(group))),
           ownedElsewhere: takenByEarlier.has(ref)
         })
         offered.push({

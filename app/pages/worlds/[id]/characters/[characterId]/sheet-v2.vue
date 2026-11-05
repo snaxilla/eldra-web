@@ -363,7 +363,7 @@ import {
   type CharacterSheetContextRoll
 } from '~/composables/useCharacterSheetLayout'
 import { useWorldRolls } from '~/composables/useWorldRolls'
-import type { AssembledInventoryItem } from '~/lib/characters/inventory'
+import { itemDetailLines, type AssembledInventoryItem } from '~/lib/characters/inventory'
 import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
 import type { PresentationEntry } from '~/lib/content-presentation/types'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
@@ -1049,12 +1049,15 @@ function openSpellContext(spell: AssembledSpellEntry) {
 }
 
 function openItemContext(item: AssembledInventoryItem) {
-  const lines: string[] = [`Quantity: ${item.quantity}`]
-  if (item.container) lines.push(`Container: ${item.container}`)
-  if (item.notes) lines.push(item.notes)
-  if (item.entry?.sourceBook) lines.push(`Source: ${item.entry.sourceBook}`)
-  if (item.entry) lines.push(`Resolved from: ${item.entry.packageId}@${item.entry.packageVersion}`)
-  if (item.status === 'missing' && item.reason) lines.push(item.reason)
+  // Character Purgatory follow-up -- the real reported bug: a
+  // `Resolved from: eldra.solaris.xphb@1.0.37`-shaped line (internal
+  // package-resolution plumbing, meaningless to a player) used to be
+  // built inline here too. The player-facing line-building itself now
+  // lives in app/lib/characters/inventory.ts's own `itemDetailLines` --
+  // pure, and directly tested -- which never reads `entry.packageId`/
+  // `packageVersion` at all; `entry.sourceBook` (e.g. "XPHB") is the one
+  // piece of provenance kept.
+  const lines = itemDetailLines(item)
 
   const tags: string[] = []
   if (item.equipped) tags.push('Equipped')

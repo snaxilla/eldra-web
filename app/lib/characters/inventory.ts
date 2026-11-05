@@ -253,6 +253,31 @@ export type AssembledInventoryItem = StoredInventoryItem & {
 }
 
 // ---------------------------------------------------------------------------
+// Player-facing detail lines -- the Item Detail panel's own content
+// ---------------------------------------------------------------------------
+// Character Purgatory follow-up -- the real reported bug: the detail panel
+// (sheet-v2.vue's `openItemContext`) used to also push a
+// `Resolved from: ${packageId}@${packageVersion}` line -- internal
+// package-resolution plumbing with no meaning to a player. Extracted here,
+// as a pure function, specifically so "the raw packageId/packageVersion
+// locator can never leak into this list" is a fact a test can pin, not
+// only a visual read of a ~1700-line page file.
+//
+// `entry.sourceBook` (e.g. "XPHB") is the one piece of provenance a player
+// actually wants, and stays. `entry.packageId`/`packageVersion` are NOT
+// read here at all -- not filtered out after the fact, never read in the
+// first place -- so a future line added to this function cannot
+// accidentally reintroduce them by copying the wrong field off `entry`.
+export function itemDetailLines(item: Pick<AssembledInventoryItem, 'quantity' | 'container' | 'notes' | 'entry' | 'status' | 'reason'>): string[] {
+  const lines: string[] = [`Quantity: ${item.quantity}`]
+  if (item.container) lines.push(`Container: ${item.container}`)
+  if (item.notes) lines.push(item.notes)
+  if (item.entry?.sourceBook) lines.push(`Source: ${item.entry.sourceBook}`)
+  if (item.status === 'missing' && item.reason) lines.push(item.reason)
+  return lines
+}
+
+// ---------------------------------------------------------------------------
 // Mutations -- pure, total, and the only place inventory changes shape
 // ---------------------------------------------------------------------------
 // Every one returns a NEW list rather than mutating in place, so a caller

@@ -13,7 +13,9 @@ import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
 import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
 import { resolveDnd5eSpellMechanics } from '../../../app/lib/spell-mechanics/dnd5e'
-import type { CreationSpellEntry } from '../../../app/lib/characters/creation-content-choices'
+import { resolveDnd5eItemMechanics } from '../../../app/lib/item-mechanics/dnd5e'
+import { weaponValueId } from '../../../app/lib/content-rules/proficiency-vocabulary'
+import type { CreationSpellEntry, CreationItemEntry } from '../../../app/lib/characters/creation-content-choices'
 
 const PKG = 'eldra.solaris.xphb'
 const FS_SELECTOR = { category: 'feats', filter: { category: 'fighting-style', variants: ['FS'] } }
@@ -208,5 +210,114 @@ describe('ownership and multiple creation acquisitions', () => {
     const backgroundKey = progressionChoiceKey('background', 1, 'choice:feat.origin-future')
     expect(classKey).not.toBe(backgroundKey)
     expect(new Set([classKey, backgroundKey]).size).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Weapon Mastery ('items' category) -- Character Purgatory follow-up. The
+// real reported bug: the offered list included general equipment
+// (Alchemist's Supplies, Arrows, Bagpipes, Breastplate) alongside actual
+// weapons. A minimal item shaped like the real corpus (the resolver reads
+// these exact fields; see app/lib/item-mechanics/dnd5e.ts's own header) --
+// a non-weapon simply omits `weaponCategory` entirely, which is the
+// STRUCTURAL signal (never a display-name check) resolveDnd5eItemMechanics
+// uses to resolve `null`.
+// ---------------------------------------------------------------------------
+
+function item(name: string, slug: string, raw: Record<string, unknown> | null): CreationItemEntry {
+  return {
+    packageId: PKG,
+    slug,
+    title: name,
+    itemMechanics: raw ? resolveDnd5eItemMechanics(raw) : null
+  }
+}
+
+// Real weapons -- shaped exactly like items-base.json's own fields.
+const LONGSWORD = item('Longsword', 'longsword-xphb', {
+  weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Sap|XPHB']
+})
+const SHORTBOW = item('Shortbow', 'shortbow-xphb', {
+  weaponCategory: 'simple', type: 'R|XPHB', property: ['A|XPHB', '2H|XPHB'], mastery: ['Vex|XPHB']
+})
+
+// Exactly the non-weapon equipment visible in Sam's screenshot -- none of
+// these carry a `weaponCategory` field at all in the real corpus, so each
+// resolves to `itemMechanics: null`.
+const ALCHEMISTS_SUPPLIES = item('Alchemist\'s Supplies', 'alchemists-supplies-xphb', { type: 'AT|XPHB' })
+const ARROWS = item('Arrows (20)', 'arrows-xphb', { type: 'AMMO|XPHB' })
+const BAGPIPES = item('Bagpipes', 'bagpipes-xphb', { type: 'INS|XPHB' })
+const BREASTPLATE = item('Breastplate', 'breastplate-xphb', { type: 'MA|XPHB', ac: 14 })
+// Also covers an item whose raw `data` is missing/malformed entirely --
+// the same "absent means not even a candidate" posture as a non-weapon.
+const MYSTERY_TRADE_GOOD = item('Mystery Trade Good', 'mystery-trade-good', null)
+
+const WEAPONS = [LONGSWORD, SHORTBOW]
+const NON_WEAPONS = [ALCHEMISTS_SUPPLIES, ARROWS, BAGPIPES, BREASTPLATE, MYSTERY_TRADE_GOOD]
+const ALL_CATALOGUE_ITEMS = [...WEAPONS, ...NON_WEAPONS]
+
+const WEAPON_MASTERY_CHOICE = 'choice:item.weapon-mastery'
+const WEAPON_MASTERY_SELECTOR = { category: 'items', filter: { itemKind: 'weapon' } }
+
+function weaponMasterySlots(proficiencyGroup: string) {
+  return [{
+    slot: 'class',
+    facet: { grants: [{ set: weaponValueId(proficiencyGroup), to: true }], choices: [{ choiceSet: WEAPON_MASTERY_CHOICE, count: 1 }] }
+  }] as (CreationSlotInput & { slot: string })[]
+}
+
+describe('Weapon Mastery -- only actual weapons are offered', () => {
+  it('excludes every non-weapon from the offered list, even though all six came from the same equipment catalogue', () => {
+    const slots = weaponMasterySlots('martial')
+    const declared = declaredCreationContentChoices(slots, () => WEAPON_MASTERY_SELECTOR)
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], [], ALL_CATALOGUE_ITEMS)
+
+    const offeredSlugs = presentation!.offered.map((o) => o.slug)
+    for (const nonWeapon of NON_WEAPONS) {
+      expect(offeredSlugs).not.toContain(nonWeapon.slug)
+    }
+  })
+
+  it('includes actual weapons the character is proficient with', () => {
+    const slots = weaponMasterySlots('martial')
+    const declared = declaredCreationContentChoices(slots, () => WEAPON_MASTERY_SELECTOR)
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], [], ALL_CATALOGUE_ITEMS)
+
+    expect(presentation!.offered.map((o) => o.slug)).toContain('longsword-xphb')
+    expect(presentation!.offered.find((o) => o.slug === 'longsword-xphb')).toMatchObject({ eligible: true })
+  })
+
+  it('a weapon the character is NOT proficient with is still offered (visible, disabled) -- only non-weapons are dropped from the list entirely', () => {
+    // Proficient with simple weapons only, so the martial Longsword stays
+    // ineligible -- but SHOULD still appear, disabled, the same contract
+    // feats/spells already have. Non-weapons are different: they can
+    // NEVER become eligible, which is why they alone are excluded.
+    const slots = weaponMasterySlots('simple')
+    const declared = declaredCreationContentChoices(slots, () => WEAPON_MASTERY_SELECTOR)
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], [], ALL_CATALOGUE_ITEMS)
+
+    expect(presentation!.offered.find((o) => o.slug === 'longsword-xphb')).toMatchObject({ eligible: false, reason: 'not-proficient' })
+    expect(presentation!.offered.find((o) => o.slug === 'shortbow-xphb')).toMatchObject({ eligible: true })
+  })
+
+  it('an item with no resolvable mechanics at all (malformed/absent data) is excluded exactly like an ordinary non-weapon', () => {
+    const slots = weaponMasterySlots('martial')
+    const declared = declaredCreationContentChoices(slots, () => WEAPON_MASTERY_SELECTOR)
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], [], ALL_CATALOGUE_ITEMS)
+
+    expect(presentation!.offered.map((o) => o.slug)).not.toContain('mystery-trade-good')
+  })
+
+  it('a selected weapon can still be picked and round-trips through `selected`', () => {
+    const slots = weaponMasterySlots('martial')
+    const declared = declaredCreationContentChoices(slots, () => WEAPON_MASTERY_SELECTOR)
+    const longswordRef = serializeContentRef({ packageId: PKG, slug: 'longsword-xphb' })
+
+    const [presentation] = resolveCreationContentChoices(
+      declared, slots, { [declared[0]!.key]: [longswordRef] }, [], [], ALL_CATALOGUE_ITEMS
+    )
+
+    expect(presentation!.selected).toEqual([longswordRef])
+    expect(presentation!.valid).toBe(true)
   })
 })

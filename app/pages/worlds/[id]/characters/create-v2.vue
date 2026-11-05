@@ -941,7 +941,7 @@ async function createCharacter() {
                   />
                 </div>
 
-                <!-- ============ CLASS: hero over art | medallion strip along the bottom ============ -->
+                <!-- ============ CLASS: medallion strip along the top | hero over art ============ -->
                 <!-- Character Creator V3 scroll/navigation repair -- ACTUAL CONFIRMED ROOT CAUSE
                      (a real browser pass against the running app, mocked-data harness, not static
                      markup): this step's ancestors (`min-h-full` on the row/column a few lines up,
@@ -957,15 +957,37 @@ async function createCharacter() {
                      screenshot of the real app at 1920x920 showed exactly this -- a short hero,
                      acres of empty space, and the Class heading clipped at the viewport's bottom
                      edge. The fix removes `flex-1` from the hero wrapper so it sizes to its own
-                     content plus padding, never beyond -- the strip now renders immediately after
-                     it instead of past the fold. (The EARLIER `min-h-0` fix on this step and the
-                     wrapper, while harmless, did not address this -- `min-h-0` only affects how far
-                     a flex item may SHRINK, and the bug was the wrapper GROWING past its content,
-                     not refusing to shrink below it.) -->
+                     content plus padding, never beyond. (The EARLIER `min-h-0` fix on this step and
+                     the wrapper, while harmless, did not address this -- `min-h-0` only affects how
+                     far a flex item may SHRINK, and the bug was the wrapper GROWING past its
+                     content, not refusing to shrink below it.)
+
+                     CLASS SELECTOR REPOSITIONING (character-sheet bug-fix pass) -- the strip and
+                     the hero below are the same two elements as before, swapped in SOURCE ORDER
+                     only (no selection logic touched): the strip used to render AFTER the hero, so
+                     a long class description (Wizard's, for one) pushed it well down the page,
+                     making it awkward to reach when comparing classes. `shrink-0` keeps it pinned
+                     to its own content height regardless of where it sits in the column; only its
+                     divider border moved from `border-t` to `border-b` to visually separate it from
+                     whichever element now follows it instead of precedes it. -->
                 <div
                   v-else-if="activeStep === 'class'"
                   class="flex min-h-0 min-w-0 flex-1 flex-col"
                 >
+                  <div class="shrink-0 border-b border-eldra-accent/25 bg-eldra-ink/60 px-2 pb-3 backdrop-blur-md">
+                    <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
+                      Class
+                    </h2>
+                    <CharacterBuilderOptionPicker
+                      label="Class"
+                      name="builder-class"
+                      variant="strip"
+                      :options="optionsFor.class"
+                      :model-value="selectedKeys.class"
+                      :compact="compact"
+                      @update:model-value="(value: string) => chooseOption('class', value)"
+                    />
+                  </div>
                   <div class="flex items-center justify-center py-6 lg:py-10">
                     <CreationHero
                       kicker="Class"
@@ -1001,20 +1023,6 @@ async function createCharacter() {
                         />
                       </div>
                     </CreationHero>
-                  </div>
-                  <div class="mt-4 shrink-0 border-t border-eldra-accent/25 bg-eldra-ink/60 px-2 pt-3 backdrop-blur-md">
-                    <h2 class="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-eldra-accent-text">
-                      Class
-                    </h2>
-                    <CharacterBuilderOptionPicker
-                      label="Class"
-                      name="builder-class"
-                      variant="strip"
-                      :options="optionsFor.class"
-                      :model-value="selectedKeys.class"
-                      :compact="compact"
-                      @update:model-value="(value: string) => chooseOption('class', value)"
-                    />
                   </div>
                 </div>
 

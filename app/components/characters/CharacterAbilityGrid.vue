@@ -123,10 +123,26 @@ const rows = computed<CharacterAbilityRow[]>(() =>
       <li
         v-for="row in rows"
         :key="row.key"
+        class="flex"
       >
+        <!-- Sheet Abilities-column width bug-fix pass -- the real reported
+             bug: `truncate` (white-space: nowrap + ellipsis) on this label,
+             combined with the narrow reference rail (CharacterSheetDesktopLayout.vue's
+             `--sheet-rail-w: 17rem`), clipped longer names ("Constitution",
+             "Intelligence") to a few characters at every width this tile
+             actually renders at. `truncate` is gone; the label now wraps
+             onto a second line instead, capped at two (`line-clamp-2`,
+             never actually reached by any real ability name -- the
+             longest is 12 characters -- but kept as a defensive ceiling
+             against a future, longer label rather than an unbounded
+             growth). `h-full` on the button (the `<li>` is now a flex
+             item via the parent `flex` class) makes every tile in a row
+             the same height regardless of whether its own label needed
+             one line or two, instead of leaving shorter-label tiles with
+             a visually inconsistent gap below their score. -->
         <button
           type="button"
-          class="eldra-well eldra-rollable relative flex w-full flex-col items-center rounded-none px-1 pb-2 pt-1.5 text-center disabled:cursor-not-allowed disabled:opacity-60"
+          class="eldra-well eldra-rollable relative flex h-full w-full flex-col items-center justify-center rounded-none px-1 pb-2 pt-1.5 text-center disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="rolling"
           :aria-busy="rollingKey === row.key && rolling ? 'true' : undefined"
           :aria-label="`Roll ${row.label}${row.modifier ? `, ${row.modifier}` : ''}`"
@@ -138,7 +154,7 @@ const rows = computed<CharacterAbilityRow[]>(() =>
             aria-hidden="true"
           />
           <span
-            class="w-full truncate px-3 text-[0.55rem] font-semibold uppercase tracking-[0.04em] text-eldra-text-faint"
+            class="line-clamp-2 w-full px-0.5 text-[0.55rem] font-semibold uppercase leading-tight tracking-[0.04em] text-eldra-text-faint"
             :title="row.label"
           >
             {{ row.label }}

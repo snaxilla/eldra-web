@@ -179,7 +179,18 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // outer `await useCharacterSheet(...)` in sheet-v2.vue, not awaits
   // inside this composable itself), so every `useFetch` call has to
   // happen up here, before that boundary.
-  const { data: catalogue } = useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
+  // Inventory bug-fix pass -- `pending` is now threaded through
+  // (inventoryOptionsLoading, below) alongside `data`. Before this, the
+  // Add Item form had no way to tell "the catalogue is still loading" (a
+  // real, multi-second window for a World with a large bound pack --
+  // this one's own `.output` build returns ~1.8MB of JSON for a World
+  // bound to the 2024 Player's Handbook + Monster Manual, measured
+  // directly) apart from "nothing is bound to this World at all": both
+  // rendered the identical "No item content is bound to this World"
+  // placeholder and a disabled search box, so searching during that
+  // window looked exactly like a permanently broken search rather than
+  // one that would succeed moments later.
+  const { data: catalogue, pending: catalogueLoading } = useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
     () => `/api/worlds/${worldId.value}/catalogue`,
     { lazy: true }
   )
@@ -642,6 +653,9 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     spellcastingAttackBonus,
     inventoryItems,
     inventoryOptions,
+    // Inventory bug-fix pass -- same `pending` ref for both forms, since
+    // both options lists come off the identical lazy catalogue fetch.
+    catalogueOptionsLoading: catalogueLoading,
     noteDraft,
     healthDraft,
     characterImageUrlDraft,

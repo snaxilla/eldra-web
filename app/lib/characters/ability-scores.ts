@@ -87,13 +87,14 @@ export const ABILITY_SCORE_METHOD_DESCRIPTIONS: Record<AbilityScoreMethod, strin
   roll: 'Roll for your scores in the app.'
 }
 
-// Rolling is deliberately a declared-but-unavailable method rather than a
-// hidden one -- this task's own IMPLEMENT section stubs it, and its own
-// NON-GOALS forbid dice rolling logic. Showing it greyed with an explanation
-// tells a player it is coming; omitting it would read as "Eldra does not
-// support rolling." Manual Entry is the honest interim path and the stub
-// says so.
-export const UNAVAILABLE_ABILITY_SCORE_METHODS: readonly AbilityScoreMethod[] = ['roll']
+// Every method is now implemented -- Roll (4d6 drop lowest, per ability;
+// see app/lib/characters/ability-score-roll.ts for the dice mechanics and
+// isCompleteRoll/canRepresent below for its own entry-constraint rules)
+// shipped in the Character Purgatory bug-fix pass. Kept as a readonly
+// array, rather than deleted outright, so a FUTURE method still has a
+// declared-but-unavailable slot to land in without re-deriving this
+// pattern from scratch.
+export const UNAVAILABLE_ABILITY_SCORE_METHODS: readonly AbilityScoreMethod[] = []
 
 export function isAbilityScoreMethodAvailable(method: AbilityScoreMethod): boolean {
   return !UNAVAILABLE_ABILITY_SCORE_METHODS.includes(method)
@@ -249,6 +250,24 @@ export function isCompleteManual(assignment: AbilityScoreAssignment): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Roll
+// ---------------------------------------------------------------------------
+// Each ability is rolled independently (4d6, drop the lowest -- the actual
+// dice mechanics live in app/lib/characters/ability-score-roll.ts, which
+// this file does not import, to keep this module's own "pure, zero
+// dependency beyond its own types" boundary literal -- see that file's own
+// header). Completeness here is deliberately IDENTICAL to Manual's: a
+// range check only, with no "use each value once" rule. Standard Array's
+// multiset-matching rule is a property of a FIXED six-value array; a rolled
+// score has no such array to match against, and the task's own brief is
+// explicit that duplicate rolled totals are valid -- 4d6 can honestly
+// produce the same total for two different abilities, and that must never
+// be treated as an error.
+export function isCompleteRoll(assignment: AbilityScoreAssignment): boolean {
+  return isCompleteManual(assignment)
+}
+
+// ---------------------------------------------------------------------------
 // Method-agnostic helpers
 // ---------------------------------------------------------------------------
 
@@ -256,8 +275,7 @@ export function isCompleteForMethod(method: AbilityScoreMethod, assignment: Abil
   if (method === 'standard-array') return isCompleteStandardArray(assignment)
   if (method === 'point-buy') return isCompletePointBuy(assignment)
   if (method === 'manual') return isCompleteManual(assignment)
-  // 'roll' is stubbed and can never be complete -- see
-  // UNAVAILABLE_ABILITY_SCORE_METHODS.
+  if (method === 'roll') return isCompleteRoll(assignment)
   return false
 }
 
@@ -316,8 +334,14 @@ export function defaultAssignmentForMethod(method: AbilityScoreMethod): AbilityS
 //      leave the method in a state it says is illegal. When a method cannot
 //      represent the current scores, it opens at its own default instead --
 //      no data is lost, because the previous method still holds its own.
+// 'roll' no longer special-cased to false (Character Purgatory bug-fix
+// pass): switching INTO Roll from a complete Manual/Point-Buy assignment
+// now seeds it with those same numbers (every ability already shows
+// "Re-Roll" rather than "Roll", since isCompleteRoll's bound check is
+// identical to Manual's) instead of discarding them -- and switching OUT
+// of Roll behaves exactly as it already did for every other method, via
+// the same generic isCompleteForMethod check.
 export function canRepresent(method: AbilityScoreMethod, assignment: AbilityScoreAssignment): boolean {
-  if (method === 'roll') return false
   return isCompleteForMethod(method, assignment)
 }
 

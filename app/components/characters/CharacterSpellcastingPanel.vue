@@ -58,6 +58,7 @@ import { CHARACTER_SHEET_INTERACTION_KEY, emptySpellAddState } from './character
 // rather than the well material -- that color already communicates a
 // different, more urgent thing than "you can act here."
 
+import { catalogueOptionKey, searchCatalogueOptions } from '~/lib/characters/catalogue-option-search'
 import type { AssembledSpellEntry, SpellFlag } from '~/lib/characters/spellcasting'
 
 const props = withDefaults(defineProps<{
@@ -65,6 +66,11 @@ const props = withDefaults(defineProps<{
   // Catalogue-published spells this World can offer, already resolved by the
   // assembly endpoint -- mirrors CharacterInventoryPanel's own `options`.
   options?: readonly { packageId: string; slug: string; title: string; sourceBook?: string }[]
+  // Inventory bug-fix pass -- mirrors CharacterInventoryPanel's own
+  // `optionsLoading` exactly: true while the SAME lazy catalogue fetch
+  // `options` comes from is still in flight, so this panel can say so
+  // instead of looking identical to "no spell content is bound".
+  optionsLoading?: boolean
   isCaster: boolean | null
   abilityMod: number | null
   saveDc: number | null
@@ -73,6 +79,7 @@ const props = withDefaults(defineProps<{
   errorMessage?: string
 }>(), {
   options: () => [],
+  optionsLoading: false,
   saving: false,
   errorMessage: ''
 })
@@ -99,19 +106,18 @@ const search = toRef(addState, 'search')
 const selectedKey = toRef(addState, 'selectedKey')
 const customName = toRef(addState, 'customName')
 
-function optionKey(option: { packageId: string; slug: string }) {
-  return `${option.packageId}::${option.slug}`
-}
+const optionKey = catalogueOptionKey
 
-const filteredOptions = computed(() => {
-  const term = search.value.trim().toLowerCase()
-  const all = props.options
+// The actual query/filter behavior now lives in
+// app/lib/characters/catalogue-option-search.ts, shared verbatim with
+// CharacterInventoryPanel.vue's identical picker -- see that module's
+// own header.
+const filteredOptions = computed(() => searchCatalogueOptions(props.options, search.value))
 
-  if (!term) return all.slice(0, 100)
-
-  return all
-    .filter((option) => option.title.toLowerCase().includes(term))
-    .slice(0, 100)
+// Inventory bug-fix pass -- see `optionsLoading`'s own prop comment.
+const searchPlaceholder = computed(() => {
+  if (props.optionsLoading) return 'Loading published spells…'
+  return props.options.length ? 'Search by name…' : 'No spell content is bound to this World'
 })
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
@@ -247,7 +253,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
                 v-model="search"
                 type="search"
                 class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-                :placeholder="options.length ? 'Search by name…' : 'No spell content is bound to this World'"
+                :placeholder="searchPlaceholder"
                 :disabled="!options.length"
               >
               <select

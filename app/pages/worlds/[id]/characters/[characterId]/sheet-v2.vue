@@ -682,6 +682,7 @@ const {
   spellcastingAttackBonus,
   inventoryItems,
   inventoryOptions,
+  catalogueOptionsLoading,
   noteDraft,
   healthDraft,
   characterImageUrlDraft,
@@ -1455,6 +1456,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
               <CharacterSpellcastingPanel
                 :spells="spellItems"
                 :options="spellOptions"
+                :options-loading="catalogueOptionsLoading"
                 :is-caster="spellcastingIsCaster"
                 :ability-mod="spellcastingAbilityMod"
                 :save-dc="spellcastingSaveDc"
@@ -1476,6 +1478,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             <CharacterInventoryPanel
               :items="inventoryItems"
               :options="inventoryOptions"
+              :options-loading="catalogueOptionsLoading"
               :saving="mutations.inventory.saving"
               :error-message="mutations.inventory.error"
               @add="mutations.inventory.add"

@@ -30,6 +30,7 @@ import {
   isCompleteForMethod,
   isCompleteManual,
   isCompletePointBuy,
+  isCompleteRoll,
   isCompleteStandardArray,
   normalizeStoredAbilityScores,
   pointBuyCost,
@@ -175,15 +176,36 @@ describe('Manual entry', () => {
   })
 })
 
-describe('Roll (stubbed)', () => {
-  it('is declared as a method but reported unavailable', () => {
+describe('Roll', () => {
+  it('is declared as a method and now available -- the dice mechanics live in ability-score-roll.ts', () => {
     expect(ABILITY_SCORE_METHODS).toContain('roll')
-    expect(isAbilityScoreMethodAvailable('roll')).toBe(false)
+    expect(isAbilityScoreMethodAvailable('roll')).toBe(true)
     expect(isAbilityScoreMethodAvailable('manual')).toBe(true)
   })
 
-  it('can never be complete, so it cannot gate a character into a saveable state', () => {
-    expect(isCompleteForMethod('roll', filledAssignment(12))).toBe(false)
+  it('is complete once every ability has a value in the storage bounds -- the same range check Manual uses', () => {
+    expect(isCompleteForMethod('roll', filledAssignment(12))).toBe(true)
+    expect(isCompleteRoll(filledAssignment(MIN_STORED_ABILITY_SCORE))).toBe(true)
+    expect(isCompleteRoll(filledAssignment(MAX_STORED_ABILITY_SCORE))).toBe(true)
+  })
+
+  it('is NOT complete while any ability has not been rolled yet', () => {
+    expect(isCompleteForMethod('roll', assign({ str: 12 }))).toBe(false)
+    expect(isCompleteForMethod('roll', emptyAssignment())).toBe(false)
+  })
+
+  // The task's own rule: "Duplicate totals are valid; do not impose
+  // Standard Array's 'use each value once' rule on rolled scores." Two
+  // abilities landing on the exact same roll is ordinary, not an error.
+  it('duplicate totals across different abilities are valid -- no uniqueness rule applies to rolled scores', () => {
+    expect(isCompleteForMethod('roll', filledAssignment(13))).toBe(true)
+    expect(isCompleteRoll(assign({ str: 13, dex: 13, con: 13, int: 13, wis: 13, cha: 13 }))).toBe(true)
+  })
+
+  it('rejects out-of-bounds or fractional values exactly like Manual does', () => {
+    expect(isCompleteRoll(filledAssignment(0))).toBe(false)
+    expect(isCompleteRoll(filledAssignment(31))).toBe(false)
+    expect(isCompleteRoll(filledAssignment(10.5))).toBe(false)
   })
 })
 
@@ -217,8 +239,24 @@ describe('switching methods without losing data', () => {
     expect(seedAssignmentForMethod('manual', assign({ str: 15 }))).toEqual(defaultAssignmentForMethod('manual'))
   })
 
-  it('never carries anything into the stubbed Roll method', () => {
-    expect(canRepresent('roll', STANDARD_ARRAY_ASSIGNMENT)).toBe(false)
+  it('carries a completed Standard Array into Roll -- every ability already shows "Re-Roll" rather than "Roll"', () => {
+    expect(canRepresent('roll', STANDARD_ARRAY_ASSIGNMENT)).toBe(true)
+    expect(seedAssignmentForMethod('roll', STANDARD_ARRAY_ASSIGNMENT)).toEqual(STANDARD_ARRAY_ASSIGNMENT)
+  })
+
+  it('switching OUT of Roll behaves exactly like switching out of Manual -- in-range rolled numbers carry, out-of-range ones do not', () => {
+    const inRangeRoll = assign({ str: 16, dex: 14, con: 13, int: 12, wis: 10, cha: 9 })
+    expect(canRepresent('manual', inRangeRoll)).toBe(true)
+    expect(seedAssignmentForMethod('manual', inRangeRoll)).toEqual(inRangeRoll)
+
+    // A roll is never automatically a legal point-buy spread or a
+    // standard-array multiset -- same refusal as any other method pair.
+    expect(canRepresent('point-buy', inRangeRoll)).toBe(false)
+    expect(canRepresent('standard-array', inRangeRoll)).toBe(false)
+  })
+
+  it('never seeds Roll from an incomplete assignment', () => {
+    expect(seedAssignmentForMethod('roll', assign({ str: 15 }))).toEqual(defaultAssignmentForMethod('roll'))
   })
 })
 

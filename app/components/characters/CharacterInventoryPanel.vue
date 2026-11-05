@@ -63,6 +63,7 @@ import { CHARACTER_SHEET_INTERACTION_KEY, emptyInventoryAddState } from './chara
 // before this phase. A "missing" item keeps its own danger tint, which
 // already communicates something more urgent than "you can act here."
 
+import { catalogueOptionKey, searchCatalogueOptions } from '~/lib/characters/catalogue-option-search'
 import type { AssembledInventoryItem } from '~/lib/characters/inventory'
 
 const props = withDefaults(defineProps<{
@@ -72,10 +73,20 @@ const props = withDefaults(defineProps<{
   // still supports custom items, which is what makes the panel useful before
   // any Content Pack ships equipment.
   options?: readonly { packageId: string; slug: string; title: string; sourceBook?: string }[]
+  // Inventory bug-fix pass -- true while the catalogue fetch `options`
+  // comes from is still in flight (useCharacterSheet.ts's own lazy
+  // fetch, a real multi-second wait for a World with a large bound
+  // pack). Distinguishes "still loading" from "nothing published is
+  // bound to this World at all" -- before this prop existed, the two
+  // were visually identical: an empty, disabled search box, so a search
+  // typed during that window looked like a permanently broken feature
+  // rather than one that would start working moments later.
+  optionsLoading?: boolean
   saving?: boolean
   errorMessage?: string
 }>(), {
   options: () => [],
+  optionsLoading: false,
   saving: false,
   errorMessage: ''
 })
@@ -129,22 +140,19 @@ const customName = toRef(addState, 'customName')
 const quantity = toRef(addState, 'quantity')
 const notes = toRef(addState, 'notes')
 
-function optionKey(option: { packageId: string; slug: string }) {
-  return `${option.packageId}::${option.slug}`
-}
+const optionKey = catalogueOptionKey
 
-// Composite (packageId::slug) keys, never bare slugs -- two bound packs can
-// publish the same item slug, the same reason the Builder's own pickers use
-// a composite key.
-const filteredOptions = computed(() => {
-  const term = search.value.trim().toLowerCase()
-  const all = props.options
+// The actual query/filter behavior (composite key, blank-vs-term search,
+// the malformed-title guard) now lives in app/lib/characters/catalogue-option-search.ts,
+// shared verbatim with CharacterSpellcastingPanel.vue's identical picker
+// -- see that module's own header.
+const filteredOptions = computed(() => searchCatalogueOptions(props.options, search.value))
 
-  if (!term) return all.slice(0, 100)
-
-  return all
-    .filter((option) => option.title.toLowerCase().includes(term))
-    .slice(0, 100)
+// Inventory bug-fix pass -- see `optionsLoading`'s own prop comment for
+// the race this closes.
+const searchPlaceholder = computed(() => {
+  if (props.optionsLoading) return 'Loading published items…'
+  return props.options.length ? 'Search by name…' : 'No item content is bound to this World'
 })
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
@@ -199,7 +207,7 @@ function submitAdd() {
                 v-model="search"
                 type="search"
                 class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-                :placeholder="options.length ? 'Search by name…' : 'No item content is bound to this World'"
+                :placeholder="searchPlaceholder"
                 :disabled="!options.length"
               >
               <select

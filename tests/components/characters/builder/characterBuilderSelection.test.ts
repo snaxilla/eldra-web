@@ -444,10 +444,37 @@ describe('ability scores round-trip from Builder to server', () => {
 
   it('an unfinished ability step blocks the payload entirely -- the server is never asked', () => {
     const draft = completeDraft()
+    // Character Purgatory bug-fix pass -- Roll is implemented now, and a
+    // completed Standard Array carries over into it (same bounds check
+    // as Manual, see ability-scores.ts's own isCompleteRoll/canRepresent),
+    // so switching alone no longer leaves the step unfinished the way the
+    // old, permanently-stubbed Roll method did. The realistic unfinished
+    // case is a player who has rolled some, but not all, abilities --
+    // simulated here by clearing one back out after the switch.
     switchAbilityMethod(draft, 'roll')
+    draft.abilities.byMethod.roll.wis = null
 
     expect(isAbilityStepComplete(draft)).toBe(false)
     expect(toCreatePayload(draft)).toBeNull()
+  })
+
+  it('a completed roll draft round-trips with its method preserved -- duplicate totals and all', () => {
+    const draft = completeDraft()
+    switchAbilityMethod(draft, 'roll')
+    // Two abilities landing on the same total is valid for Roll (never a
+    // Standard-Array-style "used once" rule) -- the carried-over Standard
+    // Array values happen to all be distinct, so this overwrites two to
+    // prove duplicates round-trip too.
+    draft.abilities.byMethod.roll.str = 13
+    draft.abilities.byMethod.roll.dex = 13
+
+    expect(isAbilityStepComplete(draft)).toBe(true)
+
+    const payload = toCreatePayload(draft)!
+    expect(payload.abilities.method).toBe('roll')
+    expect(payload.abilities.scores.str).toBe(13)
+    expect(payload.abilities.scores.dex).toBe(13)
+    expect(normalizeStoredAbilityScores(payload.abilities)).toEqual(payload.abilities)
   })
 })
 

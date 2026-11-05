@@ -112,13 +112,19 @@ const hasAnyChoice = computed(() => props.rows.some((row) => row.title))
           for="character-preview-name"
           class="mt-1 block text-[0.65rem] uppercase tracking-[0.22em] text-eldra-text-ghost"
         >Character Name</label>
+        <!-- `text-center` is explicit here (not inherited from the card's
+             own `text-center`, below): form controls don't reliably pick
+             up an ancestor's text-align the way the `<h2>` in the v-else
+             branch does -- without it, the typed name renders left-aligned
+             inside this centered card, which is the exact "name is no
+             longer centered" regression this fixes. -->
         <input
           id="character-preview-name"
           type="text"
           autocomplete="off"
           placeholder="Name your character"
           :value="name"
-          class="eldra-title mt-0.5 w-full min-w-0 truncate border-0 border-b border-eldra-accent/35 bg-transparent font-serif outline-none focus-visible:border-eldra-accent-bright"
+          class="eldra-title mt-0.5 w-full min-w-0 truncate border-0 border-b border-eldra-accent/35 bg-transparent text-center font-serif outline-none focus-visible:border-eldra-accent-bright"
           :class="compact ? 'text-base' : 'text-2xl sm:text-3xl'"
           @input="emit('update:name', ($event.target as HTMLInputElement).value)"
         >

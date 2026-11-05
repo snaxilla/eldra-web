@@ -50,6 +50,9 @@ import {
   type AbilityScoreAssignment,
   type AbilityScoreMethod
 } from '~/lib/characters/ability-scores'
+import { abilityRollButtonLabel, rollAbilityScore } from '~/lib/characters/ability-score-roll'
+import type { RollDieGroup } from '~/lib/rolls/types'
+import AbilityScoreRollDice from './AbilityScoreRollDice.vue'
 
 const props = defineProps<{
   method: AbilityScoreMethod
@@ -98,6 +101,29 @@ function canStepManual(key: AbilityKey, delta: number): boolean {
   if (typeof current !== 'number') return false
   const next = current + delta
   return next >= MIN_STORED_ABILITY_SCORE && next <= MAX_STORED_ABILITY_SCORE
+}
+
+// ROLL ---------------------------------------------------------------------
+// Purely local, ephemeral UI state -- never part of `assignment`/the save
+// path. The ROLLED SCORE already flows through the exact same
+// `update:ability` emit every other method uses (so it reaches the
+// Builder draft, and from there the existing review/save path, with no
+// special-casing); this map only remembers which four dice produced the
+// CURRENT value, so AbilityScoreRollDice.vue has something to show beside
+// the row that was just (re-)rolled. Losing it (switching tabs, a method
+// switch and back) loses nothing persisted -- only the momentary "here's
+// how you got that number" visual.
+const rolledDiceByAbility = ref<Partial<Record<AbilityKey, RollDieGroup>>>({})
+
+// Each ability is rolled INDEPENDENTLY (the task's own rule) -- rolling
+// Strength never touches Dexterity's own roll or score, and a duplicate
+// total across two abilities is simply two honest 4d6 results, not a
+// conflict to resolve.
+function rollAbility(key: AbilityKey) {
+  const result = rollAbilityScore()
+  if (!result) return
+  rolledDiceByAbility.value = { ...rolledDiceByAbility.value, [key]: result.dice }
+  emit('update:ability', key, result.total)
 }
 </script>
 
@@ -328,18 +354,55 @@ function canStepManual(key: AbilityKey, delta: number): boolean {
       </div>
     </div>
 
-    <!-- ROLL (stub) ------------------------------------------------------ -->
+    <!-- ROLL --------------------------------------------------------------
+         Compact 4d6-drop-lowest, per ability, independently -- see this
+         file's own `rollAbility` and AbilityScoreRollDice.vue. Not the
+         full Roll Tray: the dice visual below is scoped to the one row
+         that was just (re-)rolled, nothing else opens or changes. -->
     <div
       v-else
-      class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.30)] bg-[rgba(20,17,12,0.55)] p-4"
+      class="mt-5"
     >
-      <p class="text-sm font-semibold text-[#f5e7bd]">
-        Rolling is not available yet.
+      <p class="text-sm leading-6 text-[#d8ceb8]">
+        Roll 4d6 for each ability, dropping the lowest die. Roll each ability independently -- the same total
+        on two abilities is perfectly valid.
       </p>
-      <p class="mt-1 text-sm leading-6 text-[#9f9278]">
-        In-app dice rolling for ability scores is coming in a later phase. If you rolled your scores at the table,
-        choose <strong class="font-semibold text-[#d8ceb8]">Manual Entry</strong> above and type them in.
-      </p>
+
+      <div class="mt-4 grid gap-2">
+        <div
+          v-for="key in ABILITY_KEYS"
+          :key="key"
+          class="flex min-w-0 flex-col gap-2 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] px-3 py-3 sm:px-4"
+        >
+          <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-semibold text-[#fff7df]">{{ ABILITY_LABELS[key] }}</span>
+              <span class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">{{ ABILITY_ABBREVIATIONS[key] }}</span>
+            </span>
+
+            <output
+              class="w-10 shrink-0 text-center text-xl font-semibold tabular-nums text-[#fff7df]"
+              :aria-label="`${ABILITY_LABELS[key]} score`"
+            >
+              {{ assignment[key] ?? '—' }}
+            </output>
+
+            <button
+              type="button"
+              class="shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.5)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              @click="rollAbility(key)"
+            >
+              {{ abilityRollButtonLabel(assignment[key]) }}
+            </button>
+          </div>
+
+          <AbilityScoreRollDice
+            v-if="rolledDiceByAbility[key]"
+            :dice="rolledDiceByAbility[key]!"
+            :ability-label="ABILITY_LABELS[key]"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>

@@ -20,6 +20,15 @@ import Busboy from 'busboy'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { Readable } from 'node:stream'
 
+// The established size limit for routes using this shared parser (Maps
+// follow-up pass). Generous enough for a real 8K map image (Sam's
+// reported upload was ~157MB) with headroom, while still bounding a
+// request to a known, finite amount of memory. Media Gallery follow-up
+// pass: reused as-is for server/api/worlds/[id]/media/upload.post.ts too
+// -- that route previously had no size limit at all, and nothing about
+// it documents an intentionally different ceiling.
+export const DEFAULT_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024 // 1 GiB
+
 export type StreamedMultipartFile = {
   fieldName: string
   filename: string

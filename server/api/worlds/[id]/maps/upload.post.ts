@@ -5,14 +5,14 @@ import { createError, defineEventHandler, getRequestHeader, getRouterParam } fro
 import { createMap, updateMap, uploadFile } from '../../../../utils/directus-maps'
 import { generateMapTiles } from '../../../../utils/map-tiles'
 import { requireCapability } from '../../../../utils/authorization'
-import { MultipartFileTooLargeError, readStreamingMultipartForm } from '../../../../utils/streaming-multipart'
+import { DEFAULT_MAX_UPLOAD_BYTES, MultipartFileTooLargeError, readStreamingMultipartForm } from '../../../../utils/streaming-multipart'
 
-// Generous enough for a real 8K map image (Sam's reported upload was
-// ~157MB) with headroom, while still bounding the request to a known,
-// finite amount of memory instead of the unbounded buffering h3's own
-// multipart parser attempted. See streaming-multipart.ts for why the old
-// `readMultipartFormData` path broke on large files.
-export const MAX_MAP_UPLOAD_BYTES = 1024 * 1024 * 1024 // 1 GiB
+// Re-exported under this route's own name for callers/tests that import
+// it from here (e.g. tests/server/api/worlds/[id]/maps/upload.post.test.ts);
+// the value itself is the shared parser's established limit -- see
+// streaming-multipart.ts for why and for why
+// server/api/worlds/[id]/media/upload.post.ts now uses the same constant.
+export const MAX_MAP_UPLOAD_BYTES = DEFAULT_MAX_UPLOAD_BYTES
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')

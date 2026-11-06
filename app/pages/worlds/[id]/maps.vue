@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { buildFileFromGallerySelection } from '~/lib/maps/gallery-selection'
+
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -79,6 +81,8 @@ const uploadBusy = ref(false)
 const uploadError = ref('')
 const uploadSuccess = ref('')
 
+const mediaPickerOpen = ref(false)
+
 const parentDrafts = ref<Record<string, string | null>>({})
 const parentSaveBusy = ref<Record<string, boolean>>({})
 const parentSaveMsg = ref<Record<string, string>>({})
@@ -110,6 +114,31 @@ const filteredMaps = computed(() => {
 function onFileChange(event: Event) {
   const target = event.target as HTMLInputElement
   uploadFile.value = target.files?.[0] || null
+}
+
+// Area 1 (Media Gallery): WorldMediaPicker's established selection
+// contract is {id, title, filename, type, filesize, url, ...} (see
+// app/components/world/map/MapImageOverlayEditor.vue for the other MAP
+// consumer of this same component). The upload endpoint already accepts
+// a raw File in FormData, and Area 3's fix makes that path safe for large
+// files, so a gallery pick is fetched client-side and repackaged as a
+// File through the SAME uploadMap() flow -- no server contract change.
+// The translation itself lives in app/lib/maps/gallery-selection.ts so it
+// is unit-testable without mounting this page.
+async function selectGalleryImage(file: any) {
+  uploadError.value = ''
+
+  const result = await buildFileFromGallerySelection(file, (url) => $fetch<Blob>(url, { responseType: 'blob' }))
+
+  if (!result.ok) {
+    uploadError.value = result.error
+    return
+  }
+
+  uploadFile.value = result.file
+  if (!uploadTitle.value.trim() && result.title) {
+    uploadTitle.value = result.title
+  }
 }
 
 function formatMapType(value: string | null | undefined) {
@@ -235,28 +264,28 @@ function parentOptionsFor(mapId: string) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[#09111a]">
-    <div class="mx-auto max-w-[1700px] space-y-6 p-6">
-      <section class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 shadow-xl">
+  <div class="h-full overflow-y-auto bg-transparent">
+    <div class="mx-auto max-w-[1700px] p-6">
+      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
         <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Maps</div>
-            <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || 'World' }}</h1>
-            <p class="mt-2 text-sm text-slate-400">
-              Manage map uploads, default world map, and parent-child map hierarchy.
+            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Maps</div>
+            <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">{{ world?.name || 'World' }}</h1>
+            <p class="mt-2 max-w-3xl text-sm leading-7 text-[#d8ceb8]">
+              Manage map uploads, the default world map, and parent-child map hierarchy.
             </p>
           </div>
 
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-3">
             <input
               v-model="search"
-              type="text"
+              type="search"
               placeholder="Search maps..."
-              class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none"
+              class="eldra-input rounded-none px-4 py-3 text-sm"
             >
             <button
               type="button"
-              class="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+              class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
               @click="showUploadForm = !showUploadForm"
             >
               {{ showUploadForm ? 'Close Upload' : 'Upload Map' }}
@@ -267,39 +296,39 @@ function parentOptionsFor(mapId: string) {
 
       <section
         v-if="mapsLoadError"
-        class="rounded-[24px] border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200 shadow-xl"
+        class="mt-6 rounded-none border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200"
       >
         {{ mapsLoadError }}
       </section>
 
       <section
         v-if="showUploadForm"
-        class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 shadow-xl"
+        class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 backdrop-blur-xl"
       >
         <div class="mb-4 text-lg font-semibold text-white">Upload New Map</div>
 
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Title</label>
+            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Title</label>
             <input
               v-model="uploadTitle"
               type="text"
               placeholder="e.g. Lorix Crater"
-              class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none"
+              class="eldra-input w-full rounded-none px-4 py-3 text-sm"
             >
           </div>
 
           <div>
-            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Type</label>
+            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Type</label>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="opt in MAP_TYPE_OPTIONS"
                 :key="opt.value"
                 type="button"
-                class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                class="rounded-none border px-3 py-1.5 text-xs font-medium transition"
                 :class="uploadType === opt.value
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                  ? 'border-[rgba(201,164,90,0.45)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                  : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.5)] text-[#9f9278] hover:bg-[rgba(201,164,90,0.08)]'"
                 @click="uploadType = opt.value as any"
               >
                 {{ opt.label }}
@@ -308,55 +337,73 @@ function parentOptionsFor(mapId: string) {
           </div>
 
           <div class="md:col-span-2">
-            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Image</label>
-            <input
-              type="file"
-              accept="image/*"
-              class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-              @change="onFileChange"
-            >
+            <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Image</label>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-2.5 text-sm"
+                @click="mediaPickerOpen = true"
+              >
+                Browse Media Gallery
+              </button>
+
+              <label class="cursor-pointer rounded-none border border-[rgba(201,164,90,0.24)] px-4 py-2.5 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-white">
+                Upload from Device
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="onFileChange"
+                >
+              </label>
+
+              <span v-if="uploadFile" class="truncate text-sm text-[#d8ceb8]">
+                Selected: {{ uploadFile.name }}
+              </span>
+            </div>
           </div>
 
-          <div class="md:col-span-2 rounded-2xl border border-sky-400/15 bg-sky-400/[0.06] p-4">
-            <label class="flex items-start gap-3 text-sm text-slate-200">
+          <div class="md:col-span-2 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.06)] p-4">
+            <label class="flex items-start gap-3 text-sm text-[#d8ceb8]">
               <input
                 v-model="generateTiles"
                 type="checkbox"
-                class="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900"
+                class="mt-1 h-4 w-4 accent-[#c9a45a]"
               >
               <span>
-                <span class="block font-medium text-sky-100">Generate zoom tiles</span>
-                <span class="mt-1 block text-xs leading-5 text-slate-400">
+                <span class="block font-medium text-[#fff7df]">Generate zoom tiles</span>
+                <span class="mt-1 block text-xs leading-5 text-[#9f9278]">
                   Best for huge world maps. Upload will take longer, but players load only visible map tiles instead of the full image.
                 </span>
               </span>
             </label>
 
             <div v-if="generateTiles" class="mt-4 max-w-xs">
-              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Max Zoom</label>
+              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Max Zoom</label>
               <input
                 v-model.number="tileMaxZoom"
                 type="number"
                 min="0"
                 max="10"
-                class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
+                class="eldra-input w-full rounded-none px-4 py-3 text-sm"
               >
             </div>
           </div>
         </div>
 
-        <div v-if="uploadError" class="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div v-if="uploadError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {{ uploadError }}
         </div>
 
-        <div v-if="uploadSuccess" class="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <div v-if="uploadSuccess" class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
           {{ uploadSuccess }}
         </div>
 
         <div class="mt-5 flex justify-end">
           <button
             type="button"
-            class="rounded-xl border border-sky-400/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-400/25 disabled:opacity-50"
+            class="eldra-button rounded-none px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
             :disabled="uploadBusy"
             @click="uploadMap"
           >
@@ -365,17 +412,28 @@ function parentOptionsFor(mapId: string) {
         </div>
       </section>
 
-      <section v-if="mapsLoading" class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 text-slate-400 shadow-xl">
+      <WorldMediaPicker
+        v-model:open="mediaPickerOpen"
+        :world-id="worldId"
+        title="Choose Map Image"
+        select-label="Use This Image"
+        @select="selectGalleryImage"
+      />
+
+      <section
+        v-if="mapsLoading"
+        class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 text-[#d8ceb8] backdrop-blur-xl"
+      >
         Loading maps...
       </section>
 
-      <section v-else class="grid gap-5 lg:grid-cols-2">
+      <section v-else class="mt-6 grid gap-5 lg:grid-cols-2">
         <article
           v-for="map in filteredMaps"
           :key="map.id"
-          class="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] shadow-xl"
+          class="eldra-ornate-panel eldra-frame-corners overflow-hidden rounded-none border backdrop-blur-xl"
         >
-          <div v-if="map.imageUrl" class="aspect-[16/8] overflow-hidden border-b border-white/10 bg-black/20">
+          <div v-if="map.imageUrl" class="aspect-[16/8] overflow-hidden border-b border-[rgba(201,164,90,0.22)] bg-black/20">
             <img :src="map.imageUrl" :alt="map.title" class="h-full w-full object-cover">
           </div>
 
@@ -385,25 +443,25 @@ function parentOptionsFor(mapId: string) {
 
               <span
                 v-if="map.isDefaultWorldMap"
-                class="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-200"
+                class="rounded-none border border-[rgba(201,164,90,0.3)] bg-[rgba(201,164,90,0.12)] px-2.5 py-1 text-xs text-[#fff7df]"
               >
                 World Map
               </span>
 
-              <span class="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-slate-300">
+              <span class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.5)] px-2.5 py-1 text-xs text-[#d8ceb8]">
                 {{ formatMapType(map.type) }}
               </span>
 
               <span
                 v-if="map.tileEnabled"
-                class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-200"
+                class="rounded-none border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-200"
               >
                 Tiled {{ map.tileMinZoom }}-{{ map.tileMaxZoom }}
               </span>
 
               <span
                 v-else-if="map.tileStatus && map.tileStatus !== 'none'"
-                class="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs text-yellow-200"
+                class="rounded-none border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs text-yellow-200"
               >
                 Tiles: {{ map.tileStatus }}
               </span>
@@ -411,27 +469,27 @@ function parentOptionsFor(mapId: string) {
 
             <div class="mt-4 grid gap-4">
               <div>
-                <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Parent Map</label>
+                <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Parent Map</label>
                 <select
                   v-model="parentDrafts[map.id]"
-                  class="w-full rounded-xl border border-white/10 bg-[rgba(15,23,42,0.92)] px-4 py-3 text-sm text-slate-100 outline-none"
+                  class="eldra-input w-full rounded-none px-4 py-3 text-sm"
                 >
-                  <option :value="null" class="bg-slate-900 text-slate-100">No parent (root-level map)</option>
+                  <option :value="null" class="bg-[#090909]">No parent (root-level map)</option>
                   <option
                     v-for="option in parentOptionsFor(map.id)"
                     :key="option.id"
                     :value="option.id"
-                    class="bg-slate-900 text-slate-100"
+                    class="bg-[#090909]"
                   >
                     {{ option.title }}
                   </option>
                 </select>
 
-                <div class="mt-2 text-xs text-slate-500">
+                <div class="mt-2 text-xs text-[#9f9278]">
                   Current Parent: {{ parentTitle(map) }}
                 </div>
 
-                <div v-if="parentSaveMsg[map.id]" class="mt-1 text-xs text-slate-400">
+                <div v-if="parentSaveMsg[map.id]" class="mt-1 text-xs text-[#9f9278]">
                   {{ parentSaveMsg[map.id] }}
                 </div>
               </div>
@@ -439,14 +497,14 @@ function parentOptionsFor(mapId: string) {
               <div class="flex flex-wrap gap-3">
                 <NuxtLink
                   :to="`/worlds/${worldId}?map=${map.slug}`"
-                  class="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+                  class="eldra-button rounded-none px-4 py-2 text-sm"
                 >
                   Open Map
                 </NuxtLink>
 
                 <button
                   type="button"
-                  class="rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-2 text-sm text-violet-100 transition hover:bg-violet-400/20 disabled:opacity-50"
+                  class="rounded-none border border-[rgba(201,164,90,0.24)] px-4 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-white disabled:opacity-50"
                   :disabled="parentSaveBusy[map.id]"
                   @click="saveParentMap(map.id)"
                 >
@@ -456,7 +514,7 @@ function parentOptionsFor(mapId: string) {
                 <button
                   v-if="!map.isDefaultWorldMap"
                   type="button"
-                  class="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-2 text-sm text-amber-100 transition hover:bg-amber-400/20"
+                  class="rounded-none border border-[rgba(201,164,90,0.3)] bg-[rgba(201,164,90,0.1)] px-4 py-2 text-sm text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.2)]"
                   @click="setAsWorldMap(map.id)"
                 >
                   Set as World Map

@@ -1,6 +1,18 @@
+// createError/defineEventHandler/getRequestHeader/getRouterParam are
+// imported explicitly (see server/api/worlds/[id]/members/index.get.ts)
+// so this route is directly unit-testable under plain Vitest.
+import { createError, defineEventHandler, getRequestHeader, getRouterParam } from 'h3'
 import { createMap, updateMap, uploadFile } from '../../../../utils/directus-maps'
 import { generateMapTiles } from '../../../../utils/map-tiles'
 import { requireCapability } from '../../../../utils/authorization'
+import { MultipartFileTooLargeError, readStreamingMultipartForm } from '../../../../utils/streaming-multipart'
+
+// Generous enough for a real 8K map image (Sam's reported upload was
+// ~157MB) with headroom, while still bounding the request to a known,
+// finite amount of memory instead of the unbounded buffering h3's own
+// multipart parser attempted. See streaming-multipart.ts for why the old
+// `readMultipartFormData` path broke on large files.
+export const MAX_MAP_UPLOAD_BYTES = 1024 * 1024 * 1024 // 1 GiB
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -11,22 +23,55 @@ export default defineEventHandler(async (event) => {
   }
   requireCapability(principal, 'world.map.edit', { kind: 'world', worldId })
 
-  const parts = await readMultipartFormData(event)
+  const declaredLength = Number(getRequestHeader(event, 'content-length') || 0)
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_MAP_UPLOAD_BYTES) {
+    console.warn(
+      `[maps/upload] rejecting world ${worldId} upload before parsing: declared Content-Length ${declaredLength} exceeds ${MAX_MAP_UPLOAD_BYTES}`
+    )
+    throw createError({
+      statusCode: 413,
+      statusMessage: `Map image is too large. The upload limit is ${Math.floor(MAX_MAP_UPLOAD_BYTES / (1024 * 1024))} MB.`
+    })
+  }
 
-  const title = parts?.find(p => p.name === 'title')?.data?.toString() || ''
-  const type = parts?.find(p => p.name === 'type')?.data?.toString() || 'area'
-  const file = parts?.find(p => p.name === 'file')
-  const generateTilesRaw = parts?.find(p => p.name === 'generateTiles')?.data?.toString() || ''
-  const tileMaxZoomRaw = Number(parts?.find(p => p.name === 'tileMaxZoom')?.data?.toString() || 7)
+  let form: Awaited<ReturnType<typeof readStreamingMultipartForm>>
+  try {
+    form = await readStreamingMultipartForm(event.node.req, event.node.req.headers, {
+      maxFileBytes: MAX_MAP_UPLOAD_BYTES
+    })
+  } catch (error: any) {
+    if (error instanceof MultipartFileTooLargeError) {
+      console.warn(`[maps/upload] world ${worldId} upload exceeded the size limit: ${error.message}`)
+      throw createError({
+        statusCode: 413,
+        statusMessage: `Map image is too large. The upload limit is ${Math.floor(MAX_MAP_UPLOAD_BYTES / (1024 * 1024))} MB.`
+      })
+    }
+
+    console.error(`[maps/upload] world ${worldId} failed while parsing the upload body:`, error?.message || error)
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'The uploaded file could not be read. Please try again or use a smaller image.'
+    })
+  }
+
+  const { fields, file } = form
+
+  const title = fields.title || ''
+  const type = fields.type || 'area'
+  const generateTilesRaw = fields.generateTiles || ''
+  const tileMaxZoomRaw = Number(fields.tileMaxZoom || 7)
 
   const generateTiles = ['1', 'true', 'yes', 'on'].includes(generateTilesRaw.toLowerCase())
   const tileMaxZoom = Number.isFinite(tileMaxZoomRaw) ? Math.max(0, Math.min(10, tileMaxZoomRaw)) : 7
 
-  if (!file?.data) {
+  if (!file?.data?.length) {
     throw createError({ statusCode: 400, statusMessage: 'Missing file' })
   }
 
-  const uploaded = await uploadFile(file.data, file.filename!, file.type || 'image/png')
+  console.log(`[maps/upload] world ${worldId} parsed upload: ${file.filename} (${file.data.length} bytes)`)
+
+  const uploaded = await uploadFile(file.data, file.filename, file.mimeType || 'image/png')
 
   const created = await createMap(worldId, title, type as any, uploaded.id, generateTiles
     ? {
@@ -68,6 +113,8 @@ export default defineEventHandler(async (event) => {
       tile_error: null
     })
   } catch (error: any) {
+    console.error(`[maps/upload] world ${worldId} map ${created.id} tile generation failed:`, error?.message || error)
+
     await updateMap(String(created.id), {
       tile_enabled: false,
       tile_status: 'failed',

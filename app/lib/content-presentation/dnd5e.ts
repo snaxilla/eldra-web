@@ -577,12 +577,23 @@ function resolveOption(raw: Record<string, unknown>): PresentationEntry {
 // shares, consistent with "no surface consumes them yet" never being an
 // excuse to under-model a shared shape.
 //
-// No `image` is resolved for items -- unlike Species/Background/Class,
-// whether an item's provider joins a `.fluff` image reference the way
-// `loadDatasetEntriesWithFluff` does for those three has not been verified
-// against the real content-sources pipeline this pass, and claiming an
-// image path that is never actually populated would be worse than simply
-// omitting the field (legal: `image` is optional).
+// Character Sheet item images pass -- `image` now IS resolved, via the
+// SAME `readImage` helper Species/Background/Class already use, reading
+// the SAME `.fluff.images[0].href` shape. Previously item entries never
+// carried a `.fluff` join at all: `server/utils/content-sources/dnd5e/
+// 5etools-dataset.ts`'s `FLUFF_JOIN_DATASET_KEYS` only listed
+// species/classes/backgrounds, even though the real dataset's own
+// `fluff-items.json` (948 rows) has real image references for ordinary
+// items -- verified directly against Shortsword, Leather Armor (XPHB),
+// and Potion of Healing (XDMG), each with a populated `images` array in
+// the identical shape `readImage` already parses. That file is fixed
+// alongside this one: `items` is now a FluffJoinDatasetKey, so a NEWLY
+// PUBLISHED pack's item rows carry `.fluff` the same way
+// species/class/background rows always have. A pack published BEFORE
+// that fix (every pack bound to a World today) has no `.fluff` on its
+// item rows and therefore resolves no image here -- `readImage` already
+// returns `null` for that case, the same "absence is legal" behavior
+// Species/Background have always had for a pre-join pack.
 function resolveItem(raw: Record<string, unknown>): PresentationEntry {
   const description = flattenEntries(raw.entries)
 
@@ -607,7 +618,8 @@ function resolveItem(raw: Record<string, unknown>): PresentationEntry {
       fact('Weight', weight)
     ]),
     sections: [],
-    notes
+    notes,
+    image: readImage(raw)
   }
 }
 

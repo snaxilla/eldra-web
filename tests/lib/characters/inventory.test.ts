@@ -18,6 +18,7 @@ import {
   isItemAttunable,
   isItemEquippable,
   itemDetailLines,
+  itemImageUrl,
   nextInstanceId,
   normalizeStoredInventory,
   removeInventoryItem,
@@ -777,5 +778,53 @@ describe('equipmentCollectionFields', () => {
   it('returns undefined when there is no equipment facet or no entry', () => {
     expect(equipmentCollectionFields(catalogueEntry())).toBeUndefined()
     expect(equipmentCollectionFields(undefined)).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// itemImageUrl -- Character Sheet item images pass. Representative items
+// per the task's own ask: Shortsword (image present, real XPHB path
+// shape), Potion of Healing (image present, real XDMG path shape), and
+// an item whose pack predates the item-fluff join / has no illustration
+// at all (no image, never fabricated).
+// ---------------------------------------------------------------------------
+
+describe('itemImageUrl', () => {
+  it('reads the resolved presentation image URL (real Shortsword path shape)', () => {
+    const entry = catalogueEntry({
+      presentation: {
+        kind: 'item', name: 'Shortsword', description: [], facts: [], sections: [], notes: [],
+        image: { url: '/api/5etools-img/items/XPHB/Shortsword.webp', credit: 'Polar Engine', width: 461, height: 118 }
+      }
+    })
+
+    expect(itemImageUrl(entry)).toBe('/api/5etools-img/items/XPHB/Shortsword.webp')
+  })
+
+  it('reads the resolved presentation image URL (real Potion of Healing path shape)', () => {
+    const entry = catalogueEntry({
+      presentation: {
+        kind: 'item', name: 'Potion of Healing', description: [], facts: [], sections: [], notes: [],
+        image: { url: '/api/5etools-img/items/XDMG/Potion of Healing.webp', credit: 'Conceptopolis', width: 479, height: 1111 }
+      }
+    })
+
+    expect(itemImageUrl(entry)).toBe('/api/5etools-img/items/XDMG/Potion of Healing.webp')
+  })
+
+  it('is null when presentation resolved but has no image -- the real state for every pack published before the item-fluff join existed', () => {
+    const entry = catalogueEntry({
+      presentation: { kind: 'item', name: 'Arrows (20)', description: [], facts: [], sections: [], notes: [] }
+    })
+    expect(itemImageUrl(entry)).toBeNull()
+  })
+
+  it('is null when presentation itself never resolved, when entry is undefined, or when url is blank', () => {
+    expect(itemImageUrl(catalogueEntry({ presentation: null }))).toBeNull()
+    expect(itemImageUrl(catalogueEntry())).toBeNull()
+    expect(itemImageUrl(undefined)).toBeNull()
+    expect(itemImageUrl(catalogueEntry({
+      presentation: { kind: 'item', name: 'X', description: [], facts: [], sections: [], notes: [], image: { url: '   ' } }
+    }))).toBeNull()
   })
 })

@@ -202,8 +202,21 @@ function summaryText(entry: DerivedValue): string {
       </NuxtLink>
 
       <div class="shrink-0">
+        <!-- Header Portrait Enlargement -- was a size-14/size-16 (56/64px)
+             square, icon-sized rather than a portrait. `aspect-[4/5]` is
+             the project's own existing portrait aspect ratio
+             (CharacterSheetCommandCenter.vue's reference-rail portrait
+             uses the identical ratio); widened here via the SAME
+             `@[880px]/sheet` named-container breakpoint this header
+             already uses for its summary values/save indicator (not a
+             new viewport breakpoint), so the portrait and the rest of the
+             header agree on when "there is more room" without a second
+             responsive system. The row's existing `items-center`/`gap-4`
+             push the name/HP/summary right automatically as the portrait
+             widens -- no separate "shift right" rule needed. -->
         <CharacterPortrait
-          :class="companion ? 'size-14' : 'size-16'"
+          class="aspect-[4/5]"
+          :class="companion ? 'w-16' : 'w-16 @[880px]/sheet:w-24'"
           :image-url="imageUrl"
           :title="characterTitle"
           :can-edit="canEditPortrait"

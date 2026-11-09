@@ -1,18 +1,21 @@
 // Unit tests for the character-facing fluff join -- Content Presentation
-// Resolver Phase 2's follow-up task. Covers three layers, mirroring
+// Resolver Phase 2's follow-up task, extended by the Character Sheet item
+// images pass to cover `items` as a fourth joined category (description/
+// facts were already items' own thing via `raw.entries` directly --
+// `images` specifically needed this join, the same way species/class/
+// background's prose always has). Covers three layers, mirroring
 // tests/server/utils/content-sources-monsters.test.ts's own three-layer
 // shape for the equivalent monster join:
 //
 //   1. loadDatasetEntriesWithFluff (server/utils/content-sources/dnd5e/
 //      5etools-dataset.ts) in isolation -- the join mechanics.
 //   2. srd51Provider / xphbProvider's real, registered `loadCategory` for
-//      species/classes/backgrounds -- proving the shared provider path
-//      (5etools-collection.ts) actually wires the join in, with NO change
-//      to either provider's own file.
+//      species/classes/backgrounds/items -- proving the shared provider
+//      path (5etools-collection.ts) actually wires the join in, with NO
+//      change to either provider's own file.
 //   3. resolveDnd5ePresentation fed a fluff-joined candidate's `data` --
 //      proving the Presentation Resolver receives enough to populate
-//      `description` once fluff exists, per this task's own TESTING
-//      section.
+//      `description`/`image` once fluff exists.
 //
 // Same mocking split as content-sources-providers.test.ts and
 // content-sources-monsters.test.ts: only `node:fs/promises` is mocked
@@ -92,16 +95,34 @@ const FIXTURE_FILES: Record<string, string> = {
   // Real support file with NO classFluff array -- must contribute zero rows,
   // same tolerance loadMonsterDatasetEntries already has for index.json.
   [`${DATA_ROOT}/class/fluff-index.json`]: JSON.stringify({ fighter: 'fluff-class-fighter.json' }),
-  // items.json exists so xphbProvider/srd51Provider's OTHER categories keep
-  // working in this same test file -- proving the fluff join change did not
-  // regress a sibling, non-fluff-joined category on the same provider.
+  // Character Sheet item images pass -- items.json/fluff-items.json added.
+  // The image shape below is copied verbatim from the real dataset's own
+  // fluff-items.json Shortsword (XPHB) row, confirmed this task:
+  // `images: [{type:'image', href:{type:'internal', path:'items/XPHB/
+  // Shortsword.webp'}, credit, width, height}]` -- the IDENTICAL shape
+  // readImage already parses for species/class/background fluff.
   [`${DATA_ROOT}/items.json`]: JSON.stringify({
-    item: [{ name: 'Longsword', source: 'PHB', srd: true, page: 149 }, { name: 'Longsword', source: 'XPHB', page: 215 }]
+    item: [
+      { name: 'Longsword', source: 'PHB', srd: true, page: 149 },
+      { name: 'Longsword', source: 'XPHB', page: 215 },
+      // No matching fluff row anywhere in the fixture -- must degrade to
+      // `fluff: null`, never throw, never silently drop the row.
+      { name: 'Unillustrated Thing', source: 'XPHB', page: 999 }
+    ]
+  }),
+  [`${DATA_ROOT}/fluff-items.json`]: JSON.stringify({
+    itemFluff: [
+      {
+        name: 'Longsword',
+        source: 'XPHB',
+        images: [{ type: 'image', href: { type: 'internal', path: 'items/XPHB/Longsword.webp' }, credit: 'Polar Engine', width: 461, height: 118 }]
+      }
+    ]
   })
 }
 
 const FIXTURE_DIRS: Record<string, string[]> = {
-  [DATA_ROOT]: ['class', 'races.json', 'fluff-races.json', 'backgrounds.json', 'fluff-backgrounds.json', 'items.json'],
+  [DATA_ROOT]: ['class', 'races.json', 'fluff-races.json', 'backgrounds.json', 'fluff-backgrounds.json', 'items.json', 'fluff-items.json'],
   [`${DATA_ROOT}/class`]: ['class-fighter.json', 'fluff-class-fighter.json', 'fluff-index.json']
 }
 
@@ -131,12 +152,12 @@ beforeEach(() => {
 })
 
 describe('isFluffJoinDatasetKey', () => {
-  it('accepts only species, classes, backgrounds', () => {
+  it('accepts species, classes, backgrounds, and (Character Sheet item images pass) items', () => {
     expect(isFluffJoinDatasetKey('species')).toBe(true)
     expect(isFluffJoinDatasetKey('classes')).toBe(true)
     expect(isFluffJoinDatasetKey('backgrounds')).toBe(true)
+    expect(isFluffJoinDatasetKey('items')).toBe(true)
     expect(isFluffJoinDatasetKey('feats')).toBe(false)
-    expect(isFluffJoinDatasetKey('items')).toBe(false)
     expect(isFluffJoinDatasetKey('spells')).toBe(false)
     expect(isFluffJoinDatasetKey('monsters')).toBe(false)
     expect(isFluffJoinDatasetKey(undefined)).toBe(false)
@@ -207,6 +228,33 @@ describe('loadDatasetEntriesWithFluff -- backgrounds', () => {
   })
 })
 
+// Character Sheet item images pass.
+describe('loadDatasetEntriesWithFluff -- items', () => {
+  it('joins the matching (name, source) item-fluff image row onto the membership-kept entry', async () => {
+    const rows = await loadDatasetEntriesWithFluff('items', isEntryFromSource('XPHB'))
+    const longsword = rows.find((r) => r.name === 'Longsword')
+
+    expect(longsword.fluff.images[0].href).toEqual({ type: 'internal', path: 'items/XPHB/Longsword.webp' })
+  })
+
+  it('never cross-joins a same-named item from a different source', async () => {
+    const phbRows = await loadDatasetEntriesWithFluff('items', isSrd51Entry)
+    const longsword = phbRows.find((r) => r.name === 'Longsword')
+
+    // The PHB Longsword fixture row has no matching fluff (only an XPHB
+    // one exists) -- degrades to null, never borrows the XPHB image.
+    expect(longsword.fluff).toBeNull()
+  })
+
+  it('an item with no matching fluff row anywhere degrades to fluff: null, and is still published', async () => {
+    const rows = await loadDatasetEntriesWithFluff('items', isEntryFromSource('XPHB'))
+    const unillustrated = rows.find((r) => r.name === 'Unillustrated Thing')
+
+    expect(unillustrated).toBeDefined()
+    expect(unillustrated.fluff).toBeNull()
+  })
+})
+
 describe('loadDatasetEntries (the non-fluff loader) is unaffected by this task', () => {
   it('still returns rows with no `.fluff` property for species/classes/backgrounds', async () => {
     const rows = await loadDatasetEntries('species', isEntryFromSource('XPHB'))
@@ -246,12 +294,19 @@ describe('srd51Provider / xphbProvider -- the real, registered collections gain 
     expect((candidates[0].data as any).fluff.entries[0]).toContain('(PHB)')
   })
 
-  it('a category NOT in the fluff-join set (items) is completely unaffected -- still publishes, still has no `.fluff`', async () => {
+  it('xphbProvider.loadCategory("items") -- Character Sheet item images pass -- publishes a candidate whose data carries the fluff image join', async () => {
     const { candidates } = await xphbProvider.loadCategory('items')
+    const longsword = candidates.find((c) => c.title === 'Longsword')!
 
-    expect(candidates).toHaveLength(1)
-    expect(candidates[0].title).toBe('Longsword')
-    expect(candidates[0].data).not.toHaveProperty('fluff')
+    expect(longsword.data).toHaveProperty('fluff')
+    expect((longsword.data as any).fluff.images[0].href.path).toBe('items/XPHB/Longsword.webp')
+  })
+
+  it('an item with no matching fluff row degrades to fluff: null, still publishes', async () => {
+    const { candidates } = await xphbProvider.loadCategory('items')
+    const unillustrated = candidates.find((c) => c.title === 'Unillustrated Thing')!
+
+    expect(unillustrated.data).toHaveProperty('fluff', null)
   })
 })
 
@@ -287,5 +342,27 @@ describe('the Presentation Resolver receives enough joined data to populate desc
 
     expect(resolved.description).toEqual([])
     expect(resolved.notes).toContain('This Content Pack does not publish descriptive text for this entry. Only what the pack actually contains is shown.')
+  })
+
+  // Character Sheet item images pass -- the end-to-end proof: a fluff-joined
+  // item candidate's `data`, fed through the SAME resolveDnd5ePresentation
+  // entry point every other kind uses, resolves a real `image.url` --
+  // confirming the fix reaches all the way from the on-disk fluff-items.json
+  // join through to what app/lib/characters/inventory.ts's `itemImageUrl`
+  // reads off `entry.presentation.image`.
+  it('a fluff-joined XPHB item candidate resolves an image with a safe, already-established /api/5etools-img/ URL', async () => {
+    const { candidates } = await xphbProvider.loadCategory('items')
+    const longsword = candidates.find((c) => c.title === 'Longsword')!
+    const resolved = resolveDnd5ePresentation('item', longsword.data)!
+
+    expect(resolved.image).toEqual({ url: '/api/5etools-img/items/XPHB/Longsword.webp', credit: 'Polar Engine', width: 461, height: 118 })
+  })
+
+  it('an item that degraded to fluff: null resolves image: null, never a broken or invented path', async () => {
+    const { candidates } = await xphbProvider.loadCategory('items')
+    const unillustrated = candidates.find((c) => c.title === 'Unillustrated Thing')!
+    const resolved = resolveDnd5ePresentation('item', unillustrated.data)!
+
+    expect(resolved.image).toBeNull()
   })
 })

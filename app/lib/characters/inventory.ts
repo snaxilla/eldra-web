@@ -495,6 +495,21 @@ export function isItemAttunable(entry: InventoryCatalogueEntry | undefined): boo
   return entry?.attunementRequired === true
 }
 
+// Character Sheet item images pass. The resolved item's `entry.presentation.image`
+// (app/lib/content-presentation, the SAME PresentationEntry.image field a
+// Species/Class/Background card already renders) is the existing item
+// image representation this codebase has -- no second field, no new
+// upload path. `null` whenever there is nothing to show: no entry (a
+// custom or unresolved item), presentation never resolved, or the pack
+// this item came from published before the item-fluff join existed (see
+// server/utils/content-sources/dnd5e/5etools-dataset.ts's own
+// FluffJoinDatasetKey header) -- all legal, all "nothing published",
+// never an error.
+export function itemImageUrl(entry: InventoryCatalogueEntry | undefined): string | null {
+  const url = entry?.presentation?.image?.url
+  return typeof url === 'string' && url.trim() ? url : null
+}
+
 // ---------------------------------------------------------------------------
 // Mutations -- pure, total, and the only place inventory changes shape
 // ---------------------------------------------------------------------------

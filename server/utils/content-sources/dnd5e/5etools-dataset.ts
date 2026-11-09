@@ -399,14 +399,33 @@ export async function loadMonsterDatasetEntries(membership: (entry: any) => bool
 // unconditionally into the map and joined onto already membership-filtered
 // main rows -- exactly monsters' own order of operations, for the same
 // reason: a fluff row has no collection identity of its own to filter by.
-export type FluffJoinDatasetKey = 'species' | 'classes' | 'backgrounds'
+// Character Sheet item images pass -- 'items' added. Same join, same
+// (name, source) key, same "a fluff row has no collection identity of
+// its own" reasoning as species/classes/backgrounds above: verified
+// against the real dataset, `fluff-items.json`'s 948 `itemFluff` rows
+// carry no `srd`/`srd52`/`source`-based membership flag either. Measured
+// directly against XPHB's own Shortsword/Leather Armor and XDMG's Potion
+// of Healing: all three have a real `itemFluff` row with a populated
+// `images` array (`{type:'image', href:{type:'internal', path:'items/
+// XPHB/Shortsword.webp'}, credit, width, height}`) -- the IDENTICAL shape
+// content-presentation/dnd5e.ts's existing `readImage` already parses for
+// species/class/background. Before this change `items` was never a
+// FluffJoinDatasetKey, so `loadDatasetEntries('items', ...)` (the
+// non-fluff loader) never attached `.fluff` to a published item at all --
+// the image data existed on disk the whole time but was never carried
+// into a Content Pack's stored `data`. `fileLooksRelevant('items', ...)`
+// already treats `fluff-items.json` as relevant (its name contains
+// 'item'), so this dataset file was already being walked; only the join
+// itself was switched off.
+export type FluffJoinDatasetKey = 'species' | 'classes' | 'backgrounds' | 'items'
 
-const FLUFF_JOIN_DATASET_KEYS: readonly FluffJoinDatasetKey[] = ['species', 'classes', 'backgrounds']
+const FLUFF_JOIN_DATASET_KEYS: readonly FluffJoinDatasetKey[] = ['species', 'classes', 'backgrounds', 'items']
 
 const FLUFF_ARRAY_KEY: Record<FluffJoinDatasetKey, string> = {
   species: 'raceFluff',
   classes: 'classFluff',
-  backgrounds: 'backgroundFluff'
+  backgrounds: 'backgroundFluff',
+  items: 'itemFluff'
 }
 
 export function isFluffJoinDatasetKey(key: DatasetKey | undefined): key is FluffJoinDatasetKey {

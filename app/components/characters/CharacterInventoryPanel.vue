@@ -64,7 +64,7 @@ import { CHARACTER_SHEET_INTERACTION_KEY, emptyInventoryAddState } from './chara
 // already communicates something more urgent than "you can act here."
 
 import { catalogueOptionKey, searchCatalogueOptions } from '~/lib/characters/catalogue-option-search'
-import { equipmentCollectionFields, isItemAttunable, isItemEquippable, type AssembledInventoryItem } from '~/lib/characters/inventory'
+import { equipmentCollectionFields, isItemAttunable, isItemEquippable, itemImageUrl as resolveItemImageUrl, type AssembledInventoryItem } from '~/lib/characters/inventory'
 
 const props = withDefaults(defineProps<{
   items: readonly AssembledInventoryItem[]
@@ -137,6 +137,14 @@ function availableFlags(item: AssembledInventoryItem): Array<'equipped' | 'attun
   if (isItemEquippable(item.entry)) flags.push('equipped')
   if (isItemAttunable(item.entry)) flags.push('attuned')
   return flags
+}
+
+// Character Sheet item images pass -- see itemImageUrl's own header,
+// app/lib/characters/inventory.ts, for what this reads and why it is
+// null (not fabricated) for most items published before the item-fluff
+// join existed.
+function itemImageUrl(item: AssembledInventoryItem): string | null {
+  return resolveItemImageUrl(item.entry)
 }
 
 // --- Add form -------------------------------------------------------------
@@ -370,127 +378,152 @@ function submitAdd() {
             ? 'border border-red-900/60 bg-red-950/20'
             : 'eldra-well'"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <button
-                type="button"
-                class="block w-full truncate text-left font-semibold text-eldra-text-strong underline-offset-4 transition hover:underline"
-                :aria-label="`${item.title} — open details`"
-                @click="emit('select', item)"
+          <!-- Item image -- Character Sheet item images pass. `gap-3`
+               applies only BETWEEN flex children, so when the `<img>`
+               below does not render at all (v-if false, not hidden/
+               zero-width), the content div is this row's only child and
+               simply fills the full width -- no blank column, no
+               reserved space, the exact "preserve the current layout"
+               behavior asked for. Sourced from the resolved catalogue
+               entry's presentation (item.entry.presentation.image,
+               app/lib/content-presentation's existing PresentationEntry
+               field -- the SAME field/URL shape CharacterPortrait.vue and
+               every other Sheet image already renders; no second image
+               field, no new upload path). A missing/custom item has no
+               `entry` at all and so never reaches this branch. -->
+          <div class="flex gap-3">
+            <img
+              v-if="itemImageUrl(item)"
+              :src="itemImageUrl(item)!"
+              :alt="item.title"
+              loading="lazy"
+              class="aspect-square w-16 shrink-0 self-start rounded-none border border-eldra-accent/18 bg-black/25 object-cover sm:w-20"
+            >
+
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <button
+                    type="button"
+                    class="block w-full truncate text-left font-semibold text-eldra-text-strong underline-offset-4 transition hover:underline"
+                    :aria-label="`${item.title} — open details`"
+                    @click="emit('select', item)"
+                  >
+                    {{ item.title }}
+                  </button>
+                  <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-eldra-text-faint">
+                    <!-- Quantity used to live here too (`x{{ item.quantity }}`),
+                         faint and tiny beside Container/Category/Source --
+                         Sam's reported bug. It is now the prominent number in
+                         the stepper below (the one place a player actually
+                         needs to read or change it); repeating it here added
+                         nothing a card already uncluttered needed back. -->
+                    <span v-if="item.container">Container: {{ item.container }}</span>
+                    <!-- Category, when the item's Rules Facet naturally carries
+                         one -- Rules Engine output relayed as-is, not derived
+                         here. Absent for adventuring gear, custom items, and
+                         anything the corpus has no facet for, which is legal
+                         (§8.2 rule 4): the row simply says less about it. -->
+                    <span
+                      v-if="equipmentCategory(item)"
+                      class="capitalize"
+                    >{{ equipmentCategory(item) }}</span>
+                    <span v-if="requiresAttunement(item)">Requires Attunement</span>
+                    <!-- Provenance, exactly as the Sheet's content cards show it:
+                         which pack an item came from is what makes a later
+                         "unavailable" intelligible. -->
+                    <span v-if="item.entry?.sourceBook">{{ item.entry.sourceBook }}</span>
+                    <span v-else-if="item.status === 'custom'">Custom</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-xs font-semibold text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
+                  :disabled="saving"
+                  @click="emit('remove', item.instanceId)"
+                >
+                  Remove
+                </button>
+              </div>
+
+              <!-- A reference whose Content Pack is gone is stated, never hidden. -->
+              <p
+                v-if="item.status === 'missing'"
+                class="mt-2 text-xs leading-5 text-red-300"
               >
-                {{ item.title }}
-              </button>
-              <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-eldra-text-faint">
-                <!-- Quantity used to live here too (`x{{ item.quantity }}`),
-                     faint and tiny beside Container/Category/Source --
-                     Sam's reported bug. It is now the prominent number in
-                     the stepper below (the one place a player actually
-                     needs to read or change it); repeating it here added
-                     nothing a card already uncluttered needed back. -->
-                <span v-if="item.container">Container: {{ item.container }}</span>
-                <!-- Category, when the item's Rules Facet naturally carries
-                     one -- Rules Engine output relayed as-is, not derived
-                     here. Absent for adventuring gear, custom items, and
-                     anything the corpus has no facet for, which is legal
-                     (§8.2 rule 4): the row simply says less about it. -->
-                <span
-                  v-if="equipmentCategory(item)"
-                  class="capitalize"
-                >{{ equipmentCategory(item) }}</span>
-                <span v-if="requiresAttunement(item)">Requires Attunement</span>
-                <!-- Provenance, exactly as the Sheet's content cards show it:
-                     which pack an item came from is what makes a later
-                     "unavailable" intelligible. -->
-                <span v-if="item.entry?.sourceBook">{{ item.entry.sourceBook }}</span>
-                <span v-else-if="item.status === 'custom'">Custom</span>
+                {{ item.reason || 'This item is no longer published by any Content Pack bound to this World.' }}
+              </p>
+
+              <p
+                v-if="item.notes"
+                class="mt-2 rounded-none border border-eldra-accent/14 bg-eldra-well/42 p-2 text-xs leading-5 text-eldra-text-faint"
+              >
+                {{ item.notes }}
+              </p>
+
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <!-- Quantity stepper -- Sam's reported bug: the only count shown
+                     used to be the small, faint "x1" up in the metadata row,
+                     with nothing between these two buttons at all. The count now
+                     sits directly between them, large enough to read without
+                     looking away, with `tabular-nums` so the buttons do not
+                     shift sideways as the digit count changes. Same
+                     `change-quantity` event/delta contract, same disabled-at-1
+                     floor, same `saving` gate -- this is a layout change only. -->
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
+                    :disabled="saving || item.quantity <= 1"
+                    :aria-label="`Decrease quantity of ${item.title}`"
+                    @click="emit('change-quantity', { instanceId: item.instanceId, delta: -1 })"
+                  >
+                    −
+                  </button>
+                  <span
+                    class="flex min-h-11 min-w-11 items-center justify-center px-1 text-base font-bold tabular-nums text-eldra-text-strong"
+                    aria-live="polite"
+                    :aria-label="`Quantity: ${item.quantity}`"
+                  >
+                    {{ item.quantity }}
+                  </span>
+                  <button
+                    type="button"
+                    class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
+                    :disabled="saving"
+                    :aria-label="`Increase quantity of ${item.title}`"
+                    @click="emit('change-quantity', { instanceId: item.instanceId, delta: 1 })"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <!-- Equipped/Attuned -- Sam's other reported bug: both controls
+                     used to render for every item, including Potion of Healing
+                     and Arrows. `availableFlags` (below) shows each control only
+                     for the item kinds that actually have equip/attunement
+                     semantics today -- see isItemEquippable/isItemAttunable's
+                     own header, app/lib/characters/inventory.ts. -->
+                <label
+                  v-for="flag in availableFlags(item)"
+                  :key="flag"
+                  class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
+                  :class="item[flag]
+                    ? 'border-eldra-accent/65 bg-eldra-accent/12 text-eldra-text-strong'
+                    : 'border-eldra-accent/24 text-eldra-text-soft'"
+                >
+                  <input
+                    type="checkbox"
+                    class="size-4 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
+                    :checked="item[flag]"
+                    :disabled="saving"
+                    @change="emit('toggle-flag', { instanceId: item.instanceId, flag })"
+                  >
+                  {{ flag }}
+                </label>
               </div>
             </div>
-
-            <button
-              type="button"
-              class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-xs font-semibold text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
-              :disabled="saving"
-              @click="emit('remove', item.instanceId)"
-            >
-              Remove
-            </button>
-          </div>
-
-          <!-- A reference whose Content Pack is gone is stated, never hidden. -->
-          <p
-            v-if="item.status === 'missing'"
-            class="mt-2 text-xs leading-5 text-red-300"
-          >
-            {{ item.reason || 'This item is no longer published by any Content Pack bound to this World.' }}
-          </p>
-
-          <p
-            v-if="item.notes"
-            class="mt-2 rounded-none border border-eldra-accent/14 bg-eldra-well/42 p-2 text-xs leading-5 text-eldra-text-faint"
-          >
-            {{ item.notes }}
-          </p>
-
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <!-- Quantity stepper -- Sam's reported bug: the only count shown
-                 used to be the small, faint "x1" up in the metadata row,
-                 with nothing between these two buttons at all. The count now
-                 sits directly between them, large enough to read without
-                 looking away, with `tabular-nums` so the buttons do not
-                 shift sideways as the digit count changes. Same
-                 `change-quantity` event/delta contract, same disabled-at-1
-                 floor, same `saving` gate -- this is a layout change only. -->
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
-                :disabled="saving || item.quantity <= 1"
-                :aria-label="`Decrease quantity of ${item.title}`"
-                @click="emit('change-quantity', { instanceId: item.instanceId, delta: -1 })"
-              >
-                −
-              </button>
-              <span
-                class="flex min-h-11 min-w-11 items-center justify-center px-1 text-base font-bold tabular-nums text-eldra-text-strong"
-                aria-live="polite"
-                :aria-label="`Quantity: ${item.quantity}`"
-              >
-                {{ item.quantity }}
-              </span>
-              <button
-                type="button"
-                class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
-                :disabled="saving"
-                :aria-label="`Increase quantity of ${item.title}`"
-                @click="emit('change-quantity', { instanceId: item.instanceId, delta: 1 })"
-              >
-                +
-              </button>
-            </div>
-
-            <!-- Equipped/Attuned -- Sam's other reported bug: both controls
-                 used to render for every item, including Potion of Healing
-                 and Arrows. `availableFlags` (below) shows each control only
-                 for the item kinds that actually have equip/attunement
-                 semantics today -- see isItemEquippable/isItemAttunable's
-                 own header, app/lib/characters/inventory.ts. -->
-            <label
-              v-for="flag in availableFlags(item)"
-              :key="flag"
-              class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
-              :class="item[flag]
-                ? 'border-eldra-accent/65 bg-eldra-accent/12 text-eldra-text-strong'
-                : 'border-eldra-accent/24 text-eldra-text-soft'"
-            >
-              <input
-                type="checkbox"
-                class="size-4 accent-eldra-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
-                :checked="item[flag]"
-                :disabled="saving"
-                @change="emit('toggle-flag', { instanceId: item.instanceId, flag })"
-              >
-              {{ flag }}
-            </label>
           </div>
         </article>
       </div>

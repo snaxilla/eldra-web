@@ -583,6 +583,36 @@ describe('assembleCharacter -- inventory', () => {
     expect(item?.entry?.sourceBook).toBe('XPHB')
   })
 
+  // Character Purgatory item-mechanics pass. resolveInventory passes the
+  // catalogue's resolved entry through verbatim (`entry: slot.entry`), so
+  // whatever getWorldContentCatalogue computed -- itemMechanics included --
+  // was always reaching this boundary; this test closes the gap of nothing
+  // ever asserting it, mirroring `rulesFacet`'s own relay-through coverage.
+  it('relays the catalogue entry\'s itemMechanics through to the resolved inventory item, unmodified', async () => {
+    const weapon = catalogueEntry({ title: 'Shortsword', slug: 'shortsword-xphb', sourceBook: 'XPHB' })
+    const weaponEntry = {
+      ...weapon,
+      itemMechanics: {
+        kind: 'weapon',
+        weaponCategory: 'martial',
+        range: 'melee',
+        properties: ['finesse', 'light'],
+        masteryProperty: 'Vex',
+        proficiencyGroups: ['martial', 'martial_light', 'martial_finesse_light']
+      }
+    }
+
+    withItems(
+      [{ instanceId: 'item-1', ref: { packageId: weapon.packageId, slug: 'shortsword-xphb' }, quantity: 1, equipped: true, attuned: false }],
+      [weaponEntry]
+    )
+
+    const result = await assembleCharacter('5', '42')
+    const item: any = result.available ? result.blueprint.inventory[0] : null
+
+    expect(item?.entry?.itemMechanics).toEqual(weaponEntry.itemMechanics)
+  })
+
   it('reflects a repin rather than a stored copy -- the title follows the catalogue', async () => {
     // The whole point of storing a reference instead of a snapshot: rename
     // the published item and every character carrying it updates.

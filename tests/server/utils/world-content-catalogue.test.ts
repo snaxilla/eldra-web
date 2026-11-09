@@ -412,4 +412,67 @@ describe('getWorldContentCatalogue -- presentation models', () => {
       expect(catalogue.items[1]!.actions).toHaveLength(1)
     })
   })
+
+  // Character Purgatory item-mechanics pass -- this boundary (getWorldContentCatalogue
+  // actually wiring app/lib/item-mechanics into `items` entries) had zero
+  // coverage before this task; app/lib/item-mechanics' own resolver logic
+  // is covered in tests/lib/item-mechanics/dnd5e.test.ts.
+  describe('itemMechanics (Weapon Mastery phase)', () => {
+    it('resolves a weapon item to its canonical item mechanics', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [entry({
+          entityType: 'item',
+          title: 'Shortsword',
+          slug: 'shortsword-xphb',
+          data: { name: 'Shortsword', weapon: true, type: 'M|XPHB', weaponCategory: 'martial', property: ['F|XPHB', 'L|XPHB'], mastery: ['Vex|XPHB'] }
+        })]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items[0]!.itemMechanics).toEqual({
+        kind: 'weapon',
+        weaponCategory: 'martial',
+        range: 'melee',
+        properties: ['finesse', 'light'],
+        masteryProperty: 'Vex',
+        proficiencyGroups: ['martial', 'martial_light', 'martial_finesse_light']
+      })
+    })
+
+    it('resolves to null, not absent, for a non-weapon item (e.g. armor) -- the category IS item-mechanics-eligible, this entry just is not a weapon', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [entry({ entityType: 'item', title: 'Leather Armor', slug: 'leather-armor-xphb', data: { name: 'Leather Armor', armor: true, type: 'LA|XPHB', ac: 11 } })]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items[0]).toHaveProperty('itemMechanics', null)
+    })
+
+    it('a category with no item-mechanics mapping (spells, feats) never resolves itemMechanics', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [
+          entry({ entityType: 'spell', title: 'Fire Bolt', data: { name: 'Fire Bolt' } }),
+          entry({ entityType: 'feat', title: 'Alert', slug: 'alert', data: { name: 'Alert' } })
+        ]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.spells[0]).not.toHaveProperty('itemMechanics')
+      expect(catalogue.feats[0]).not.toHaveProperty('itemMechanics')
+    })
+
+    it('a broken data payload degrades this entry to itemMechanics: null, never breaking the catalogue', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [
+          entry({ entityType: 'item', title: 'Bad', slug: 'bad', data: 'not-an-object' as any }),
+          entry({ entityType: 'item', title: 'Good', slug: 'good', data: { name: 'Good', weapon: true, type: 'M|XPHB', weaponCategory: 'simple', mastery: ['Vex|XPHB'] } })
+        ]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items).toHaveLength(2)
+      expect(catalogue.items[0]).toHaveProperty('itemMechanics', null)
+      expect(catalogue.items[1]!.itemMechanics?.kind).toBe('weapon')
+    })
+  })
 })

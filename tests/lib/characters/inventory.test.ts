@@ -282,3 +282,242 @@ describe('itemDetailLines', () => {
     expect(lines).toContain('No longer published by any bound Content Pack')
   })
 })
+
+// ---------------------------------------------------------------------------
+// itemDetailLines -- item mechanics (weapon/armor), Character Purgatory
+// item-mechanics pass. Representative shapes taken from the real resolved
+// output: app/lib/item-mechanics/dnd5e.ts for itemMechanics, and
+// app/lib/content-rules/dnd5e-2024.ts's actual authored facets for
+// Shortsword/Leather Armor/Shield (collectionFields values copied verbatim
+// from the real package source, not invented).
+// ---------------------------------------------------------------------------
+
+describe('itemDetailLines -- weapon mechanics', () => {
+  it('renders type, damage, range, properties, and mastery for a resolved weapon', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shortsword',
+        slug: 'shortsword-xphb',
+        sourceBook: 'XPHB',
+        itemMechanics: {
+          kind: 'weapon',
+          weaponCategory: 'martial',
+          range: 'melee',
+          properties: ['finesse', 'light'],
+          masteryProperty: 'Vex',
+          proficiencyGroups: ['martial', 'martial_light', 'martial_finesse_light']
+        },
+        actions: [{ name: 'Shortsword', category: 'weapon', actionType: 'Melee Attack', range: '5 ft.', damage: '1d6 piercing', damageType: 'piercing' }]
+      }
+    }))
+
+    expect(lines).toContain('Type: Martial Melee Weapon')
+    expect(lines).toContain('Damage: 1d6 piercing')
+    expect(lines).toContain('Range: 5 ft.')
+    expect(lines).toContain('Properties: Finesse, Light')
+    expect(lines).toContain('Mastery: Vex')
+  })
+
+  it('renders a ranged weapon correctly, with no Properties line when it has none', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shortbow',
+        slug: 'shortbow-xphb',
+        itemMechanics: {
+          kind: 'weapon',
+          weaponCategory: 'simple',
+          range: 'ranged',
+          properties: [],
+          masteryProperty: 'Slow',
+          proficiencyGroups: ['simple']
+        },
+        actions: [{ name: 'Shortbow', category: 'weapon', actionType: 'Ranged Attack', range: '80/320 ft.', damage: '1d6 piercing', damageType: 'piercing' }]
+      }
+    }))
+
+    expect(lines).toContain('Type: Simple Ranged Weapon')
+    expect(lines).toContain('Range: 80/320 ft.')
+    expect(lines.some((line) => line.startsWith('Properties:'))).toBe(false)
+    expect(lines).toContain('Mastery: Slow')
+  })
+
+  it('still shows weapon Type/Properties/Mastery when no actions resolved a damage string', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shortsword',
+        slug: 'shortsword-xphb',
+        itemMechanics: {
+          kind: 'weapon',
+          weaponCategory: 'martial',
+          range: 'melee',
+          properties: ['finesse'],
+          masteryProperty: 'Vex',
+          proficiencyGroups: ['martial', 'martial_finesse_light']
+        }
+      }
+    }))
+
+    expect(lines).toContain('Type: Martial Melee Weapon')
+    expect(lines.some((line) => line.startsWith('Damage:'))).toBe(false)
+    expect(lines).toContain('Properties: Finesse')
+    expect(lines).toContain('Mastery: Vex')
+  })
+})
+
+describe('itemDetailLines -- armor mechanics', () => {
+  it('renders Armor Class and an uncapped Dexterity Bonus for Light armor (real Leather Armor facet)', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Leather Armor',
+        slug: 'leather-armor-xphb',
+        rulesFacet: {
+          collectionFields: [{
+            collection: 'collection:equipment',
+            fields: { category: 'armor', slot: 'armor', sourceRef: 'source:equipment.armor', armorClass: 11, dexCapMin: -99, dexCapMax: 99 }
+          }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Type: Armor')
+    expect(lines).toContain('Armor Class: 11')
+    expect(lines).toContain('Dexterity Bonus: full')
+  })
+
+  it('renders a capped Dexterity Bonus for Medium armor (real Chain Shirt facet)', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Chain Shirt',
+        slug: 'chain-shirt-xphb',
+        rulesFacet: {
+          collectionFields: [{
+            collection: 'collection:equipment',
+            fields: { category: 'armor', slot: 'armor', sourceRef: 'source:equipment.armor', armorClass: 13, dexCapMin: -99, dexCapMax: 2 }
+          }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Armor Class: 13')
+    expect(lines).toContain('Dexterity Bonus: up to +2')
+  })
+
+  it('renders no Dexterity Bonus for Heavy armor (real Chain Mail facet)', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Chain Mail',
+        slug: 'chain-mail-xphb',
+        rulesFacet: {
+          collectionFields: [{
+            collection: 'collection:equipment',
+            fields: { category: 'armor', slot: 'armor', sourceRef: 'source:equipment.armor', armorClass: 16, dexCapMin: 0, dexCapMax: 0 }
+          }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Armor Class: 16')
+    expect(lines).toContain('Dexterity Bonus: none')
+  })
+
+  it('labels a held armor-category item (the real Shield facet) as Shield, with no fabricated AC line', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shield',
+        slug: 'shield-xphb',
+        rulesFacet: {
+          collectionFields: [{ collection: 'collection:equipment', fields: { category: 'armor', slot: 'held' } }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Type: Shield')
+    expect(lines.some((line) => line.startsWith('Armor Class:'))).toBe(false)
+  })
+
+  it('shows Requires Attunement only when the facet states it', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Enchanted Leather Armor',
+        slug: 'enchanted-leather-armor-xphb',
+        rulesFacet: {
+          collectionFields: [{
+            collection: 'collection:equipment',
+            fields: { category: 'armor', slot: 'armor', armorClass: 11, dexCapMin: -99, dexCapMax: 99, requiresAttunement: true }
+          }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Requires Attunement: Yes')
+  })
+})
+
+describe('itemDetailLines -- honest fallback for unmechanised items', () => {
+  it('shows a clear fallback line for a resolved item with no itemMechanics and no armor facet (e.g. ammunition)', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Arrows (20)',
+        slug: 'arrows-20-xphb',
+        sourceBook: 'XPHB'
+      }
+    }))
+
+    expect(lines).toContain('No item details are available in this content package.')
+  })
+
+  it('never shows the fallback for a custom (non-catalogue) item', () => {
+    const lines = itemDetailLines(resolvedItem({ status: 'custom', entry: undefined }))
+    expect(lines).not.toContain('No item details are available in this content package.')
+  })
+
+  it('never shows the fallback for a missing (broken-reference) item', () => {
+    const lines = itemDetailLines(resolvedItem({ status: 'missing', reason: 'gone', entry: undefined }))
+    expect(lines).not.toContain('No item details are available in this content package.')
+  })
+
+  it('never leaks raw weapon/armor property codes or facet plumbing -- only the curated labels', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shortsword',
+        slug: 'shortsword-xphb',
+        itemMechanics: {
+          kind: 'weapon',
+          weaponCategory: 'martial',
+          range: 'melee',
+          properties: ['finesse', 'light'],
+          masteryProperty: 'Vex',
+          proficiencyGroups: ['martial', 'martial_light', 'martial_finesse_light']
+        },
+        rulesFacet: {
+          collectionFields: [{ collection: 'collection:equipment', fields: { category: 'weapon', slot: 'held' } }]
+        }
+      }
+    }))
+
+    const joined = lines.join(' | ')
+    expect(joined).not.toContain('collection:equipment')
+    expect(joined).not.toContain('proficiencyGroups')
+    expect(joined).not.toContain('martial_finesse_light')
+  })
+})

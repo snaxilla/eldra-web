@@ -105,3 +105,51 @@ describe('searchCatalogueOptions', () => {
     expect(searchCatalogueOptions(withBadEntry, '')).toEqual(withBadEntry)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Item coverage audit regression -- Character Purgatory item-coverage pass.
+//
+// Confirmed directly against the running server (GET /api/worlds/4/catalogue,
+// the real World bound to eldra.solaris.xphb + eldra.monster.manual.1):
+// Leather Armor, Studded Leather Armor, Shortsword, Arrow, Arrows (20), and
+// Shortbow are all present among the catalogue's 217 real items, and
+// "potion" matches zero of them. Traced to the source: items.json's own
+// Potion of Healing entries are published under `source: DMG` / `source:
+// XDMG` only -- never XPHB -- and `content_packs` (queried read-only) has
+// never had a DMG/XDMG-sourced pack published at all, only
+// eldra.solaris.xphb (every version) and eldra.monster.manual.1. Potion's
+// absence is therefore a genuine content-coverage gap (no DMG content has
+// ever been imported/published/bound anywhere in this deployment), not a
+// search or resolution bug -- these tests pin the search behavior itself as
+// correct for both cases, rather than re-asserting the coverage fact (that
+// belongs to the content pipeline, not the client search function).
+describe('searchCatalogueOptions -- representative World 4 item coverage', () => {
+  const worldFourItems: CatalogueOptionRef[] = [
+    option({ slug: 'leather-armor-xphb', title: 'Leather Armor', sourceBook: 'XPHB' }),
+    option({ slug: 'studded-leather-armor-xphb', title: 'Studded Leather Armor', sourceBook: 'XPHB' }),
+    option({ slug: 'shortsword-xphb', title: 'Shortsword', sourceBook: 'XPHB' }),
+    option({ slug: 'arrow-xphb', title: 'Arrow', sourceBook: 'XPHB' }),
+    option({ slug: 'arrows-20-xphb', title: 'Arrows (20)', sourceBook: 'XPHB' }),
+    option({ slug: 'shortbow-xphb', title: 'Shortbow', sourceBook: 'XPHB' })
+  ]
+
+  it('finds Shortsword by name', () => {
+    expect(searchCatalogueOptions(worldFourItems, 'Shortsword').map((o) => o.title)).toEqual(['Shortsword'])
+  })
+
+  it('finds both Leather Armor entries by a shared substring', () => {
+    expect(searchCatalogueOptions(worldFourItems, 'leather armor').map((o) => o.title)).toEqual(['Leather Armor', 'Studded Leather Armor'])
+  })
+
+  it('finds Shortbow by name', () => {
+    expect(searchCatalogueOptions(worldFourItems, 'Shortbow').map((o) => o.title)).toEqual(['Shortbow'])
+  })
+
+  it('finds both Arrow entries without an exact-match requirement', () => {
+    expect(searchCatalogueOptions(worldFourItems, 'arrow').map((o) => o.title)).toEqual(['Arrow', 'Arrows (20)'])
+  })
+
+  it('correctly returns no results for Potion -- it is genuinely absent from this World\'s bound catalogue, not filtered out', () => {
+    expect(searchCatalogueOptions(worldFourItems, 'Potion')).toEqual([])
+  })
+})

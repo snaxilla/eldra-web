@@ -14,6 +14,9 @@ import {
   changeInventoryQuantity,
   clampQuantity,
   emptyInventory,
+  equipmentCollectionFields,
+  isItemAttunable,
+  isItemEquippable,
   itemDetailLines,
   nextInstanceId,
   normalizeStoredInventory,
@@ -22,6 +25,7 @@ import {
   toggleInventoryFlag,
   unresolvedItemLabel,
   type AssembledInventoryItem,
+  type InventoryCatalogueEntry,
   type StoredInventoryItem
 } from '../../../app/lib/characters/inventory'
 
@@ -449,23 +453,38 @@ describe('itemDetailLines -- armor mechanics', () => {
     expect(lines.some((line) => line.startsWith('Armor Class:'))).toBe(false)
   })
 
-  it('shows Requires Attunement only when the facet states it', () => {
+  it('shows Requires Attunement when the resolved entry\'s attunementRequired field is true (reqAttune, not the armor facet)', () => {
+    // Character Sheet Inventory pass: Requires Attunement now reads
+    // entry.attunementRequired (world-content-catalogue.ts, mirroring the
+    // importer's own reqAttune/attunement semantics) rather than the
+    // armor-only rulesFacet.collectionFields.requiresAttunement field,
+    // which is never true for any real authored XPHB facet (see
+    // app/lib/content-rules/dnd5e-2024.ts's own comment: XPHB is mundane
+    // starting equipment, so that field is "exercised by the mechanism...
+    // without yet being exercised by real content").
     const lines = itemDetailLines(resolvedItem({
       entry: {
-        packageId: 'eldra.solaris.xphb',
-        packageVersion: '1.0.37',
-        title: 'Enchanted Leather Armor',
-        slug: 'enchanted-leather-armor-xphb',
-        rulesFacet: {
-          collectionFields: [{
-            collection: 'collection:equipment',
-            fields: { category: 'armor', slot: 'armor', armorClass: 11, dexCapMin: -99, dexCapMax: 99, requiresAttunement: true }
-          }]
-        }
+        packageId: 'eldra.solaris.xdmg',
+        packageVersion: '1.0.0',
+        title: 'Ring of Protection',
+        slug: 'ring-of-protection-xdmg',
+        attunementRequired: true
       }
     }))
 
     expect(lines).toContain('Requires Attunement: Yes')
+  })
+
+  it('never shows Requires Attunement when attunementRequired is absent or false', () => {
+    const absent = itemDetailLines(resolvedItem({
+      entry: { packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37', title: 'Shortsword', slug: 'shortsword-xphb' }
+    }))
+    const explicitFalse = itemDetailLines(resolvedItem({
+      entry: { packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37', title: 'Shortsword', slug: 'shortsword-xphb', attunementRequired: false }
+    }))
+
+    expect(absent.some((line) => line.startsWith('Requires Attunement'))).toBe(false)
+    expect(explicitFalse.some((line) => line.startsWith('Requires Attunement'))).toBe(false)
   })
 })
 
@@ -519,5 +538,244 @@ describe('itemDetailLines -- honest fallback for unmechanised items', () => {
     expect(joined).not.toContain('collection:equipment')
     expect(joined).not.toContain('proficiencyGroups')
     expect(joined).not.toContain('martial_finesse_light')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// itemDetailLines -- item presentation (description/facts), Character Sheet
+// Inventory implementation pass. The real reported bug: Potion of Healing
+// had a real description on the Items admin page but showed only the
+// honest fallback on the Character Sheet, because entry.presentation was
+// never computed for items at all (see world-content-catalogue.ts's own
+// PRESENTATION_KIND_BY_CATEGORY). Representative items per the task's own
+// ask: Potion of Healing (description/facts path), Shortsword and Leather
+// Armor (existing mechanics must remain visible, unchanged), Arrows (no
+// presentation and no mechanics -- keeps the honest fallback, never an
+// invented mechanic).
+// ---------------------------------------------------------------------------
+
+describe('itemDetailLines -- item presentation (description/facts)', () => {
+  it('renders the real Potion of Healing description and facts -- the exact reported bug', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xdmg',
+        packageVersion: '1.0.0',
+        title: 'Potion of Healing',
+        slug: 'potion-of-healing-xdmg',
+        sourceBook: 'XDMG',
+        presentation: {
+          kind: 'item',
+          name: 'Potion of Healing',
+          sourceBook: 'XDMG',
+          sourcePage: '288',
+          description: ["This potion is a magic item. The creature that drinks the magical red fluid in this vial regains 2d4 + 2 Hit Points."],
+          facts: [
+            { label: 'Rarity', value: 'Common' },
+            { label: 'Value', value: '50 gp' },
+            { label: 'Weight', value: '0.5 lb.' }
+          ],
+          sections: [],
+          notes: []
+        }
+      }
+    }))
+
+    expect(lines).toContain('This potion is a magic item. The creature that drinks the magical red fluid in this vial regains 2d4 + 2 Hit Points.')
+    expect(lines).toContain('Rarity: Common')
+    expect(lines).toContain('Value: 50 gp')
+    expect(lines).toContain('Weight: 0.5 lb.')
+    expect(lines).not.toContain('No item details are available in this content package.')
+  })
+
+  it('an item with presentation.description but no weapon/armor mechanics never gets the fallback line', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xdmg',
+        packageVersion: '1.0.0',
+        title: 'Scroll of Identify',
+        slug: 'scroll-of-identify-xdmg',
+        presentation: {
+          kind: 'item', name: 'Scroll of Identify', description: ['A spell scroll.'], facts: [], sections: [], notes: []
+        }
+      }
+    }))
+
+    expect(lines).not.toContain('No item details are available in this content package.')
+  })
+
+  it('resolved but presentation: null (unreadable data) with no mechanics still falls back honestly', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: { packageId: 'eldra.solaris.xdmg', packageVersion: '1.0.0', title: 'Broken Entry', slug: 'broken-entry', presentation: null }
+    }))
+
+    expect(lines).toContain('No item details are available in this content package.')
+  })
+
+  it('Shortsword mechanics remain visible alongside (empty) presentation -- mundane weapons have no entries text', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Shortsword',
+        slug: 'shortsword-xphb',
+        presentation: { kind: 'item', name: 'Shortsword', description: [], facts: [], sections: [], notes: ['no description'] },
+        itemMechanics: {
+          kind: 'weapon', weaponCategory: 'martial', range: 'melee', properties: ['finesse', 'light'],
+          masteryProperty: 'Vex', proficiencyGroups: ['martial', 'martial_light', 'martial_finesse_light']
+        }
+      }
+    }))
+
+    expect(lines).toContain('Type: Martial Melee Weapon')
+    expect(lines).toContain('Mastery: Vex')
+    expect(lines).not.toContain('No item details are available in this content package.')
+    // The presentation resolver's OWN "no description" note must never leak
+    // through -- itemDetailLines has its own fallback sentence and reads
+    // presentation.description/.facts only, never presentation.notes.
+    expect(lines.join(' | ')).not.toContain('no description')
+  })
+
+  it('Leather Armor mechanics remain visible, unchanged, alongside empty presentation', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Leather Armor',
+        slug: 'leather-armor-xphb',
+        presentation: { kind: 'item', name: 'Leather Armor', description: [], facts: [], sections: [], notes: [] },
+        rulesFacet: {
+          collectionFields: [{
+            collection: 'collection:equipment',
+            fields: { category: 'armor', slot: 'armor', armorClass: 11, dexCapMin: -99, dexCapMax: 99 }
+          }]
+        }
+      }
+    }))
+
+    expect(lines).toContain('Type: Armor')
+    expect(lines).toContain('Armor Class: 11')
+    expect(lines).toContain('Dexterity Bonus: full')
+  })
+
+  it('Arrows (ammunition) -- no presentation, no mechanics -- keeps the honest fallback, never an invented mechanic', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xphb',
+        packageVersion: '1.0.37',
+        title: 'Arrows (20)',
+        slug: 'arrows-20-xphb',
+        sourceBook: 'XPHB',
+        presentation: { kind: 'item', name: 'Arrows (20)', description: [], facts: [], sections: [], notes: [] }
+      }
+    }))
+
+    expect(lines).toContain('No item details are available in this content package.')
+    expect(lines.some((line) => line.startsWith('Type:'))).toBe(false)
+    expect(lines.some((line) => line.startsWith('Damage:'))).toBe(false)
+    expect(lines.some((line) => line.startsWith('Armor Class:'))).toBe(false)
+  })
+
+  it('never leaks presentation provenance (sourceBook/sourcePage/name) -- only description and facts are read', () => {
+    const lines = itemDetailLines(resolvedItem({
+      entry: {
+        packageId: 'eldra.solaris.xdmg',
+        packageVersion: '1.0.0',
+        title: 'Potion of Healing',
+        slug: 'potion-of-healing-xdmg',
+        presentation: {
+          kind: 'item', name: 'Potion of Healing', sourceBook: 'INTERNAL-SOURCE-TAG', sourcePage: '999',
+          description: ['It heals you.'], facts: [], sections: [], notes: []
+        }
+      }
+    }))
+
+    expect(lines.join(' | ')).not.toContain('INTERNAL-SOURCE-TAG')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isItemEquippable / isItemAttunable -- Character Sheet Inventory pass.
+// Representative items per the task's own ask: Shortsword (weapon,
+// equippable), Leather Armor (armor, equippable), Shield (armor/held,
+// equippable), Potion of Healing (neither), Arrows (neither).
+// ---------------------------------------------------------------------------
+
+function catalogueEntry(overrides: Partial<InventoryCatalogueEntry> = {}): InventoryCatalogueEntry {
+  return { packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37', title: 'Thing', slug: 'thing-xphb', ...overrides }
+}
+
+describe('isItemEquippable', () => {
+  it('is true for a resolved weapon (Shortsword)', () => {
+    expect(isItemEquippable(catalogueEntry({
+      itemMechanics: { kind: 'weapon', weaponCategory: 'martial', range: 'melee', properties: [], masteryProperty: 'Vex', proficiencyGroups: ['martial'] }
+    }))).toBe(true)
+  })
+
+  it('is true for armor carrying an equipment Rules Facet (Leather Armor)', () => {
+    expect(isItemEquippable(catalogueEntry({
+      rulesFacet: { collectionFields: [{ collection: 'collection:equipment', fields: { category: 'armor', slot: 'armor', armorClass: 11 } }] }
+    }))).toBe(true)
+  })
+
+  it('is true for a Shield (armor category, held slot, no armorClass published)', () => {
+    expect(isItemEquippable(catalogueEntry({
+      rulesFacet: { collectionFields: [{ collection: 'collection:equipment', fields: { category: 'armor', slot: 'held' } }] }
+    }))).toBe(true)
+  })
+
+  it('is false for Potion of Healing (no itemMechanics, no equipment facet)', () => {
+    expect(isItemEquippable(catalogueEntry({ itemMechanics: null }))).toBe(false)
+  })
+
+  it('is false for Arrows (ammunition -- no facet at all)', () => {
+    expect(isItemEquippable(catalogueEntry())).toBe(false)
+  })
+
+  it('is false for a non-armor, non-weapon equipment-collection category (adventuring gear)', () => {
+    expect(isItemEquippable(catalogueEntry({
+      rulesFacet: { collectionFields: [{ collection: 'collection:equipment', fields: { category: 'gear' } }] }
+    }))).toBe(false)
+  })
+
+  it('is false when entry is undefined (custom item with no catalogue entry)', () => {
+    expect(isItemEquippable(undefined)).toBe(false)
+  })
+})
+
+describe('isItemAttunable', () => {
+  it('is true only when attunementRequired is explicitly true', () => {
+    expect(isItemAttunable(catalogueEntry({ attunementRequired: true }))).toBe(true)
+  })
+
+  it('is false for Potion of Healing and Arrows (attunementRequired absent)', () => {
+    expect(isItemAttunable(catalogueEntry())).toBe(false)
+  })
+
+  it('is false when attunementRequired is explicitly false', () => {
+    expect(isItemAttunable(catalogueEntry({ attunementRequired: false }))).toBe(false)
+  })
+
+  it('is false when entry is undefined', () => {
+    expect(isItemAttunable(undefined)).toBe(false)
+  })
+
+  it('is independent of equip eligibility -- a weapon is not attunable by default, and attunement does not imply equippable', () => {
+    const magicRing = catalogueEntry({ attunementRequired: true }) // no itemMechanics, no equipment facet
+    expect(isItemAttunable(magicRing)).toBe(true)
+    expect(isItemEquippable(magicRing)).toBe(false)
+  })
+})
+
+describe('equipmentCollectionFields', () => {
+  it('finds the collection:equipment group fields', () => {
+    const entry = catalogueEntry({
+      rulesFacet: { collectionFields: [{ collection: 'collection:equipment', fields: { category: 'armor' } }] }
+    })
+    expect(equipmentCollectionFields(entry)?.category).toBe('armor')
+  })
+
+  it('returns undefined when there is no equipment facet or no entry', () => {
+    expect(equipmentCollectionFields(catalogueEntry())).toBeUndefined()
+    expect(equipmentCollectionFields(undefined)).toBeUndefined()
   })
 })

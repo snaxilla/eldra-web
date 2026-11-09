@@ -83,7 +83,7 @@ import { resolveContentPresentation, type PresentationEntry, type PresentationKi
 import { resolveContentActions, type ContentAction, type ContentSourceCategory } from '../../app/lib/content-actions'
 import { resolveSpellMechanics, type CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
 import { resolveFeatMechanics, type CanonicalFeatMechanics } from '../../app/lib/feat-mechanics'
-import { resolveItemMechanics, type CanonicalItemMechanics } from '../../app/lib/item-mechanics'
+import { resolveItemAttunementRequired, resolveItemMechanics, type CanonicalItemMechanics } from '../../app/lib/item-mechanics'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
@@ -163,6 +163,16 @@ export type ContentCatalogueEntry = {
   // today: Milestone A resolves weapons only) -- absent entirely means this entry is not an item
   // at all.
   itemMechanics?: CanonicalItemMechanics | null
+  // Character Sheet Inventory pass. Present only for `items` entries --
+  // always a boolean (never null: "not explicitly required" is the
+  // correct default for absent/malformed data, not an unresolved state --
+  // see app/lib/item-mechanics/dnd5e.ts's own resolveDnd5eItemAttunementRequired).
+  // Mirrors the importer's `item_core.attunement` semantics exactly
+  // (`reqAttune` or the legacy `attunement` boolean) so the Items admin
+  // page and the Character Sheet can never disagree about whether the
+  // SAME item requires attunement. Independent of `itemMechanics`: an
+  // item can require attunement whether or not it is also a weapon.
+  attunementRequired?: boolean
   // Character Creator V3 -- Selected Option Explanations. Present only for
   // `featureOptions` entries -- relayed, not computed, exactly like
   // `parentClassSlug` below: the Rules Engine Definition id this option's
@@ -255,7 +265,14 @@ const PRESENTATION_KIND_BY_CATEGORY: Partial<Record<CatalogueCategory, Presentat
   backgrounds: 'background',
   spells: 'spell',
   // Character Creator V3 -- Selected Option Explanations.
-  featureOptions: 'option'
+  featureOptions: 'option',
+  // Character Sheet Inventory pass -- same repair as `spells: 'spell'`
+  // above: the Character Sheet's item detail panel needs `entry.presentation`
+  // populated the same way the Items admin browser already shows a
+  // description for the identical entry (via a separate raw-data path,
+  // server/utils/catalogue-entity-bridge.ts). See
+  // content-presentation/types.ts's own 'item' PresentationKind header.
+  items: 'item'
 }
 
 // Which catalogue categories resolve Actions, and as which
@@ -380,6 +397,17 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
       base.itemMechanics = resolveItemMechanics(entry.systemKey, entry.data)
     } catch {
       base.itemMechanics = null
+    }
+
+    // Character Sheet Inventory pass -- same "data read only here, one
+    // entry degrades rather than the catalogue" posture, but the default
+    // on failure is `false` (not `null`): attunement is a plain boolean
+    // fact, never an "eligible category but unresolved" state the way
+    // itemMechanics' weapon-only resolution is.
+    try {
+      base.attunementRequired = resolveItemAttunementRequired(entry.systemKey, entry.data)
+    } catch {
+      base.attunementRequired = false
     }
   }
 

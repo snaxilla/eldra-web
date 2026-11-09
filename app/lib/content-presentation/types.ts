@@ -48,7 +48,19 @@
 // `resolveOption`. Deliberately one generic kind for both species- and
 // class-sourced options, not two -- the resolver has no Dragonborn- or
 // Warlock-specific branch, and neither should any consumer of this union.
-export type PresentationKind = 'species' | 'class' | 'background' | 'spell' | 'option'
+//
+// CHARACTER SHEET INVENTORY PASS -- 'item' added. Same bug shape as 'spell'
+// above, one layer later: `items` was never in
+// world-content-catalogue.ts's PRESENTATION_KIND_BY_CATEGORY, so an item
+// catalogue entry never got a `presentation` field at all, even though the
+// Items admin browser already shows a description for the SAME entry (via
+// a completely separate path -- server/utils/catalogue-entity-bridge.ts
+// calling the raw importer, app/lib/importers/5etools-items.ts, on
+// `entry.data` directly). See dnd5e.ts's own `resolveItem` for the real
+// resolver, which reads the identical `raw.entries` field the importer
+// does, through this module's own already-shared `flattenEntries`/
+// `cleanText` normalization rather than a second, divergent cleaner.
+export type PresentationKind = 'species' | 'class' | 'background' | 'spell' | 'option' | 'item'
 
 export type PresentationFact = {
   label: string

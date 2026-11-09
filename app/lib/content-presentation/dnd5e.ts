@@ -549,6 +549,68 @@ function resolveOption(raw: Record<string, unknown>): PresentationEntry {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Item -- Character Sheet Inventory pass
+// ---------------------------------------------------------------------------
+// Mirrors resolveSpell above exactly: a bound pack's `entries` field IS the
+// item's own effect text (Potion of Healing's "You regain 2d4 + 2 Hit
+// Points..." lives directly in `raw.entries`, the same place a spell's
+// effect text does -- confirmed against the real XDMG dataset entry, not
+// assumed) -- never a separate fluff-file join the way Species/Background
+// split lore from mechanics. `flattenEntries`/`cleanText` are the SAME
+// normalization every other kind here already uses, so an item never gets
+// a second, divergent text cleaner (this resolver does not reimplement
+// app/lib/importers/5etools-items.ts's own `textify`, which additionally
+// never strips `{@tag}` markup the way `cleanText` does).
+//
+// `facts` is deliberately small: Rarity/Value/Weight are plain restatements
+// with no coded vocabulary to get wrong. A general item `type` code
+// (`P`, `RG`, `WD`, `$A`, ...) is NOT mapped to a label here -- 5etools'
+// own type-code table is large and only partially verified this pass, and
+// a wrong/missing mapping would be exactly the kind of invented fact this
+// module's own header forbids. Weapon/armor specifics (damage, AC,
+// properties, mastery) are deliberately NOT restated here either -- they
+// already have their own, better-typed resolvers
+// (app/lib/item-mechanics, this item's rulesFacet.collectionFields) that
+// read the SAME raw record with a correctly-typed result; this resolver's
+// only job is the generic description/rarity/value/weight every item kind
+// shares, consistent with "no surface consumes them yet" never being an
+// excuse to under-model a shared shape.
+//
+// No `image` is resolved for items -- unlike Species/Background/Class,
+// whether an item's provider joins a `.fluff` image reference the way
+// `loadDatasetEntriesWithFluff` does for those three has not been verified
+// against the real content-sources pipeline this pass, and claiming an
+// image path that is never actually populated would be worse than simply
+// omitting the field (legal: `image` is optional).
+function resolveItem(raw: Record<string, unknown>): PresentationEntry {
+  const description = flattenEntries(raw.entries)
+
+  const rarity = typeof raw.rarity === 'string' ? raw.rarity.trim().toLowerCase() : ''
+  const rarityLabel = rarity && rarity !== 'none' ? titleCase(rarity) : ''
+
+  const value = typeof raw.value === 'number' && raw.value > 0 ? formatDnd5eCopperAmount(raw.value) : ''
+  const weight = typeof raw.weight === 'number' && raw.weight > 0 ? `${raw.weight} lb.` : ''
+
+  const notes: string[] = []
+  if (!description.length) notes.push(NO_DESCRIPTION_NOTE)
+
+  return {
+    kind: 'item',
+    name: cleanText(raw.name),
+    sourceBook: raw.source ? String(raw.source) : undefined,
+    sourcePage: raw.page != null ? String(raw.page) : undefined,
+    description,
+    facts: compactFacts([
+      fact('Rarity', rarityLabel),
+      fact('Value', value),
+      fact('Weight', weight)
+    ]),
+    sections: [],
+    notes
+  }
+}
+
 function fact(label: string, value: string | null | undefined): PresentationFact | null {
   const text = String(value ?? '').trim()
   return text ? { label, value: text } : null
@@ -995,5 +1057,6 @@ export function resolveDnd5ePresentation(kind: PresentationKind, data: unknown):
   if (kind === 'class') return resolveClass(raw)
   if (kind === 'spell') return resolveSpell(raw)
   if (kind === 'option') return resolveOption(raw)
+  if (kind === 'item') return resolveItem(raw)
   return resolveBackground(raw)
 }

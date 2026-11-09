@@ -122,3 +122,31 @@ export function resolveDnd5eItemMechanics(data: unknown): CanonicalItemMechanics
     proficiencyGroups: resolveProficiencyGroups(weaponCategory, properties)
   }
 }
+
+// Character Sheet Inventory pass -- whether a resolved item explicitly
+// requires attunement, independent of whether it is a weapon. The ONLY
+// reliable, non-inferred signal for this: 5etools' own `reqAttune` field
+// (boolean `true`, or a short condition string like "by a Spellcaster" --
+// either form means "yes, requires attunement" to a player, which is all
+// this boolean answers). A legacy `attunement` boolean also appears on
+// some older entries. Mirrors app/lib/importers/5etools-items.ts's own
+// `normalizeAttunement` exactly (`!!raw?.reqAttune || !!raw?.attunement`)
+// so the importer (Items admin page) and this resolver (Character Sheet)
+// can never disagree about whether the SAME raw record requires
+// attunement -- deliberately NOT imported from that file to avoid a
+// server/utils-to-app/lib layering question neither module currently has
+// an answer for; the one-line check is duplicated with this comment as
+// the record of why, the same tolerance this codebase already extends to
+// cleanText's own duplicated 5etools-tag cleaner (see
+// app/lib/content-presentation/dnd5e.ts's own header).
+//
+// Never inferred from an item's name, type code, or rarity -- a common
+// item can require attunement (rare, but real) and a legendary item can
+// require none. Returns `false`, never `null`, for malformed/absent data:
+// "not explicitly required" is the correct default the importer's own
+// `!!` coercion already encodes, not an unresolved state.
+export function resolveDnd5eItemAttunementRequired(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false
+  const record = data as Record<string, unknown>
+  return Boolean(record.reqAttune) || Boolean(record.attunement)
+}

@@ -10,8 +10,8 @@
 // shape rather than an idealized one.
 
 import { describe, expect, it } from 'vitest'
-import { resolveDnd5eItemMechanics } from '../../../app/lib/item-mechanics/dnd5e'
-import { resolveItemMechanics } from '../../../app/lib/item-mechanics'
+import { resolveDnd5eItemAttunementRequired, resolveDnd5eItemMechanics } from '../../../app/lib/item-mechanics/dnd5e'
+import { resolveItemAttunementRequired, resolveItemMechanics } from '../../../app/lib/item-mechanics'
 
 // Verbatim from items-base.json, baseitem[], source: 'XPHB'.
 const SHORTSWORD = {
@@ -125,5 +125,53 @@ describe('resolveItemMechanics (system dispatch)', () => {
 
   it('returns null for an unknown system rather than throwing', () => {
     expect(resolveItemMechanics('pf2e', SHORTSWORD)).toBeNull()
+  })
+})
+
+// Character Sheet Inventory pass. Fixtures copied verbatim from
+// items.json: Ring of Protection (XDMG, reqAttune: true) is the real
+// "explicitly requires attunement" case; Shortsword (XPHB, no reqAttune
+// field at all) is the real "mundane, never attunes" case the reported
+// bug incorrectly showed a control for.
+const RING_OF_PROTECTION_XDMG = {
+  name: 'Ring of Protection', source: 'XDMG', type: 'RG|XDMG', rarity: 'rare', reqAttune: true
+}
+
+describe('resolveDnd5eItemAttunementRequired', () => {
+  it('is true for a real item whose reqAttune is true (Ring of Protection)', () => {
+    expect(resolveDnd5eItemAttunementRequired(RING_OF_PROTECTION_XDMG)).toBe(true)
+  })
+
+  it('is false for a real mundane item with no reqAttune field at all (Shortsword)', () => {
+    expect(resolveDnd5eItemAttunementRequired(SHORTSWORD)).toBe(false)
+  })
+
+  it('is true for reqAttune as a condition string, not only a bare boolean -- "requires attunement" either way', () => {
+    expect(resolveDnd5eItemAttunementRequired({ name: 'X', reqAttune: 'by a Spellcaster' })).toBe(true)
+  })
+
+  it('is true for the legacy `attunement` boolean when reqAttune is absent', () => {
+    expect(resolveDnd5eItemAttunementRequired({ name: 'X', attunement: true })).toBe(true)
+  })
+
+  it('never infers attunement from rarity or name -- a common item can require it, a legendary one need not', () => {
+    expect(resolveDnd5eItemAttunementRequired({ name: 'Mundane Common Thing', rarity: 'common' })).toBe(false)
+    expect(resolveDnd5eItemAttunementRequired({ name: 'Vorpal Sword', rarity: 'legendary' })).toBe(false)
+  })
+
+  it('returns false, never throws, for malformed/absent data', () => {
+    expect(resolveDnd5eItemAttunementRequired(null)).toBe(false)
+    expect(resolveDnd5eItemAttunementRequired(undefined)).toBe(false)
+    expect(resolveDnd5eItemAttunementRequired('not an object')).toBe(false)
+  })
+})
+
+describe('resolveItemAttunementRequired (system dispatch)', () => {
+  it('dispatches dnd5e to the real resolver', () => {
+    expect(resolveItemAttunementRequired('dnd5e', RING_OF_PROTECTION_XDMG)).toBe(true)
+  })
+
+  it('returns false for an unknown system rather than throwing', () => {
+    expect(resolveItemAttunementRequired('pf2e', RING_OF_PROTECTION_XDMG)).toBe(false)
   })
 })

@@ -313,13 +313,14 @@ describe('getWorldContentCatalogue -- presentation models', () => {
   })
 
   // CONTENT PRESENTATION REPAIR -- spells moved OUT of this "unresolved" group: they now get a
-  // real presentation (see PRESENTATION_KIND_BY_CATEGORY's own header). Feats/items/monsters are
-  // unaffected -- still no reader, no cost.
-  it('leaves feats, items, and monsters unresolved -- no reader, no cost -- but DOES resolve a presentation for spells', async () => {
+  // real presentation (see PRESENTATION_KIND_BY_CATEGORY's own header). Feats/monsters are
+  // unaffected -- still no reader, no cost. Character Sheet Inventory pass -- items ALSO moved
+  // out: see PRESENTATION_KIND_BY_CATEGORY's `items: 'item'` entry and its own header.
+  it('leaves feats and monsters unresolved -- no reader, no cost -- but DOES resolve a presentation for spells and items', async () => {
     resolveWorldContentMock.mockResolvedValue(resolved({
       entries: [
         entry({ entityType: 'feat', title: 'Alert' }),
-        entry({ entityType: 'item', title: 'Longsword' }),
+        entry({ entityType: 'item', title: 'Longsword', data: { name: 'Longsword' } }),
         entry({ entityType: 'spell', title: 'Fire Bolt' }),
         entry({ entityType: 'enemy', title: 'Owlbear' })
       ]
@@ -327,11 +328,13 @@ describe('getWorldContentCatalogue -- presentation models', () => {
 
     const catalogue = await getWorldContentCatalogue('5')
 
-    for (const collection of [catalogue.feats, catalogue.items, catalogue.monsters]) {
+    for (const collection of [catalogue.feats, catalogue.monsters]) {
       expect(collection[0]).not.toHaveProperty('presentation')
     }
     expect(catalogue.spells[0]).toHaveProperty('presentation')
     expect(catalogue.spells[0]!.presentation).toMatchObject({ kind: 'spell', name: 'Fire Bolt' })
+    expect(catalogue.items[0]).toHaveProperty('presentation')
+    expect(catalogue.items[0]!.presentation).toMatchObject({ kind: 'item', name: 'Longsword' })
   })
 
   it('degrades a single unreadable entry to presentation: null, leaving its siblings intact', async () => {

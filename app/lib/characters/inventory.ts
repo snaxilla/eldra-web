@@ -76,6 +76,7 @@
 import type { RulesFacet } from '../content-rules'
 import type { ContentAction } from '../content-actions'
 import type { CanonicalItemMechanics } from '../item-mechanics'
+import type { PresentationEntry } from '../content-presentation'
 
 export type InventoryItemRef = {
   packageId: string
@@ -250,6 +251,27 @@ export type InventoryCatalogueEntry = {
   // field or the resolver threw. `itemDetailLines` below is the first real
   // reader.
   itemMechanics?: CanonicalItemMechanics | null
+  // Character Sheet Inventory pass. Relayed the same way `itemMechanics`
+  // already is -- world-content-catalogue.ts now resolves a `presentation`
+  // model (description + a few generic facts: Rarity/Value/Weight) for
+  // every `items` entry, the SAME shared ContentPresentation model
+  // species/classes/backgrounds/spells/options already use. `null` means
+  // the entry resolved but had nothing presentable (unreadable `data`, or
+  // a system with no presentation resolver); absent means `entry` predates
+  // this field. This is what lets Potion of Healing's real "regain 2d4+2
+  // Hit Points" text reach the Item Detail panel -- the Items admin page
+  // already showed it via a completely different path (the raw importer
+  // on `entry.data`, which this catalogue layer never exposes).
+  presentation?: PresentationEntry | null
+  // Character Sheet Inventory pass. Relayed the same way `itemMechanics`
+  // already is. Always a boolean (never `null`/absent for a resolved item
+  // -- "not explicitly required" is itself the answer, not an unresolved
+  // state). Mirrors the importer's own `item_core.attunement` semantics
+  // (`reqAttune`/legacy `attunement`) -- see
+  // app/lib/item-mechanics/dnd5e.ts's resolveDnd5eItemAttunementRequired.
+  // The one reliable signal `isItemAttunable` below reads; never inferred
+  // from this item's name, rarity, or category.
+  attunementRequired?: boolean
 }
 
 // 'resolved' -- the reference found its catalogue entry.
@@ -326,6 +348,19 @@ const WEAPON_PROPERTY_LABELS: Record<string, string> = {
   versatile: 'Versatile'
 }
 
+// ---------------------------------------------------------------------------
+// Equipment facet access -- the one place this module reads
+// `rulesFacet.collectionFields` for the `collection:equipment` group.
+// Shared by armorMechanicsLines, isItemEquippable below, and
+// CharacterInventoryPanel.vue's own category badge (which previously
+// duplicated this exact lookup inline as `collectionFieldsFor`) so there
+// is one reading of "what does this item's Rules Facet say about
+// equipment", not two that could silently drift apart.
+// ---------------------------------------------------------------------------
+export function equipmentCollectionFields(entry: Pick<InventoryCatalogueEntry, 'rulesFacet'> | undefined) {
+  return entry?.rulesFacet?.collectionFields?.find((group) => group.collection === 'collection:equipment')?.fields
+}
+
 function weaponMechanicsLines(entry: InventoryCatalogueEntry): string[] {
   const mechanics = entry.itemMechanics
   if (!mechanics || mechanics.kind !== 'weapon') return []
@@ -349,7 +384,7 @@ function weaponMechanicsLines(entry: InventoryCatalogueEntry): string[] {
 }
 
 function armorMechanicsLines(entry: InventoryCatalogueEntry): string[] {
-  const equipmentFields = entry.rulesFacet?.collectionFields?.find((group) => group.collection === 'collection:equipment')?.fields
+  const equipmentFields = equipmentCollectionFields(entry)
   if (!equipmentFields || equipmentFields.category !== 'armor') return []
 
   const lines: string[] = [`Type: ${equipmentFields.slot === 'held' ? 'Shield' : 'Armor'}`]
@@ -366,9 +401,29 @@ function armorMechanicsLines(entry: InventoryCatalogueEntry): string[] {
     }
   }
 
-  if (equipmentFields.requiresAttunement === true) lines.push('Requires Attunement: Yes')
-
   return lines
+}
+
+// Character Sheet Inventory pass -- the real reported bug: Potion of
+// Healing (and any other item with real `entries` prose but no weapon/
+// armor mechanics) showed the honest fallback even though its actual
+// description was already published and already visible on the Items
+// admin page. `entry.presentation` (world-content-catalogue.ts, the SAME
+// ContentPresentation model species/classes/backgrounds/spells/options
+// already use) carries that description once resolved -- read here for
+// the first time. `presentation.facts` (Rarity/Value/Weight) are included
+// too; `presentation.sourceBook`/`sourcePage`/`name` are deliberately NOT
+// read here -- `entry.sourceBook` and `item.title` already cover that
+// provenance, and re-reading it off `presentation` would just duplicate
+// the existing "Source: XPHB" line.
+function presentationLines(entry: InventoryCatalogueEntry): string[] {
+  const presentation = entry.presentation
+  if (!presentation) return []
+
+  return [
+    ...presentation.description,
+    ...presentation.facts.map((item) => `${item.label}: ${item.value}`)
+  ]
 }
 
 export function itemDetailLines(item: Pick<AssembledInventoryItem, 'quantity' | 'container' | 'notes' | 'entry' | 'status' | 'reason'>): string[] {
@@ -378,12 +433,66 @@ export function itemDetailLines(item: Pick<AssembledInventoryItem, 'quantity' | 
   if (item.entry?.sourceBook) lines.push(`Source: ${item.entry.sourceBook}`)
 
   if (item.status === 'resolved' && item.entry) {
-    const mechanicsLines = [...weaponMechanicsLines(item.entry), ...armorMechanicsLines(item.entry)]
-    lines.push(...(mechanicsLines.length ? mechanicsLines : ['No item details are available in this content package.']))
+    if (item.entry.attunementRequired === true) lines.push('Requires Attunement: Yes')
+
+    const detailLines = [
+      ...presentationLines(item.entry),
+      ...weaponMechanicsLines(item.entry),
+      ...armorMechanicsLines(item.entry)
+    ]
+    lines.push(...(detailLines.length ? detailLines : ['No item details are available in this content package.']))
   }
 
   if (item.status === 'missing' && item.reason) lines.push(item.reason)
   return lines
+}
+
+// ---------------------------------------------------------------------------
+// Equipped / Attuned control eligibility -- Character Sheet Inventory pass
+// ---------------------------------------------------------------------------
+// The real reported bug: CharacterInventoryPanel.vue showed both controls
+// for every item unconditionally, including Potion of Healing and Arrows,
+// which neither the Rules Engine nor any published content treats as
+// equippable or attunable. Extracted as pure functions (rather than left
+// inline in the component) for the same reason weaponMechanicsLines/
+// armorMechanicsLines above are: directly testable with real-fixture-
+// shaped data, no DOM.
+//
+// EQUIPPED -- shown only for the item kinds the Rules Engine's own
+// `collection:equipment` Collection already tracks: a resolved weapon
+// (`itemMechanics.kind === 'weapon'`) or an item carrying an equipment
+// Rules Facet (`rulesFacet.collectionFields` with a `collection:equipment`
+// group -- covers armor AND the Shield, both `category: 'armor'`). Never
+// shown for ammunition, consumables, trade goods, or tools -- none of
+// which the bound XPHB pack authors a Rules Facet for today, so toggling
+// Equipped on one would be a control that visibly does nothing.
+//
+// KNOWN GAP, STATED RATHER THAN PAPERED OVER: magic "wondrous" items
+// (rings, wands, rods, cloaks) have NO Rules Facet in the real corpus
+// today (app/lib/content-rules/dnd5e-2024.ts's own header: facets are
+// authored only for the ~51 mundane XPHB starting-equipment weapons/
+// armor). A magic ring would therefore also fail this Equipped check,
+// even though a player would reasonably expect to mark it worn. The raw
+// 5etools `type` code (`RG`, `WD`, `RD`, ...) could drive a broader
+// heuristic, but that is a NEW classification not backed by any existing
+// contract this codebase has authored -- deliberately not added here; see
+// this task's own exploration report for the fuller reasoning. Scoped to
+// weapon/armor/shield, which the data fully supports today.
+//
+// ATTUNED -- shown only when `entry.attunementRequired` is explicitly
+// `true` (world-content-catalogue.ts, mirroring the importer's own
+// `reqAttune`/`attunement` semantics). Never inferred from an item's name,
+// rarity, or category -- a common item can require attunement and a
+// legendary one can require none; this is the one field 5etools itself
+// publishes specifically to answer this question.
+export function isItemEquippable(entry: InventoryCatalogueEntry | undefined): boolean {
+  if (!entry) return false
+  if (entry.itemMechanics?.kind === 'weapon') return true
+  return equipmentCollectionFields(entry)?.category === 'armor'
+}
+
+export function isItemAttunable(entry: InventoryCatalogueEntry | undefined): boolean {
+  return entry?.attunementRequired === true
 }
 
 // ---------------------------------------------------------------------------

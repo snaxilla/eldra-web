@@ -394,6 +394,68 @@ describe('resolveDnd5ePresentation -- spell (XPHB)', () => {
   })
 })
 
+// CHARACTER SHEET INVENTORY PASS. `xphb.items` (Longsword/Dagger/Longbow) are real XPHB
+// base-weapon rows -- none carries an `entries` field in the real corpus (mundane 5e weapons
+// print no flavor text; see this resolver's own header). Potion of Healing below is copied
+// verbatim from /opt/eldra/datasets/5etools-src/data/items.json, source: 'XDMG' -- the exact
+// item the reported bug names, including its real `{@dice}`/`{@variantrule}` 5etools markup,
+// to prove cleanText actually resolves it rather than leaking raw tags to a player.
+const POTION_OF_HEALING_XDMG = {
+  name: 'Potion of Healing',
+  source: 'XDMG',
+  page: 288,
+  type: 'P|XPHB',
+  rarity: 'common',
+  weight: 0.5,
+  value: 5000,
+  entries: [
+    "This potion is a magic item. As a {@variantrule Bonus Action|XPHB}, you can drink it or administer it to another creature within 5 feet of yourself. The creature that drinks the magical red fluid in this vial regains {@dice 2d4 + 2} {@variantrule Hit Points|XPHB}. The potion's red liquid glimmers when agitated."
+  ]
+}
+
+describe('resolveDnd5ePresentation -- item (XPHB/XDMG)', () => {
+  it('a mundane XPHB weapon (real Longsword row) has no description -- never fabricated -- and reports the honest absence note', () => {
+    const resolved = resolveDnd5ePresentation('item', xphb.items.Longsword)!
+    expect(resolved.kind).toBe('item')
+    expect(resolved.name).toBe('Longsword')
+    expect(resolved.description).toEqual([])
+    expect(resolved.notes.length).toBeGreaterThan(0)
+  })
+
+  it('reads the real Potion of Healing (XDMG) description, with 5etools markup cleaned, not leaked', () => {
+    const resolved = resolveDnd5ePresentation('item', POTION_OF_HEALING_XDMG)!
+    expect(resolved.name).toBe('Potion of Healing')
+    expect(resolved.description.length).toBeGreaterThan(0)
+    const text = resolved.description.join(' ')
+    expect(text).toContain('regains')
+    expect(text).toContain('2d4 + 2')
+    expect(text).toContain('Bonus Action')
+    expect(text).not.toContain('{@')
+    expect(text).not.toContain('|XPHB')
+  })
+
+  it('reads Rarity/Value/Weight facts for the real Potion of Healing, and omits Rarity for a "none"-rarity mundane item', () => {
+    const potion = resolveDnd5ePresentation('item', POTION_OF_HEALING_XDMG)!
+    expect(factValue(potion, 'Rarity')).toBe('Common')
+    expect(factValue(potion, 'Value')).toBe('50 gp')
+    expect(factValue(potion, 'Weight')).toBe('0.5 lb.')
+
+    const longsword = resolveDnd5ePresentation('item', xphb.items.Longsword)!
+    expect(factValue(longsword, 'Rarity')).toBeUndefined()
+  })
+
+  it('never carries an image -- not verified against the real content-sources pipeline this pass', () => {
+    expect(resolveDnd5ePresentation('item', POTION_OF_HEALING_XDMG)!.image).toBeFalsy()
+  })
+
+  it('never fabricates weapon/armor mechanics here -- those stay in app/lib/item-mechanics and rulesFacet.collectionFields', () => {
+    const resolved = resolveDnd5ePresentation('item', xphb.items.Longsword)!
+    expect(factValue(resolved, 'Damage')).toBeUndefined()
+    expect(factValue(resolved, 'Properties')).toBeUndefined()
+    expect(factValue(resolved, 'Armor Class')).toBeUndefined()
+  })
+})
+
 // CHARACTER CREATOR V3 -- SELECTED OPTION EXPLANATIONS. Raw shapes below are the real,
 // verbatim-extracted text app/lib/importers/5etools-feature-options.ts produces for the two
 // examples this phase authors (Dragonborn's Draconic Ancestry: Black, Warlock's Armor of

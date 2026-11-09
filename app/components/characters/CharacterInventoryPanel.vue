@@ -64,7 +64,7 @@ import { CHARACTER_SHEET_INTERACTION_KEY, emptyInventoryAddState } from './chara
 // already communicates something more urgent than "you can act here."
 
 import { catalogueOptionKey, searchCatalogueOptions } from '~/lib/characters/catalogue-option-search'
-import type { AssembledInventoryItem } from '~/lib/characters/inventory'
+import { equipmentCollectionFields, isItemAttunable, isItemEquippable, type AssembledInventoryItem } from '~/lib/characters/inventory'
 
 const props = withDefaults(defineProps<{
   items: readonly AssembledInventoryItem[]
@@ -110,22 +110,33 @@ const emit = defineEmits<{
 // practice: `rulesFacet.collectionFields` reached AssembledInventoryItem
 // through Character Assembly's own catalogue join, and was simply not read
 // here until now.
-function collectionFieldsFor(item: AssembledInventoryItem) {
-  return item.entry?.rulesFacet?.collectionFields?.find(
-    (entry) => entry.collection === 'collection:equipment'
-  )?.fields
-}
-
 function equipmentCategory(item: AssembledInventoryItem): string {
-  const category = collectionFieldsFor(item)?.category
+  const category = equipmentCollectionFields(item.entry)?.category
   // 'gear' is the itemSchema's own declared default -- not worth a badge,
   // since it is the common case (adventuring gear, tools) and would make
   // every card noisier rather than more informative.
   return typeof category === 'string' && category !== 'gear' ? category : ''
 }
 
+// Character Sheet Inventory pass -- this badge now reads
+// `entry.attunementRequired` (the importer's own `reqAttune`/`attunement`
+// semantics, world-content-catalogue.ts) rather than the armor-only
+// `rulesFacet.collectionFields.requiresAttunement` field, which is never
+// true for any real authored XPHB facet today -- see
+// isItemAttunable's own header (app/lib/characters/inventory.ts) for why.
 function requiresAttunement(item: AssembledInventoryItem): boolean {
-  return collectionFieldsFor(item)?.requiresAttunement === true
+  return isItemAttunable(item.entry)
+}
+
+// Character Sheet Inventory pass. A plain array, not a v-if beside v-for
+// on the same element (Vue 3's v-if runs before v-for and cannot see its
+// loop variable) -- filtering the source list is the correct fix, not a
+// workaround.
+function availableFlags(item: AssembledInventoryItem): Array<'equipped' | 'attuned'> {
+  const flags: Array<'equipped' | 'attuned'> = []
+  if (isItemEquippable(item.entry)) flags.push('equipped')
+  if (isItemAttunable(item.entry)) flags.push('attuned')
+  return flags
 }
 
 // --- Add form -------------------------------------------------------------
@@ -370,7 +381,12 @@ function submitAdd() {
                 {{ item.title }}
               </button>
               <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-eldra-text-faint">
-                <span>x{{ item.quantity }}</span>
+                <!-- Quantity used to live here too (`x{{ item.quantity }}`),
+                     faint and tiny beside Container/Category/Source --
+                     Sam's reported bug. It is now the prominent number in
+                     the stepper below (the one place a player actually
+                     needs to read or change it); repeating it here added
+                     nothing a card already uncluttered needed back. -->
                 <span v-if="item.container">Container: {{ item.container }}</span>
                 <!-- Category, when the item's Rules Facet naturally carries
                      one -- Rules Engine output relayed as-is, not derived
@@ -416,6 +432,14 @@ function submitAdd() {
           </p>
 
           <div class="mt-3 flex flex-wrap items-center gap-2">
+            <!-- Quantity stepper -- Sam's reported bug: the only count shown
+                 used to be the small, faint "x1" up in the metadata row,
+                 with nothing between these two buttons at all. The count now
+                 sits directly between them, large enough to read without
+                 looking away, with `tabular-nums` so the buttons do not
+                 shift sideways as the digit count changes. Same
+                 `change-quantity` event/delta contract, same disabled-at-1
+                 floor, same `saving` gate -- this is a layout change only. -->
             <div class="flex items-center gap-1">
               <button
                 type="button"
@@ -426,6 +450,13 @@ function submitAdd() {
               >
                 −
               </button>
+              <span
+                class="flex min-h-11 min-w-11 items-center justify-center px-1 text-base font-bold tabular-nums text-eldra-text-strong"
+                aria-live="polite"
+                :aria-label="`Quantity: ${item.quantity}`"
+              >
+                {{ item.quantity }}
+              </span>
               <button
                 type="button"
                 class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
@@ -437,8 +468,14 @@ function submitAdd() {
               </button>
             </div>
 
+            <!-- Equipped/Attuned -- Sam's other reported bug: both controls
+                 used to render for every item, including Potion of Healing
+                 and Arrows. `availableFlags` (below) shows each control only
+                 for the item kinds that actually have equip/attunement
+                 semantics today -- see isItemEquippable/isItemAttunable's
+                 own header, app/lib/characters/inventory.ts. -->
             <label
-              v-for="flag in (['equipped', 'attuned'] as const)"
+              v-for="flag in availableFlags(item)"
               :key="flag"
               class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
               :class="item[flag]

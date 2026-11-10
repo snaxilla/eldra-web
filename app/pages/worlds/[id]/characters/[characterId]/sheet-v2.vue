@@ -363,7 +363,7 @@ import {
   type CharacterSheetContextRoll
 } from '~/composables/useCharacterSheetLayout'
 import { useWorldRolls } from '~/composables/useWorldRolls'
-import { itemDetailLines, type AssembledInventoryItem } from '~/lib/characters/inventory'
+import { itemDetailLines, itemImageUrl, type AssembledInventoryItem } from '~/lib/characters/inventory'
 import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
 import type { PresentationEntry } from '~/lib/content-presentation/types'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
@@ -1070,7 +1070,14 @@ function openItemContext(item: AssembledInventoryItem) {
     eyebrow: item.status === 'custom' ? 'Custom Item' : 'Item',
     detailLines: lines,
     summary: '',
-    tags
+    tags,
+    // Character Sheet item images pass, inspector follow-up -- the
+    // plumbing (CharacterSheetContext.imageUrl -> contextEntity.image ->
+    // WorldEntityContextDrawer's own existing `entity.image` reader) was
+    // already there; `openItemContext` just never set it. `itemImageUrl`
+    // is the SAME resolver the inventory card now uses, so the two never
+    // disagree about whether this item has art.
+    imageUrl: itemImageUrl(item.entry)
   })
 }
 

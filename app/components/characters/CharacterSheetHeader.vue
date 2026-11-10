@@ -203,20 +203,30 @@ function summaryText(entry: DerivedValue): string {
 
       <div class="shrink-0">
         <!-- Header Portrait Enlargement -- was a size-14/size-16 (56/64px)
-             square, icon-sized rather than a portrait. `aspect-[4/5]` is
-             the project's own existing portrait aspect ratio
+             square, icon-sized rather than a portrait. Round one
+             (`w-16`/`@[880px]/sheet:w-24`) read as still "kinda" small
+             against the reference screenshot's red-outlined target, which
+             shows the portrait as the dominant left-hand element, roughly
+             matching the combined height of the name/level line plus the
+             HP/AC/Speed/Prof row beside it -- not a small avatar beside
+             text. Sized explicitly larger here (`w-28` companion,
+             `w-32`/`@[880px]/sheet:w-44` desktop) rather than stretched to
+             the row's own height (`self-stretch` would only match
+             whatever height the TEXT happens to need, which is small and
+             would defeat the point) -- `items-center` on the row then
+             grows the row to fit this now-taller portrait and centers the
+             shorter name/HP content against it automatically, which is
+             also what pushes everything right as the portrait widens; no
+             separate "shift right" rule needed. `aspect-[4/5]` is the
+             project's own existing portrait ratio
              (CharacterSheetCommandCenter.vue's reference-rail portrait
-             uses the identical ratio); widened here via the SAME
-             `@[880px]/sheet` named-container breakpoint this header
-             already uses for its summary values/save indicator (not a
-             new viewport breakpoint), so the portrait and the rest of the
-             header agree on when "there is more room" without a second
-             responsive system. The row's existing `items-center`/`gap-4`
-             push the name/HP/summary right automatically as the portrait
-             widens -- no separate "shift right" rule needed. -->
+             uses the identical one). The `@[880px]/sheet` breakpoint is
+             the SAME named-container query this header already uses for
+             its summary values/save indicator, not a new responsive
+             system. -->
         <CharacterPortrait
           class="aspect-[4/5]"
-          :class="companion ? 'w-16' : 'w-16 @[880px]/sheet:w-24'"
+          :class="companion ? 'w-28' : 'w-32 @[880px]/sheet:w-44'"
           :image-url="imageUrl"
           :title="characterTitle"
           :can-edit="canEditPortrait"

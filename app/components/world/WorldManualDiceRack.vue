@@ -50,9 +50,19 @@ withDefaults(defineProps<{
   // usable regardless.
   disabled?: boolean
   dice?: readonly ManualDieOption[]
+  // Roll Tray collapse-with-dice pass -- a second layout for the SAME
+  // seven dice/shapes/roll contract, for CharacterSheetRollRail.vue's
+  // collapsed (w-14) rail: one icon-only column, no label text (there is
+  // no room for it), no eldra-well group chrome (seven individually
+  // bordered buttons read better stacked than one wide well would at
+  // this width). Still the exact same `dice`/`disabled` props and `roll`
+  // emit as the expanded rack -- a compact caller never needs a second
+  // roll pipeline.
+  compact?: boolean
 }>(), {
   disabled: false,
-  dice: () => MANUAL_DICE
+  dice: () => MANUAL_DICE,
+  compact: false
 })
 
 const emit = defineEmits<{
@@ -77,7 +87,8 @@ const SHAPE_BY_SIDES: Record<number, { kind: 'polygon'; points: string } | { kin
 
 <template>
   <div
-    class="eldra-well flex flex-wrap items-center gap-1.5 rounded-none px-2 py-2"
+    class="flex items-center rounded-none"
+    :class="compact ? 'flex-col gap-1' : 'eldra-well flex-wrap gap-1.5 px-2 py-2'"
     role="group"
     aria-label="Manual dice"
   >
@@ -85,14 +96,17 @@ const SHAPE_BY_SIDES: Record<number, { kind: 'polygon'; points: string } | { kin
       v-for="die in dice"
       :key="die.type"
       type="button"
-      class="flex shrink-0 flex-col items-center gap-1 rounded-none border border-transparent px-2 py-1.5 text-center transition hover:border-[rgba(201,164,90,0.4)] hover:bg-[rgba(201,164,90,0.08)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-transparent"
+      class="flex shrink-0 items-center justify-center rounded-none border border-transparent text-center transition hover:border-[rgba(201,164,90,0.4)] hover:bg-[rgba(201,164,90,0.08)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-transparent"
+      :class="compact ? 'flex-col p-1.5' : 'flex-col gap-1 px-2 py-1.5'"
       :disabled="disabled"
+      :title="die.ariaLabel"
       :aria-label="die.ariaLabel"
       @click="emit('roll', die)"
     >
       <svg
         viewBox="0 0 24 24"
-        class="h-6 w-6 text-[#c9a45a]"
+        class="shrink-0 text-[#c9a45a]"
+        :class="compact ? 'h-5 w-5' : 'h-6 w-6'"
         aria-hidden="true"
       >
         <circle
@@ -113,7 +127,13 @@ const SHAPE_BY_SIDES: Record<number, { kind: 'polygon'; points: string } | { kin
           stroke-linejoin="round"
         />
       </svg>
-      <span class="text-[0.6rem] font-semibold uppercase tracking-[0.08em] text-[#d8ceb8]">
+      <!-- Compact: no room for the label under the icon -- `title`/
+           `aria-label` above already carry the identity ("Roll a d20")
+           for a tooltip and for assistive tech. -->
+      <span
+        v-if="!compact"
+        class="text-[0.6rem] font-semibold uppercase tracking-[0.08em] text-[#d8ceb8]"
+      >
         {{ die.type }}
       </span>
     </button>

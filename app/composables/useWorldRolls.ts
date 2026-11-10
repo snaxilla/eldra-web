@@ -278,6 +278,22 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     }
   }
 
+  // Roll Tray "Clear History" -- CLIENT-SIDE VIEW ONLY, never a server
+  // delete. `history` is a real, server-persisted, multi-player log
+  // (Private rolls are the viewer's own; Table rolls broadcast to every
+  // player at the table via the SSE stream below) -- there is no DELETE
+  // endpoint for it, and this function adds none. It only empties what
+  // THIS client is currently displaying: a page refresh (`refreshHistory`)
+  // brings the real history straight back, and no other player's view of
+  // a Table-visibility roll is touched. `nextCursor` is left exactly as
+  // it was, so "Load More" after a clear still resumes from wherever the
+  // player had already paginated to, rather than silently restarting
+  // pagination from the newest page.
+  function clearHistory() {
+    history.value = []
+    historyError.value = ''
+  }
+
   // ---------------------------------------------------------------------
   // Realtime -- GET /api/worlds/:id/rolls/stream (§10, Phase 2D). One
   // EventSource per composable instance (matching one `useWorldRolls()`
@@ -335,6 +351,7 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     requestRoll,
     ingestRoll,
     refreshHistory,
-    loadMoreHistory
+    loadMoreHistory,
+    clearHistory
   }
 }

@@ -74,7 +74,8 @@ const {
   historyError,
   requestRoll,
   refreshHistory,
-  loadMoreHistory
+  loadMoreHistory,
+  clearHistory
 } = useWorldRolls(worldId)
 
 // ---------------------------------------------------------------------------
@@ -236,6 +237,7 @@ function rollManualDie(die: ManualDieOption) {
       empty-message="No rolls yet in this World."
       @load-more="loadMoreHistory().catch(() => {})"
       @roll-manual-die="rollManualDie"
+      @clear-history="clearHistory"
     />
   </div>
 </template>

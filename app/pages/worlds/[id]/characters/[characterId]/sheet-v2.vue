@@ -446,7 +446,8 @@ const {
   requestRoll,
   ingestRoll,
   refreshHistory: refreshRollHistory,
-  loadMoreHistory: loadMoreRollHistory
+  loadMoreHistory: loadMoreRollHistory,
+  clearHistory: clearRollHistory
 } = useWorldRolls(worldId)
 
 // Loads this character's existing rolls once, on entry -- Phase 2C's own
@@ -1233,6 +1234,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
         @load-more="loadMoreRolls"
         @roll-manual-die="rollManualDie"
+        @clear-history="clearRollHistory"
       >
         <template #header-actions>
           <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">

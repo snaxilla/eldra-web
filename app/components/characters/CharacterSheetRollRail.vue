@@ -92,6 +92,13 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'load-more': []
   'roll-manual-die': [ManualDieOption]
+  // Roll Tray "Clear History" pass. CLIENT-SIDE VIEW ONLY -- this
+  // component has no idea whether the caller's `clearHistory` deletes
+  // anything server-side or just empties a local ref (today, the latter
+  // -- see useWorldRolls.ts's own `clearHistory` header); it only emits
+  // the player's intent, same "emit a domain payload, let the page
+  // decide" shape every other event here already uses.
+  'clear-history': []
 }>()
 
 const collapsed = ref(props.defaultCollapsed)
@@ -127,9 +134,16 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
         >Roll Tray</span>
       </button>
 
-      <!-- Collapsed: icon rail only, same narrow treatment Stages' own
-           collapsed stage buttons use -- the latest total is the one
-           Roll-Tray-specific affordance that survives collapse. -->
+      <!-- Collapsed: icon rail, same narrow treatment Stages' own
+           collapsed stage buttons use. The latest total survives collapse
+           as before; the manual dice (Roll Tray collapse-with-dice pass)
+           now do too, via WorldManualDiceRack's own `compact` layout --
+           same component/shapes/roll contract the expanded rack already
+           uses, so a player can roll a d20 with BOTH the left nav and
+           this rail collapsed, never forced to expand the Tray just to
+           throw a die. `mt-auto` anchors the dice group to the BOTTOM of
+           this column (the latest-roll total stays at the top) -- "the
+           dice start from the bottom up" this task asked for. -->
       <div
         v-if="collapsed"
         class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2"
@@ -139,6 +153,13 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
           class="font-mono text-xs font-semibold tabular-nums text-eldra-text-strong"
           :title="`Latest roll: ${latestRoll.total}`"
         >{{ latestRoll.total }}</span>
+
+        <WorldManualDiceRack
+          compact
+          :disabled="pending"
+          class="mt-auto"
+          @roll="emit('roll-manual-die', $event)"
+        />
       </div>
 
       <template v-else>
@@ -223,6 +244,24 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
           >
             {{ historyError }}
           </p>
+
+          <!-- Clear History -- below Load More, per this task's own ask.
+               Client-side view only (see this component's own
+               `clear-history` emit header) -- nothing to confirm beyond
+               what a page refresh already undoes, so no confirm dialog.
+               Shown whenever there is something visible to clear. -->
+          <div
+            v-if="rolls.length"
+            class="mt-2 flex justify-center"
+          >
+            <button
+              type="button"
+              class="border border-eldra-accent/24 px-3 py-1.5 text-xs font-semibold text-eldra-text-faint transition hover:text-eldra-text-soft"
+              @click="emit('clear-history')"
+            >
+              Clear History
+            </button>
+          </div>
         </div>
       </template>
     </nav>

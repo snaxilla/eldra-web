@@ -134,6 +134,12 @@ const emit = defineEmits<{
   // mounts this Tray, which already owns a `useWorldRolls()` instance and
   // its own Private/Table selection, turns this into an actual roll.
   'roll-manual-die': [ManualDieOption]
+  // Roll Tray "Clear History" pass, mirrored here from
+  // CharacterSheetRollRail.vue for the SAME reason that sibling exists at
+  // all (one history UI, not two diverging ones). Client-side view only
+  // -- see useWorldRolls.ts's own `clearHistory` header; this component
+  // has no opinion on what the caller's handler actually does.
+  'clear-history': []
 }>()
 
 // Local UI state, not persisted or shared -- exactly the collapse pattern
@@ -305,6 +311,22 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
             >
               {{ historyError }}
             </p>
+
+            <!-- Clear History -- client-side view only, mirrored from
+                 CharacterSheetRollRail.vue. No confirm dialog: nothing
+                 happens here that a page refresh does not already undo. -->
+            <div
+              v-if="rolls.length"
+              class="mt-2 flex justify-center"
+            >
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-1.5 text-xs font-semibold text-[#9f9278] transition hover:text-[#d8ceb8]"
+                @click="emit('clear-history')"
+              >
+                Clear History
+              </button>
+            </div>
           </div>
         </div>
       </Transition>

@@ -209,48 +209,59 @@ onBeforeUnmount(() => {
       tabindex="-1"
       @change="handlePortraitFileChange"
     >
-  </div>
 
-  <!-- Full-size view -- same fixed-overlay shape as
-       WorldEntityContextDrawer.vue's own image lightbox (identical
-       z-index, Escape-to-close, click-outside-to-close), teleported to
-       body so it stacks correctly regardless of where this component is
-       nested (Sheet header, command center, ...). -->
-  <Teleport to="body">
-    <Transition
-      enter-from-class="opacity-0"
-      enter-active-class="transition duration-150"
-      leave-to-class="opacity-0"
-      leave-active-class="transition duration-150"
-    >
-      <div
-        v-if="lightboxOpen && imageUrl"
-        class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
-        @click.self="closeLightbox"
+    <!-- Full-size view -- same fixed-overlay shape as
+         WorldEntityContextDrawer.vue's own image lightbox (identical
+         z-index, Escape-to-close, click-outside-to-close), teleported to
+         body so it stacks correctly regardless of where this component is
+         nested (Sheet header, command center, ...).
+
+         MUST stay nested inside this single root div, not a sibling of
+         it: a sibling Teleport makes this component multi-root, and Vue
+         only auto-applies a parent's `class` (the host's own width/
+         aspect-ratio sizing, e.g. CharacterSheetHeader.vue's `w-16
+         aspect-[4/5]`) to a SINGLE-root component. Making this a second
+         root silently dropped that sizing entirely -- the exact "portrait
+         is a pixel" regression this comment is here to prevent repeating.
+         Teleport itself still portals its content to <body> regardless
+         of where it is declared in the source tree, so nesting it here
+         changes nothing about where the lightbox actually renders. -->
+    <Teleport to="body">
+      <Transition
+        enter-from-class="opacity-0"
+        enter-active-class="transition duration-150"
+        leave-to-class="opacity-0"
+        leave-active-class="transition duration-150"
       >
-        <button
-          type="button"
-          class="absolute right-5 top-5 rounded-none border border-eldra-accent/34 bg-eldra-panel/82 p-3 text-eldra-accent transition hover:bg-eldra-accent/16 hover:text-eldra-text-strong"
-          aria-label="Close"
-          @click="closeLightbox"
+        <div
+          v-if="lightboxOpen && imageUrl"
+          class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+          @click.self="closeLightbox"
         >
-          <UIcon name="i-lucide-x" class="h-6 w-6" />
-        </button>
+          <button
+            type="button"
+            class="absolute right-5 top-5 rounded-none border border-eldra-accent/34 bg-eldra-panel/82 p-3 text-eldra-accent transition hover:bg-eldra-accent/16 hover:text-eldra-text-strong"
+            aria-label="Close"
+            @click="closeLightbox"
+          >
+            <UIcon name="i-lucide-x" class="h-6 w-6" />
+          </button>
 
-        <figure class="max-h-[92vh] max-w-[94vw]">
-          <img
-            :src="imageUrl"
-            :alt="title || 'Character portrait'"
-            class="max-h-[86vh] max-w-[94vw] rounded-none border border-eldra-accent/38 object-contain shadow-2xl"
-          >
-          <figcaption
-            v-if="title"
-            class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-eldra-accent"
-          >
-            {{ title }}
-          </figcaption>
-        </figure>
-      </div>
-    </Transition>
-  </Teleport>
+          <figure class="max-h-[92vh] max-w-[94vw]">
+            <img
+              :src="imageUrl"
+              :alt="title || 'Character portrait'"
+              class="max-h-[86vh] max-w-[94vw] rounded-none border border-eldra-accent/38 object-contain shadow-2xl"
+            >
+            <figcaption
+              v-if="title"
+              class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-eldra-accent"
+            >
+              {{ title }}
+            </figcaption>
+          </figure>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>

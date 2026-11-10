@@ -48,18 +48,59 @@ function handlePortraitFileChange(event: Event) {
   if (file) emit('update', file)
   input.value = ''
 }
+
+// Lightbox -- clicking the portrait itself (not the Change/Remove bar)
+// opens a full-size view, mirroring the established pattern
+// WorldEntityContextDrawer.vue already uses for its own entity image
+// (same fixed-overlay/Escape-to-close/click-outside-to-close shape).
+// Keeps the frame itself at whatever small size the host gives it
+// (Header Portrait Enlargement rolled back to that smaller size after
+// stretching the Sheet header) while still letting a player see the
+// full image.
+const lightboxOpen = ref(false)
+
+function openLightbox() {
+  if (!props.imageUrl) return
+  lightboxOpen.value = true
+}
+
+function closeLightbox() {
+  lightboxOpen.value = false
+}
+
+function onLightboxKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeLightbox()
+}
+
+watch(lightboxOpen, (open) => {
+  if (!import.meta.client) return
+  if (open) window.addEventListener('keydown', onLightboxKeydown)
+  else window.removeEventListener('keydown', onLightboxKeydown)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  window.removeEventListener('keydown', onLightboxKeydown)
+})
 </script>
 
 <template>
   <div class="eldra-image-frame group relative overflow-hidden rounded-none border bg-black/25">
-    <img
+    <button
       v-if="imageUrl"
-      :src="imageUrl"
-      :alt="title || 'Character portrait'"
-      class="absolute inset-0 h-full w-full object-cover object-top transition duration-200"
-      :class="isDeceased ? 'grayscale' : ''"
-      loading="lazy"
+      type="button"
+      class="absolute inset-0 h-full w-full cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent/65"
+      aria-label="View character portrait full size"
+      @click="openLightbox"
     >
+      <img
+        :src="imageUrl"
+        :alt="title || 'Character portrait'"
+        class="h-full w-full object-cover object-top transition duration-200"
+        :class="isDeceased ? 'grayscale' : ''"
+        loading="lazy"
+      >
+    </button>
     <button
       v-else-if="canEdit"
       type="button"
@@ -169,4 +210,47 @@ function handlePortraitFileChange(event: Event) {
       @change="handlePortraitFileChange"
     >
   </div>
+
+  <!-- Full-size view -- same fixed-overlay shape as
+       WorldEntityContextDrawer.vue's own image lightbox (identical
+       z-index, Escape-to-close, click-outside-to-close), teleported to
+       body so it stacks correctly regardless of where this component is
+       nested (Sheet header, command center, ...). -->
+  <Teleport to="body">
+    <Transition
+      enter-from-class="opacity-0"
+      enter-active-class="transition duration-150"
+      leave-to-class="opacity-0"
+      leave-active-class="transition duration-150"
+    >
+      <div
+        v-if="lightboxOpen && imageUrl"
+        class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+        @click.self="closeLightbox"
+      >
+        <button
+          type="button"
+          class="absolute right-5 top-5 rounded-none border border-eldra-accent/34 bg-eldra-panel/82 p-3 text-eldra-accent transition hover:bg-eldra-accent/16 hover:text-eldra-text-strong"
+          aria-label="Close"
+          @click="closeLightbox"
+        >
+          <UIcon name="i-lucide-x" class="h-6 w-6" />
+        </button>
+
+        <figure class="max-h-[92vh] max-w-[94vw]">
+          <img
+            :src="imageUrl"
+            :alt="title || 'Character portrait'"
+            class="max-h-[86vh] max-w-[94vw] rounded-none border border-eldra-accent/38 object-contain shadow-2xl"
+          >
+          <figcaption
+            v-if="title"
+            class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-eldra-accent"
+          >
+            {{ title }}
+          </figcaption>
+        </figure>
+      </div>
+    </Transition>
+  </Teleport>
 </template>

@@ -373,10 +373,11 @@ function submitAdd() {
         <article
           v-for="item in items"
           :key="item.instanceId"
-          class="min-w-0 rounded-none p-3 text-sm text-eldra-text-soft"
+          class="min-w-0 cursor-pointer rounded-none p-3 text-sm text-eldra-text-soft"
           :class="item.status === 'missing'
             ? 'border border-red-900/60 bg-red-950/20'
             : 'eldra-well'"
+          @click="emit('select', item)"
         >
           <!-- Item image -- Character Sheet item images pass. `gap-3`
                applies only BETWEEN flex children, so when the `<img>`
@@ -397,7 +398,7 @@ function submitAdd() {
               :src="itemImageUrl(item)!"
               :alt="item.title"
               loading="lazy"
-              class="aspect-square w-16 shrink-0 self-start rounded-none border border-eldra-accent/18 bg-black/25 object-cover sm:w-20"
+              class="aspect-square w-16 shrink-0 self-center rounded-none border border-eldra-accent/18 bg-black/25 object-cover sm:w-20"
             >
 
             <div class="min-w-0 flex-1">
@@ -441,7 +442,7 @@ function submitAdd() {
                   type="button"
                   class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-xs font-semibold text-eldra-text-soft focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                   :disabled="saving"
-                  @click="emit('remove', item.instanceId)"
+                  @click.stop="emit('remove', item.instanceId)"
                 >
                   Remove
                 </button>
@@ -477,7 +478,7 @@ function submitAdd() {
                     class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                     :disabled="saving || item.quantity <= 1"
                     :aria-label="`Decrease quantity of ${item.title}`"
-                    @click="emit('change-quantity', { instanceId: item.instanceId, delta: -1 })"
+                    @click.stop="emit('change-quantity', { instanceId: item.instanceId, delta: -1 })"
                   >
                     −
                   </button>
@@ -493,7 +494,7 @@ function submitAdd() {
                     class="min-h-11 min-w-11 rounded-none border border-eldra-accent/24 text-sm font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:opacity-50"
                     :disabled="saving"
                     :aria-label="`Increase quantity of ${item.title}`"
-                    @click="emit('change-quantity', { instanceId: item.instanceId, delta: 1 })"
+                    @click.stop="emit('change-quantity', { instanceId: item.instanceId, delta: 1 })"
                   >
                     +
                   </button>
@@ -512,6 +513,7 @@ function submitAdd() {
                   :class="item[flag]
                     ? 'border-eldra-accent/65 bg-eldra-accent/12 text-eldra-text-strong'
                     : 'border-eldra-accent/24 text-eldra-text-soft'"
+                  @click.stop
                 >
                   <input
                     type="checkbox"

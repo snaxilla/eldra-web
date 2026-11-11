@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
 
   console.log(`[maps/upload] world ${worldId} parsed upload: ${file.filename} (${file.data.length} bytes)`)
 
-  const uploaded = await uploadFile(file.data, file.filename, file.mimeType || 'image/png')
+  const uploaded = await uploadFile(file.data, file.filename, file.mimeType || 'image/png', worldId)
 
   const created = await createMap(worldId, title, type as any, uploaded.id, generateTiles
     ? {

@@ -120,7 +120,7 @@ describe('POST /api/worlds/:id/media/upload', () => {
   })
 
   it('uses the shared streaming parser rather than reading the body itself', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: { id: 'file-1' } }).mockResolvedValueOnce({})
+    directusServiceRequestMock.mockResolvedValueOnce({ data: { id: 'file-1' } })
     const body = buildMultipartBody([
       { name: 'title', value: 'Sword Coast' },
       { name: 'file', filename: 'map.png', contentType: 'image/png', data: Buffer.from([1, 2, 3]) }
@@ -132,10 +132,16 @@ describe('POST /api/worlds/:id/media/upload', () => {
     expect(readStreamingMultipartFormMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), { maxFileBytes: MAX_MEDIA_UPLOAD_BYTES })
   })
 
-  it('uploads a valid image, PATCHes title/description, and returns the existing response shape -- preserves storage/metadata flow', async () => {
+  it('uploads a valid image in ONE request carrying title/description/world_id, and returns the existing response shape -- preserves storage/metadata flow', async () => {
     directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
       if (path === '/files' && options?.method === 'POST') {
         expect(options.body).toBeInstanceOf(FormData)
+        // Media ownership policy follow-up: title/description/world_id now
+        // ride the SAME multipart create request as the file itself --
+        // never a separate, failure-swallowed PATCH afterward.
+        expect(options.body.get('title')).toBe('Sword Coast')
+        expect(options.body.get('description')).toBe('Eldra media upload for world 6')
+        expect(options.body.get('world_id')).toBe('6')
         return {
           data: {
             id: 'file-42',
@@ -145,10 +151,6 @@ describe('POST /api/worlds/:id/media/upload', () => {
             uploaded_on: '2026-01-01T00:00:00Z'
           }
         }
-      }
-      if (path === '/files/file-42' && options?.method === 'PATCH') {
-        expect(options.body).toEqual({ title: 'Sword Coast', description: 'Eldra media upload for world 6' })
-        return {}
       }
       throw new Error(`unexpected directusServiceRequest call: ${path}`)
     })
@@ -169,10 +171,13 @@ describe('POST /api/worlds/:id/media/upload', () => {
       uploadedOn: '2026-01-01T00:00:00Z',
       url: '/api/assets/file-42'
     })
+    // Only ONE Directus call ever happens -- no second, failure-swallowed
+    // PATCH exists anymore for a failure to silently hide behind.
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to the filename for the title when no title field is sent', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: { id: 'file-2' } }).mockResolvedValueOnce({})
+    directusServiceRequestMock.mockResolvedValueOnce({ data: { id: 'file-2' } })
 
     const body = buildMultipartBody([
       { name: 'file', filename: 'landscape.jpg', contentType: 'image/jpeg', data: Buffer.from([1]) }
@@ -180,6 +185,16 @@ describe('POST /api/worlds/:id/media/upload', () => {
 
     const result = await handler(fakeEvent('6', ownerPrincipal('6'), body))
     expect(result.title).toBe('landscape.jpg')
+  })
+
+  it('fails loudly (never a silently-unowned success) when the single create request itself fails', async () => {
+    directusServiceRequestMock.mockRejectedValueOnce(Object.assign(new Error('Directus unavailable'), { statusCode: 502 }))
+
+    const body = buildMultipartBody([
+      { name: 'file', filename: 'map.png', contentType: 'image/png', data: Buffer.from([1, 2, 3]) }
+    ])
+
+    await expect(handler(fakeEvent('6', ownerPrincipal('6'), body))).rejects.toMatchObject({ statusCode: 502 })
   })
 
   it('fails with 400 "No file uploaded" when the request has no parts at all', async () => {

@@ -1,3 +1,8 @@
+// createError/defineEventHandler/getRouterParam/readMultipartFormData are
+// imported explicitly (see server/api/worlds/[id]/media/upload.post.ts)
+// so this route is directly unit-testable under plain Vitest -- media
+// ownership policy follow-up.
+import { createError, defineEventHandler, getRouterParam, readMultipartFormData } from 'h3'
 import { requireCapability } from '../../../../utils/authorization'
 
 function baseUrl() {
@@ -42,9 +47,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Media ownership policy follow-up -- `world_id` rides the SAME
+  // multipart create request as the file, stamped from the already-
+  // verified `worldId` route param/capability check above, never from
+  // client-supplied metadata.
   const form = new FormData()
   const blob = new Blob([filePart.data], { type: filePart.type || 'application/octet-stream' })
   form.append('file', blob, filePart.filename || 'background-upload')
+  form.append('world_id', worldId)
 
   const res = await fetch(`${baseUrl()}/files`, {
     method: 'POST',

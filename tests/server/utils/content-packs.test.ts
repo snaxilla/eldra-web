@@ -202,6 +202,51 @@ describe('listPublishedContentPacks', () => {
 
     expect(result.map((pkg) => pkg.version)).toEqual(['1.1.0', '1.0.0'])
   })
+
+  // Content Workspaces & Studio Phase 0, Area 2 -- the reported defect:
+  // Directus sorts `version` (a plain varchar column) LEXICALLY, so a row
+  // order like the real eldra.solaris.xphb pack history ("1.0.33" through
+  // "1.0.38") would rank "1.0.33", "1.0.34", ..., "1.0.38", "1.0.9" if left
+  // trusted as-is -- "1.0.9" lexically outranks every "1.0.3x" version.
+  // This asserts the function's OWN output order is numerically correct
+  // regardless of what order the (mocked) Directus response returns rows
+  // in, proving the fix is the explicit re-sort inside
+  // listPublishedContentPacks, not a hope that Directus happens to agree.
+  it('re-sorts the Directus response numerically by version (descending), per package, even when Directus returns rows in lexical order', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        { package_id: 'eldra.solaris.xphb', version: '1.0.33', title: 'PHB', content_schema_version: 1 },
+        { package_id: 'eldra.solaris.xphb', version: '1.0.34', title: 'PHB', content_schema_version: 1 },
+        { package_id: 'eldra.solaris.xphb', version: '1.0.9', title: 'PHB', content_schema_version: 1 },
+        { package_id: 'eldra.solaris.xphb', version: '1.0.38', title: 'PHB', content_schema_version: 1 },
+        { package_id: 'eldra.solaris.xphb', version: '1.0.4', title: 'PHB', content_schema_version: 1 }
+      ])
+    )
+
+    const result = await listPublishedContentPacks()
+
+    expect(result.map((pkg) => pkg.version)).toEqual(['1.0.38', '1.0.34', '1.0.33', '1.0.9', '1.0.4'])
+  })
+
+  it('groups by packageId (ascending), then orders each group\'s versions numerically descending', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        { package_id: 'eldra.b', version: '1.0.9', title: 'B', content_schema_version: 1 },
+        { package_id: 'eldra.a', version: '1.0.38', title: 'A', content_schema_version: 1 },
+        { package_id: 'eldra.b', version: '1.0.10', title: 'B', content_schema_version: 1 },
+        { package_id: 'eldra.a', version: '1.0.9', title: 'A', content_schema_version: 1 }
+      ])
+    )
+
+    const result = await listPublishedContentPacks()
+
+    expect(result.map((pkg) => `${pkg.packageId}@${pkg.version}`)).toEqual([
+      'eldra.a@1.0.38',
+      'eldra.a@1.0.9',
+      'eldra.b@1.0.10',
+      'eldra.b@1.0.9'
+    ])
+  })
 })
 
 describe('computeContentIntegrityHash', () => {

@@ -1,3 +1,8 @@
+// createError/defineEventHandler/getRouterParam/readMultipartFormData are
+// imported explicitly (see server/api/worlds/[id]/media/upload.post.ts)
+// so this route is directly unit-testable under plain Vitest -- media
+// ownership policy follow-up.
+import { createError, defineEventHandler, getRouterParam, readMultipartFormData } from 'h3'
 import { directusServiceRequest } from '../../../../../utils/directus'
 import { requireCapability } from '../../../../../utils/authorization'
 
@@ -88,8 +93,13 @@ export default defineEventHandler(async (event) => {
   const filename = filePart.filename || 'upload.bin'
   const blob = new Blob([filePart.data], { type: mimeType })
 
+  // Media ownership policy follow-up -- `world_id` rides the SAME
+  // multipart create request as the file, stamped from the entity's own
+  // already-verified owning World (resolved above), never from
+  // client-supplied metadata.
   form.append('file', blob, filename)
   form.append('title', title)
+  form.append('world_id', worldId)
 
   const fileRes = await directusServiceRequest('/files', {
     method: 'POST',

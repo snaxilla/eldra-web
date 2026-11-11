@@ -128,13 +128,24 @@ export async function listMaps(worldId: string) {
   return (res.data || []).map(normalize)
 }
 
-export async function uploadFile(buffer: Buffer, filename: string, mime: string) {
+// `worldId` stamps `directus_files.world_id` in the SAME multipart create
+// request as the file itself (Directus applies any other form field
+// alongside `file` to the created item) -- media ownership policy
+// follow-up. Optional, and never defaulted by this shared helper itself:
+// the one caller (maps/upload.post.ts) always has an already-authorized
+// World in scope and passes it explicitly, so this function never invents
+// or guesses an owner.
+export async function uploadFile(buffer: Buffer, filename: string, mime: string, worldId?: string | number) {
   const form = new FormData()
 
   form.append('file', buffer, {
     filename,
     contentType: mime || 'application/octet-stream'
   })
+
+  if (worldId !== undefined && worldId !== null && String(worldId).trim()) {
+    form.append('world_id', String(worldId))
+  }
 
   const contentLength = await getFormLength(form)
 

@@ -78,7 +78,7 @@ export default defineEventHandler(async (event) => {
   let imageId = existing?.image ? String(existing.image) : null
 
   if (imagePart) {
-    imageId = await uploadImageToDirectus(imagePart)
+    imageId = await uploadImageToDirectus(imagePart, worldId)
   } else if (clearImage) {
     imageId = null
   }

@@ -52,6 +52,7 @@ import type { ContentPackPublicationIssue, ContentPublicationCandidate } from '.
 import { listPublishedContentPacks, loadPublishedContentPack } from '../content-packs'
 import { publishContentSourceSelection } from './publish'
 import type { SourceCollectionDefinition } from '../../../app/lib/content-sources/registry'
+import { latestVersionFor, parseVersionTriple } from '../../../app/lib/content-packs/versions'
 import type { SourceCollectionProvider } from './types'
 
 export type ContentSourceRefreshInput = {
@@ -80,31 +81,12 @@ export type ContentSourceRefreshOutcome =
     }
 
 // ---------------------------------------------------------------------------
-// Versioning -- a small, self-contained major.minor.patch comparator, the
-// same "no new dependency for one shape check" posture
-// content-pack-publishing.ts's own VERSION_PATTERN already takes and
-// server/utils/rules-packages.ts's engineApiVersion comparator states
-// explicitly. Only the major.minor.patch PREFIX is read, matching
-// VERSION_PATTERN's own `/^\d+\.\d+\.\d+/` (a version may carry a
-// pre-release/build suffix this never inspects).
+// Versioning -- parseVersionTriple/compareVersions/latestVersionFor now
+// live in app/lib/content-packs/versions.ts (Content Workspaces & Studio
+// Phase 0, Area 2 -- see that file's own header for the full
+// de-duplication history). This module keeps only bumpPatchVersion, which
+// is a Refresh-specific decision, not a general comparator.
 // ---------------------------------------------------------------------------
-
-function parseVersionTriple(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version)
-  if (!match) return null
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
-}
-
-function compareVersions(a: string, b: string): number {
-  const pa = parseVersionTriple(a)
-  const pb = parseVersionTriple(b)
-  if (!pa || !pb) return a.localeCompare(b)
-  const [aMajor, aMinor, aPatch] = pa
-  const [bMajor, bMinor, bPatch] = pb
-  if (aMajor !== bMajor) return aMajor - bMajor
-  if (aMinor !== bMinor) return aMinor - bMinor
-  return aPatch - bPatch
-}
 
 // Refresh's own versioning decision (this task's own VERSIONING section:
 // "Refresh still creates a new immutable Content Pack version. Never
@@ -116,15 +98,6 @@ export function bumpPatchVersion(version: string): string {
   if (!parsed) throw new Error(`Cannot refresh from a malformed version '${version}'`)
   const [major, minor, patch] = parsed
   return `${major}.${minor}.${patch + 1}`
-}
-
-function latestVersionFor(packageId: string, listings: readonly { packageId: string; version: string }[]): string | null {
-  let latest: string | null = null
-  for (const listing of listings) {
-    if (listing.packageId !== packageId) continue
-    if (!latest || compareVersions(listing.version, latest) > 0) latest = listing.version
-  }
-  return latest
 }
 
 // The canonical entry point for this module. See this file's header for

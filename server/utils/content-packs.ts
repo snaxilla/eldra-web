@@ -81,6 +81,7 @@
 import { createHash } from 'node:crypto'
 import { canonicalize } from '../../app/lib/rules/canonicalize'
 import type { RulesVocabularyId } from '../../app/lib/rules/types'
+import { compareVersions } from '../../app/lib/content-packs/versions'
 import { directusServiceRequest } from './directus'
 
 const COLLECTION = 'content_packs'
@@ -328,6 +329,18 @@ function parseJsonField<T>(
 
 // METADATA loading -- envelope columns only, never manifest/content. For a
 // pack picker / listing UI. Mirrors listPublishedRulesPackages exactly.
+//
+// Content Workspaces & Studio Phase 0, Area 2 -- the Directus `sort` below
+// (`'-version'`) still asks Directus to order by `version`, but that is a
+// plain varchar column: Postgres sorts it LEXICALLY, so "1.0.9" ranks
+// above "1.0.38" and "1.0.10" ranks below "1.0.9". Left in place (it still
+// groups rows by packageId, which is all it can reliably do), but it is no
+// longer trusted for version order -- the explicit re-sort below, using
+// the shared NUMERIC major.minor.patch comparator
+// (app/lib/content-packs/versions.ts), is now the authoritative order
+// every caller of this function sees, so neither the Game Admin Content
+// Packs panel nor any future consumer needs to re-sort this listing
+// itself to get a correct "latest first" order per package.
 export async function listPublishedContentPacks(): Promise<ContentPackListing[]> {
   const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
     method: 'GET',
@@ -340,7 +353,7 @@ export async function listPublishedContentPacks(): Promise<ContentPackListing[]>
   })
 
   const rows = Array.isArray(res?.data) ? res.data : []
-  return rows.map((row: any) => {
+  const listings = rows.map((row: any) => {
     const manifestResult = parseJsonField<ContentPackManifest>(row.manifest, 'manifest')
     const origin = manifestResult.ok ? manifestResult.value.origin : undefined
     const adapterId = origin?.adapterId
@@ -354,6 +367,12 @@ export async function listPublishedContentPacks(): Promise<ContentPackListing[]>
       licenseId: row.license_id ?? null,
       origin: adapterId && sourceId ? { adapterId, sourceId } : null
     }
+  })
+
+  return listings.sort((a: ContentPackListing, b: ContentPackListing) => {
+    const byPackageId = a.packageId.localeCompare(b.packageId)
+    if (byPackageId !== 0) return byPackageId
+    return compareVersions(b.version, a.version)
   })
 }
 

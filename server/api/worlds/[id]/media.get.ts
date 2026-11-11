@@ -1,4 +1,6 @@
+import { createError, defineEventHandler, getQuery, getRouterParam } from 'h3'
 import { directusServiceRequest } from '../../../utils/directus'
+import { requireCapability } from '../../../utils/authorization'
 
 function assetUrl(id: any) {
   const value = String(id || '').trim()
@@ -38,10 +40,36 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Media Gallery World-scope fix (Phase 0, Area 1). Media upload/delete
+  // have always required `world.entity.edit`; this listing route never
+  // did, and never scoped its Directus query to the requesting World
+  // either -- it returned every image file in the instance to any
+  // authenticated caller. There is no separate "world not found" branch:
+  // a nonexistent worldId resolves to no membership row, so
+  // requireCapability throws the same 403 it would for any World this
+  // Principal holds no role in (server/utils/authorization.ts's `can()`,
+  // design decision already established there) -- the same behavior
+  // every other world-scoped write route in this file's own directory
+  // already relies on.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.entity.edit', { kind: 'world', worldId })
+
   const query = getQuery(event)
   const search = cleanText(query.search)
 
+  // `world_id` is the authoritative, queryable field media/upload.post.ts
+  // now writes (directus_files has no built-in World association --
+  // see scripts/directus/create-media-world-scope-schema.mjs's own
+  // header). A file uploaded before that field existed has `world_id:
+  // null` and is therefore excluded here for every World -- a known,
+  // reported limitation, not a bug: the only other signal on those rows
+  // is a free-text description, which is not authoritative proof of
+  // ownership and must not be treated as such.
   const filter: any = {
+    world_id: { _eq: Number(worldId) },
     type: { _starts_with: 'image/' }
   }
 

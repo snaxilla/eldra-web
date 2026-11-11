@@ -86,9 +86,24 @@ export default defineEventHandler(async (event) => {
 
   const title = cleanText(fields.title) || cleanText(file.filename) || 'Eldra image'
 
+  // Media ownership policy follow-up -- `world_id` (and title/description,
+  // which used to ride a SEPARATE, failure-swallowed PATCH after this same
+  // POST) are now set in the SAME multipart request that creates the file,
+  // matching Directus's own documented behavior of applying any other form
+  // field alongside `file` to the created item. This closes a real gap the
+  // old two-request shape had: the previous PATCH was `.catch(() => null)`'d,
+  // so a PATCH failure would have reported this route's own full `200`
+  // success while silently leaving the file with `world_id: null` (and no
+  // title/description) -- a File that is fully created but not fully
+  // owned, reported as if it were. With everything in one request, there is
+  // no such partial-success window: either the create succeeds with
+  // ownership attached, or nothing is created at all.
   const uploadForm = new FormData()
   const blob = new Blob([file.data], { type: file.mimeType || 'application/octet-stream' })
   uploadForm.append('file', blob, file.filename || 'eldra-media-upload')
+  uploadForm.append('title', title)
+  uploadForm.append('description', `Eldra media upload for world ${worldId}`)
+  uploadForm.append('world_id', worldId)
 
   const uploaded = await directusServiceRequest('/files', {
     method: 'POST',
@@ -103,14 +118,6 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Upload succeeded but Directus did not return a file id'
     })
   }
-
-  await directusServiceRequest(`/files/${encodeURIComponent(fileId)}`, {
-    method: 'PATCH',
-    body: {
-      title,
-      description: `Eldra media upload for world ${worldId}`
-    }
-  }).catch(() => null)
 
   return {
     id: fileId,

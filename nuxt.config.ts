@@ -1,7 +1,16 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: false },
-  modules: ['@nuxt/ui'],
+  // Content Workspaces & Studio Phase 0, Area 3 -- @nuxt/eslint was already
+  // an installed devDependency (package.json), but was never registered as
+  // a Nuxt module, so its setup() (which generates .nuxt/eslint.config.mjs
+  // via Nuxt's own template system) never ran. eslint.config.mjs at the
+  // repo root has always imported that generated file -- `pnpm run lint`
+  // failed in a clean tree with ERR_MODULE_NOT_FOUND because nothing had
+  // ever produced it. Registering the module here is the fix: `nuxt
+  // prepare` (or any dev/build) now generates it like any other Nuxt
+  // template.
+  modules: ['@nuxt/ui', '@nuxt/eslint'],
 
   // Fonts are bundled locally via @fontsource (see app/assets/css/main.css);
   // disable Nuxt UI's @nuxt/fonts integration so builds never download fonts.

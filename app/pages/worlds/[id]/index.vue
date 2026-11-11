@@ -1330,10 +1330,21 @@ async function uploadPinImage(event: Event) {
 
   if (!file || !editingPin.value) return
 
+  // Media ownership policy follow-up -- the upload route resolves and
+  // verifies this pin's owning World from `mapId` server-side (it never
+  // trusts a client-supplied worldId directly); `currentMapId` is the
+  // World Map page's own already-known active map, so this is never a
+  // guess.
+  if (!currentMapId.value) {
+    saveError.value = 'No active map to attach this pin image to.'
+    return
+  }
+
   saveError.value = ''
 
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('mapId', currentMapId.value)
 
   try {
     const result = await $fetch<{ file_id: string; image_url: string }>('/api/map-pins/upload-image', {

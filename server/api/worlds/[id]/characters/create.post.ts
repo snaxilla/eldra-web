@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
   )
 
   const imagePart = parts.find((p) => p.name === 'image' && p.type && String(p.type).startsWith('image/'))
-  const imageId = imagePart ? await uploadImageToDirectus(imagePart) : null
+  const imageId = imagePart ? await uploadImageToDirectus(imagePart, worldId) : null
 
   const created = await createEntityRecord({
     worldId,

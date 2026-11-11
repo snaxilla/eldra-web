@@ -1,5 +1,9 @@
 import { requireCapability } from '../../utils/authorization'
 
+// Media ownership policy -- intentionally NEVER stamps `world_id`. This
+// route is `platform.settings.manage`-gated (platform scope, not a
+// World), so any file it creates is a platform-owned asset by design and
+// must stay outside every World's Media Gallery.
 export default defineEventHandler(async (event) => {
   const principal = event.context.principal ?? null
   if (!principal) {

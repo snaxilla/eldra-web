@@ -11,51 +11,18 @@
 // additional states." Every classifier below returns exactly one of
 // HealthStatus; nothing here ever returns a fifth value.
 
+import { compareVersions, latestVersionFor, type VersionedListing } from '~/lib/content-packs/versions'
+
 export type HealthStatus = 'healthy' | 'warning' | 'needs-attention' | 'not-configured'
 
-export type PackageListing = { packageId: string; version: string }
+export type PackageListing = VersionedListing
 
-// ---------------------------------------------------------------------------
-// Versioning -- a small, self-contained major.minor.patch comparator. Same
-// posture as server/utils/content-sources/refresh.ts's own comparator (see
-// that file's header): no semver dependency for one shape check, only the
-// major.minor.patch PREFIX is read. Duplicated rather than imported from
-// refresh.ts because that module is server-only (imports directusService
-// Request transitively) and this one must run in the browser -- the two
-// copies are already an established pattern in this codebase (rules-
-// packages.ts, content-pack-publishing.ts, refresh.ts, and
-// AdminContentPackBuilderPanel.vue each carry their own).
-// ---------------------------------------------------------------------------
-
-function parseVersionTriple(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version)
-  if (!match) return null
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
-}
-
-export function compareVersions(a: string, b: string): number {
-  const pa = parseVersionTriple(a)
-  const pb = parseVersionTriple(b)
-  if (!pa || !pb) return a.localeCompare(b)
-  const [aMajor, aMinor, aPatch] = pa
-  const [bMajor, bMinor, bPatch] = pb
-  if (aMajor !== bMajor) return aMajor - bMajor
-  if (aMinor !== bMinor) return aMinor - bMinor
-  return aPatch - bPatch
-}
-
-// The newest published version for `packageId` among `listings`, or `null`
-// when none exist -- a legitimate "unknown" (e.g. the published-packages
-// list failed to load, or nothing has ever been published under this id),
-// never conflated with "this IS the latest" by a classifier below.
-export function latestVersionFor(packageId: string, listings: readonly PackageListing[]): string | null {
-  let latest: string | null = null
-  for (const listing of listings) {
-    if (listing.packageId !== packageId) continue
-    if (!latest || compareVersions(listing.version, latest) > 0) latest = listing.version
-  }
-  return latest
-}
+// Versioning -- parseVersionTriple/compareVersions/latestVersionFor moved
+// to app/lib/content-packs/versions.ts (Content Workspaces & Studio
+// Phase 0, Area 2) so this is one shared copy instead of an independent
+// one. Re-exported here so existing callers importing compareVersions/
+// latestVersionFor from this module keep working unchanged.
+export { compareVersions, latestVersionFor }
 
 // ---------------------------------------------------------------------------
 // Rules Package Card

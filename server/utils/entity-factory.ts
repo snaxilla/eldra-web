@@ -28,7 +28,14 @@ export async function dxFetch(path: string, options: RequestInit = {}) {
   })
 }
 
-export async function uploadImageToDirectus(filePart: any) {
+// `worldId` stamps `directus_files.world_id` in the SAME multipart create
+// request as the file itself -- media ownership policy follow-up.
+// Optional, and never defaulted by this shared helper: both current
+// callers (characters/create.post.ts, characters/[characterId]/
+// update.post.ts) already have an already-authorized World in scope at
+// the call site and pass it explicitly, so this function never invents
+// or guesses an owner on a caller's behalf.
+export async function uploadImageToDirectus(filePart: any, worldId?: string | number) {
   if (!filePart?.data) return null
 
   const form = new FormData()
@@ -37,6 +44,10 @@ export async function uploadImageToDirectus(filePart: any) {
   })
 
   form.append('file', blob, filePart.filename || 'entity-image')
+
+  if (worldId !== undefined && worldId !== null && String(worldId).trim()) {
+    form.append('world_id', String(worldId))
+  }
 
   const res = await fetch(`${baseUrl()}/files`, {
     method: 'POST',

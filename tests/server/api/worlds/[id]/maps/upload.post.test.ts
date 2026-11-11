@@ -144,7 +144,7 @@ describe('POST /api/worlds/:id/maps/upload', () => {
 
     const result = await handler(fakeEvent('6', ownerPrincipal('6'), body))
 
-    expect(uploadFileMock).toHaveBeenCalledWith(expect.any(Buffer), 'map.png', 'image/png')
+    expect(uploadFileMock).toHaveBeenCalledWith(expect.any(Buffer), 'map.png', 'image/png', '6')
     expect(uploadFileMock.mock.calls[0][0].equals(Buffer.from([1, 2, 3, 4]))).toBe(true)
     expect(createMapMock).toHaveBeenCalledWith('6', 'Sword Coast', 'world', 'file-1', {
       tile_enabled: false,

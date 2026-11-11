@@ -29,13 +29,25 @@
 
 // ---------------------------------------------------------------------------
 // Version comparison -- a small, self-contained major.minor.patch
-// comparator. Deliberately duplicated rather than imported: this exact
-// comparator already exists independently in rules-packages.ts
-// (compareSemVer), content-sources/refresh.ts (compareVersions), and
-// (until this task removed it) AdminContentPackBuilderPanel.vue -- three
-// near-identical copies already, none exported for reuse, and introducing
-// a shared version-compare utility to de-duplicate them is an unrequested
-// refactor outside this task's scope.
+// comparator. Content Workspaces & Studio Phase 0, Area 2 unified the
+// other three independent copies of this exact algorithm
+// (server/utils/content-sources/refresh.ts,
+// app/components/admin/health/projectHealth.ts,
+// app/components/admin/content-packs/contentPackRefreshMatch.ts) into one
+// shared module, app/lib/content-packs/versions.ts. THIS copy is
+// deliberately left as its own, still-duplicated fourth copy: this file is
+// plain, zero-import ESM, executed directly via `node` with no TypeScript
+// transpile step -- its sibling packages-sync.mjs needs `jiti` specifically
+// because a bare .mjs script cannot `import` a .ts module on its own, and
+// this file's whole reason for existing separately from packages-sync.mjs
+// is to stay free of that dependency so it can be imported directly by
+// Vitest as plain ESM (see this file's own header). Adding jiti here
+// solely to dedupe a ~10-line comparator would be exactly the kind of
+// unrequested dependency expansion that Phase 0's own instructions forbid.
+// `server/utils/rules-packages.ts`'s `compareSemVer` is NOT a fifth copy of
+// this -- it compares an already-parsed `{major,minor,patch}` object for a
+// different purpose (caret-range engine-API-version compatibility), not
+// "pick the latest published Content Pack version."
 // ---------------------------------------------------------------------------
 
 function parseVersionTriple(version) {

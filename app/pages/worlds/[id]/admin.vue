@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// import/first: every import below is already after definePageMeta() (a
+// pre-existing, unrelated violation on all 49 of them -- not fixed here).
+// This one import stays ahead of it instead of adding a 50th instance.
+import AdminContentStudioPanel from '~/components/admin/studio/AdminContentStudioPanel.vue'
+
 definePageMeta({
   layout: 'world-workspace',
   middleware: 'admin',
@@ -813,6 +818,11 @@ async function refreshAdmin() {
 
       <AdminContentPacksPanel
         v-else-if="activePanel === 'content-packs'"
+        :world-id="worldId"
+      />
+
+      <AdminContentStudioPanel
+        v-else-if="activePanel === 'content-studio'"
         :world-id="worldId"
       />
 

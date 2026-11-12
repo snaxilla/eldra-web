@@ -33,6 +33,7 @@ export type GameAdminPanelKey =
   | 'relationships'
   | 'rules'
   | 'content-packs'
+  | 'content-studio'
   | 'health'
   | 'setup'
 
@@ -49,6 +50,10 @@ export const GAME_ADMIN_SECTIONS: readonly (AdminRailSection & { key: GameAdminP
   { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' },
   { key: 'rules', label: 'Rules', icon: 'i-lucide-scale' },
   { key: 'content-packs', label: 'Content Packs', icon: 'i-lucide-package-2' },
+  // Content Workspaces & Studio Phase 2 -- placed next to Content Packs
+  // because they are two views of one axis: a pack is what was released,
+  // Studio is what the World actually resolves from those releases.
+  { key: 'content-studio', label: 'Content Studio', icon: 'i-lucide-library-big' },
   { key: 'health', label: 'Project Health', icon: 'i-lucide-activity' },
   { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' }
 ] as const

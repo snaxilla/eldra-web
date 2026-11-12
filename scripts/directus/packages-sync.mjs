@@ -498,6 +498,15 @@ export async function executeApply({ modules, world, rulesClassification, conten
           collection: content.collection,
           packageId: action.packageId
         })
+        // Content Workspaces & Studio §11.3/§11.6 -- the CLI must give the
+        // SAME explanation the HTTP routes give, never a bare stage name.
+        // An adopted lineage refuses this path; the run stops here and
+        // reports why, and no second release is produced. Nothing was
+        // imported into the owning workspace either -- this is a refusal,
+        // not a redirected import.
+        if (!outcome.refreshed && outcome.stage === 'lineage-refused') {
+          throw new Error(`REFRESH_CONTENT refused for ${action.sourceKey}: ${outcome.message}`)
+        }
         if (!outcome.refreshed) throw new Error(`REFRESH_CONTENT failed for ${action.sourceKey}: ${outcome.stage}`)
         // Authoritative: refreshContentSource's own real published result,
         // never re-derived from the pre-mutation classification.

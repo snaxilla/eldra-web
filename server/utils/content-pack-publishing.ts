@@ -84,6 +84,7 @@
 
 import { publishContentPackRelease, type ContentPackManifest, type ContentPackEntry, type ContentPackLicense, type ContentPackOrigin, type ContentPackTargets, type LoadedContentPack } from './content-packs'
 import type { RulesFacet } from '../../app/lib/content-rules'
+import type { CuratedFromRef, LegacyBaseRef } from '../../app/lib/content-identity'
 
 // ---------------------------------------------------------------------------
 // The publication contract -- Eldra-owned, not an importer's shape.
@@ -138,6 +139,15 @@ export type ContentPublicationCandidate = {
   // never the other way around (the Rules Package itself carries no
   // description -- see rules-package-architecture.md §18.1).
   definitionId?: string
+  // Content Workspaces & Studio Phase 1 (content-workspaces-and-studio.md
+  // §6.8/§7). Canonical identity and its explicit equivalence evidence.
+  // All optional and absent on every pack published to date, which stays
+  // addressed by its lineage-scoped legacy address. Opaque to this module;
+  // carried through to publication like `rulesFacet`.
+  contentEntityId?: string
+  baseRefs?: LegacyBaseRef[]
+  slugAliases?: string[]
+  curatedFrom?: CuratedFromRef
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +176,7 @@ export type ContentPackPublicationIdentity = {
 const PACKAGE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/
 const VERSION_PATTERN = /^\d+\.\d+\.\d+/
 
-function candidateIdentityKey(candidate: ContentPublicationCandidate): string {
+export function candidateIdentityKey(candidate: ContentPublicationCandidate): string {
   return `${candidate.systemKey}::${candidate.entityType}::${candidate.slug}`
 }
 
@@ -302,6 +312,11 @@ export type ContentPackPublicationInput = ContentPackManifestInput & {
 export type ContentPackPublicationResult =
   | { published: false; stage: 'validation'; issues: ContentPackPublicationIssue[] }
   | { published: false; stage: 'already-exists'; packageId: string; version: string; status: string }
+  // Content Workspaces & Studio §11 -- a Content Workspace owns this
+  // package lineage and is its only publisher. Relayed verbatim from
+  // publishContentPackRelease, which is where the invariant is enforced;
+  // this module neither decides nor re-words it. Nothing was published.
+  | { published: false; stage: 'lineage-refused'; packageId: string; ownerWorkspaceId: string | null; lineageStatus: string; message: string }
   | { published: true; package: LoadedContentPack; issues: ContentPackPublicationIssue[] }
 
 // The whole pipeline named in this file's header. Never resolves content,
@@ -342,6 +357,17 @@ export async function publishContentPack(input: ContentPackPublicationInput): Pr
   })
 
   if (!publishResult.ok) {
+    if (publishResult.stage === 'lineage-refused') {
+      return {
+        published: false,
+        stage: 'lineage-refused',
+        packageId: publishResult.packageId,
+        ownerWorkspaceId: publishResult.ownerWorkspaceId,
+        lineageStatus: publishResult.lineageStatus,
+        message: publishResult.message
+      }
+    }
+
     return {
       published: false,
       stage: 'already-exists',

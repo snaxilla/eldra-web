@@ -62,6 +62,8 @@ export type ContentSourcePublishInput = {
 export type ContentSourcePublishOutcome =
   | { published: false; stage: 'validation'; issues: ContentPackPublicationIssue[] }
   | { published: false; stage: 'already-exists'; packageId: string; version: string; status: string }
+  // Relayed, not decided here -- see publishContentPackRelease.
+  | { published: false; stage: 'lineage-refused'; packageId: string; ownerWorkspaceId: string | null; lineageStatus: string; message: string }
   | {
       published: true
       packageId: string
@@ -135,6 +137,17 @@ export async function publishContentSourceSelection(input: ContentSourcePublishI
   if (!result.published) {
     if (result.stage === 'validation') {
       return { published: false, stage: 'validation', issues: result.issues }
+    }
+
+    if (result.stage === 'lineage-refused') {
+      return {
+        published: false,
+        stage: 'lineage-refused',
+        packageId: result.packageId,
+        ownerWorkspaceId: result.ownerWorkspaceId,
+        lineageStatus: result.lineageStatus,
+        message: result.message
+      }
     }
 
     return {

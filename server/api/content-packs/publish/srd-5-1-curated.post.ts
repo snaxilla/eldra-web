@@ -89,6 +89,22 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Content Workspaces & Studio §11.3 -- a Content Workspace owns this
+    // package lineage and is now its only publisher. The refusal carries
+    // the explanation from the registry verbatim; nothing was published.
+    if (outcome.stage === 'lineage-refused') {
+      throw createError({
+        statusCode: 409,
+        statusMessage: outcome.message,
+        data: {
+          code: 'lineage-refused',
+          packageId: outcome.packageId,
+          ownerWorkspaceId: outcome.ownerWorkspaceId,
+          lineageStatus: outcome.lineageStatus
+        }
+      })
+    }
+
     throw createError({
       statusCode: 409,
       statusMessage: `Content Pack ${outcome.packageId}@${outcome.version} already exists (status: ${outcome.status})`

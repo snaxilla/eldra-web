@@ -112,6 +112,24 @@ export type PlatformCapability =
   | 'platform.contentpack.install'
   | 'platform.contentpack.publish'
   | 'platform.contentpack.remove'
+  // Content Workspaces & Studio, Phases 1-3 (content-workspaces-and-studio.md
+  // §14.2). Authoring a platform-scoped content library is deliberately NOT
+  // derivable from any World role: a World entity editor curates their own
+  // World's wiki, which says nothing about whether they may edit a library
+  // every World can bind. These are platform-scope only, and nobody holds
+  // them until they are explicitly granted.
+  //
+  // Only view/create/edit exist here. The rest of §14.2's table
+  // (platform.content.slug_change, platform.content.facet_author,
+  // platform.contentpack.promote/.export, world.content.bind_workspace) is
+  // deliberately absent until the phase that enforces it -- a capability
+  // nothing checks is a claim the code does not keep. Adopting or
+  // transferring a lineage uses the EXISTING platform.contentpack.publish
+  // (§14.3), because deciding who publishes a lineage is a publishing
+  // decision.
+  | 'platform.contentworkspace.view'
+  | 'platform.contentworkspace.create'
+  | 'platform.contentworkspace.edit'
   | 'platform.world.create'
   | 'platform.world.list'
   | 'platform.world.delete'
@@ -181,6 +199,9 @@ export const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.contentpack.install',
   'platform.contentpack.publish',
   'platform.contentpack.remove',
+  'platform.contentworkspace.view',
+  'platform.contentworkspace.create',
+  'platform.contentworkspace.edit',
   'platform.world.create',
   'platform.world.list',
   'platform.world.delete',

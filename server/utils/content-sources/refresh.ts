@@ -70,6 +70,12 @@ export type ContentSourceRefreshOutcome =
   | { refreshed: false; stage: 'load-failed'; packageId: string; version: string; reason: string }
   | { refreshed: false; stage: 'validation'; issues: ContentPackPublicationIssue[] }
   | { refreshed: false; stage: 'already-exists'; packageId: string; version: string; status: string }
+  // Content Workspaces & Studio §11.6 -- an adopted lineage refuses the
+  // source-refresh path. The refusal is reported; NOTHING was published
+  // and nothing was imported into the owning workspace (workspace
+  // re-import is a later phase, and claiming it happened here would be a
+  // lie the CLI would repeat).
+  | { refreshed: false; stage: 'lineage-refused'; packageId: string; ownerWorkspaceId: string | null; lineageStatus: string; message: string }
   | {
       refreshed: true
       packageId: string
@@ -139,6 +145,16 @@ export async function refreshContentSource(input: ContentSourceRefreshInput): Pr
   if (!outcome.published) {
     if (outcome.stage === 'validation') {
       return { refreshed: false, stage: 'validation', issues: outcome.issues }
+    }
+    if (outcome.stage === 'lineage-refused') {
+      return {
+        refreshed: false,
+        stage: 'lineage-refused',
+        packageId: outcome.packageId,
+        ownerWorkspaceId: outcome.ownerWorkspaceId,
+        lineageStatus: outcome.lineageStatus,
+        message: outcome.message
+      }
     }
     return { refreshed: false, stage: 'already-exists', packageId: outcome.packageId, version: outcome.version, status: outcome.status }
   }

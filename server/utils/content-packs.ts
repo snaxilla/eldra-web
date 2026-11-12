@@ -82,6 +82,7 @@ import { createHash } from 'node:crypto'
 import { canonicalize } from '../../app/lib/rules/canonicalize'
 import type { RulesVocabularyId } from '../../app/lib/rules/types'
 import { compareVersions } from '../../app/lib/content-packs/versions'
+import { checkLineagePublication, type LineagePublisher } from './content-package-lineages'
 import { directusServiceRequest } from './directus'
 
 const COLLECTION = 'content_packs'
@@ -252,14 +253,28 @@ export type ContentPackPublishInput = {
   licenseId: string | null
   manifest: ContentPackManifest
   content: ContentPackEntry[]
+  // Content Workspaces & Studio §11 -- who is publishing. Omitted means
+  // the legacy publisher (every caller that exists today). A workspace
+  // publisher names itself so the lineage it owns does not refuse it.
+  publisher?: LineagePublisher
 }
 
-export type ContentPackPublishFailure = {
-  stage: 'already-exists'
-  packageId: string
-  version: string
-  status: string
-}
+export type ContentPackPublishFailure =
+  | {
+      stage: 'already-exists'
+      packageId: string
+      version: string
+      status: string
+    }
+  | {
+      // The single-writer invariant (R11) refused this publisher. Nothing
+      // was written.
+      stage: 'lineage-refused'
+      packageId: string
+      ownerWorkspaceId: string | null
+      lineageStatus: string
+      message: string
+    }
 
 export type ContentPackPublishResult =
   | { ok: true; package: LoadedContentPack }
@@ -511,9 +526,39 @@ export async function loadPublishedContentPack(
 // regardless of its status -- published rows are immutable, and this
 // phase never writes drafts (mirrors rules_packages' "V1 only ever writes
 // published" -- there is no draft workflow to resume here either).
+//
+// 8. (Content Workspaces & Studio §11) THE SINGLE-WRITER GUARD LIVES HERE,
+//    not only in the routes. This is the one function in the codebase that
+//    writes a content_packs row -- the publishing pipeline, both direct
+//    publish routes, the generic source-publish route, Refresh Content
+//    Package, and `packages:sync` all reach the database through it. A
+//    guard in any one of those could be bypassed by the next caller
+//    someone adds, or by a standalone script using the runtime shim; a
+//    guard here cannot. That is deliberately an exception to design
+//    decision 7's "zero validation of its own": "exactly one publisher per
+//    lineage" is not publication-readiness validation (which stays in
+//    content-pack-publishing.ts), it is an invariant about who may write
+//    this table at all, and it is only true if it is unbypassable.
+//
+//    It is inert until a lineage is adopted: with no registry row, or no
+//    registry at all, checkLineagePublication allows the write and every
+//    existing publisher behaves exactly as before. It fails CLOSED if the
+//    registry exists but cannot be read -- see that function's own header.
 export async function publishContentPackRelease(
   input: ContentPackPublishInput
 ): Promise<ContentPackPublishResult> {
+  const decision = await checkLineagePublication(input.packageId, input.publisher ?? { kind: 'legacy' })
+  if (!decision.allowed) {
+    return {
+      ok: false,
+      stage: 'lineage-refused',
+      packageId: decision.packageId,
+      ownerWorkspaceId: decision.ownerWorkspaceId,
+      lineageStatus: decision.lineageStatus,
+      message: decision.message
+    }
+  }
+
   const existingRes: any = await directusServiceRequest(`/items/${COLLECTION}`, {
     method: 'GET',
     query: {

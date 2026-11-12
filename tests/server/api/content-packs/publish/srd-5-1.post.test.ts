@@ -138,6 +138,15 @@ beforeEach(() => {
 
   directusServiceRequestMock.mockReset()
   directusServiceRequestMock.mockImplementation(async (path: string, options: any = {}) => {
+    // Content Workspaces & Studio §11 -- publishContentPackRelease now
+    // asks the package lineage registry who may publish this lineage
+    // before it writes. No lineage is adopted in these scenarios, so the
+    // registry answers with no row, which means "anyone may publish" and
+    // leaves every expectation below unchanged.
+    if (path === '/items/content_package_lineages') {
+      return { data: [] }
+    }
+
     if (path !== '/items/content_packs') {
       throw new Error(`Unexpected Directus path in test: ${path}`)
     }

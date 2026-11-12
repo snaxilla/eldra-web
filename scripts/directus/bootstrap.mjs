@@ -28,7 +28,9 @@ const SCRIPTS = [
   'create-eldra-accounts-schema.mjs',
   'create-eldra-sessions-schema.mjs',
   'create-character-ownership-schema.mjs',
-  'create-media-world-scope-schema.mjs'
+  'create-media-world-scope-schema.mjs',
+  'create-content-workspaces-schema.mjs',
+  'alter-world-content-pack-bindings-binding-modes.mjs'
 ]
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url))

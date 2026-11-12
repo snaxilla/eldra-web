@@ -1896,6 +1896,73 @@ flowchart TB
 resolver is fully testable and enableable using pinned releases alone. Phase 6 is the first phase
 that introduces a mutable source, and it requires Phase 5 **already enabled**.
 
+## 18.2 Rollback discipline once a deployment holds real data **[Added in review]**
+
+Phase 1's and Phase 3's own rollback notes below (and the Pass A handoff) used to say "drop the
+new collections" / "delete workspace rows" as if that were always safe. It is safe only on an
+installation that has never accepted real use — a disposable integration environment, or a
+production deployment verified to hold **zero** workspace rows and **zero** adopted lineages.
+Once a Content Workspace has been created, imported into, or adopted a package lineage, dropping
+its collections destroys authored records, revision history, immutable source snapshots, and the
+lineage ownership registry — none of which can be reconstructed from `content_packs` or
+`world_content_pack_bindings` alone. The two situations need different instructions, and this
+section is now the one place both phases' rollback notes point to.
+
+**Default rollback (a deployment that may hold real data) — never destructive:**
+
+1. **Preserve every new collection and every row in it.** `content_workspaces`,
+   `content_workspace_entities`, `content_entity_source_snapshots`, `content_entity_revisions`,
+   `content_package_lineages`, `content_release_channels`, `content_pack_assets` are not touched.
+2. **Preserve every immutable release, every existing binding, and every character reference** —
+   unchanged by construction (§17.1); rollback does not need to protect them, only not introduce a
+   new path that could.
+3. **Disable or withdraw the new Studio/workspace mutation entry points**, not the data behind
+   them: remove the Game Admin Content Studio section, stop routing `/api/content/**`, or revert
+   to a prior application build that never registered those routes. The schema and its rows are
+   inert to every existing gameplay page regardless (§8.9's effective-content boundary; Phase 5
+   has not shipped).
+4. **Before reverting the application code, check `content_package_lineages` for any row with a
+   non-null `owner_workspace_id`.** An adopted lineage changes what "rollback" is allowed to do
+   next.
+5. **If an adopted lineage exists, do not deploy an older application build whose
+   `publishContentPackRelease` predates the single-writer guard** (§11, implemented inside that one
+   function per its own header) **while that lineage is still owned by a workspace.** An older
+   build that never asks the registry would let `refreshContentSource`/`packages:sync` publish a
+   second, competing release to a lineage a workspace still owns — exactly the two-writer failure
+   §11 exists to prevent (risk 7, §20). Either keep the guard (any build that still calls
+   `checkLineagePublication`), or explicitly freeze the lineage first (`status: 'frozen'`, §11.4 —
+   refuses publication to *everyone*, owner included) and treat it as a deliberate, recorded
+   decision, never an automatic side effect of rolling back.
+6. **Stop any publish, refresh, or `packages:sync` run before beginning rollback review**, and do
+   not resume them until the decision in step 5 is made. A run started mid-rollback is exactly the
+   "something else can change state during the operation" case §9.2/§11 are written to avoid.
+7. **Never auto-un-adopt a lineage as part of a rollback.** Un-adopt (§11.4) is its own audited,
+   explicit, reversible admin action — restoring legacy publishing by un-adopting is a decision an
+   operator makes deliberately, with the owning workspace's authored state still intact to adopt
+   again later, never a step a rollback script performs on their behalf.
+8. **Never delete workspace data merely to restore legacy publishing.** Un-adopting (step 7) or
+   freezing (step 5) already restores or blocks publication without touching a single row; deleting
+   data is never required to get there and permanently forecloses re-adopting the same workspace
+   later.
+9. **Audit and read access to the new collections may need to stay available during recovery** —
+   an operator diagnosing *why* a lineage was adopted, or confirming no workspace holds
+   unpublished changes, needs `GET /api/content/workspaces`, `.../entities`, and
+   `GET /api/content/lineages` reachable even while the mutating routes are withdrawn.
+
+**Destructive cleanup — a different operation, only for one of two verified cases:**
+
+- A **disposable integration environment** that was stood up solely to test this design (e.g. the
+  throwaway Directus the Pass A handoff describes) and is being torn down after review. `docker rm`
+  / dropping the collections there discards nothing of value by definition.
+- A **production installation explicitly verified** (query `content_workspaces`,
+  `content_workspace_entities`, and `content_package_lineages` for zero rows) to hold no workspace
+  data and no adopted lineage. Only then is dropping the unused collections equivalent to never
+  having provisioned them.
+
+Neither case is "rollback" in the sense the steps above cover, and this document never recommends
+destructive cleanup as a response to a deployment that might hold real data — if it is unverified
+which case applies, treat it as the default (non-destructive) rollback above.
+
 ## Phase 0 — Prerequisites and defect fixes **[Expanded per Correction 8]**
 
 **Goal.** Fix the defects this design would otherwise be built on top of.
@@ -1944,6 +2011,12 @@ that introduces a mutable source, and it requires Phase 5 **already enabled**.
     mismatch between the requested and read-back value after writing is reported as a distinct
     `verification-mismatch` failure, never silently accepted — see
     `tests/scripts/directus/backfill-media-world-scope.test.ts`.
+  - **Regression (production-failure-derived):** the apply write goes to the single-item endpoint
+    `PATCH /files/:fileId` with a plain, unwrapped `{ world_id }` body — never the collection-level
+    `PATCH /files?filter=...` shape that returned `400 INVALID_PAYLOAD: "data" is required` against
+    the real instance — asserted directly against the request URL, method, and body, grounded in
+    Directus's own `api/src/controllers/items.ts` contract at `v11.12.0`, not merely mirrored from
+    the implementation.
 - **Acceptance.** All tests above pass; `pnpm run lint` runs; the deployment sequence below has been
   followed in order, with its own verification step (step 9) confirmed before the application routes
   that depend on `world_id` are enabled.
@@ -1991,18 +2064,33 @@ next run, never swept mid-apply.
 **The apply write is not an atomic compare-and-set — say so plainly.** An earlier revision of this
 document claimed the filtered bulk `PATCH /files?filter=...` alone gave atomic "assign only if still
 unassigned" protection. That claim was checked against Directus's own documented behavior and
-retracted: the `filter` query parameter on `PATCH /items`/`/files` is real and does cause the
-request to apply only to matching rows, but Directus implements this as **two separate steps**
-server-side — a read that resolves matching primary keys via the filter, then a separate write to
-exactly those keys — never a single atomic `UPDATE ... WHERE` statement. A pre-write read is not an
-atomic compare-and-set, and the filtered PATCH does not become one just because it is scoped by a
-filter. The script's actual protection against a concurrent writer is now a **three-layer, openly
-non-atomic** model, implemented in `assignFileWithVerification`/`readFileWorldId`
+retracted: the `filter` query parameter is real and does cause a GET to return only matching rows,
+but Directus implements a *filtered update* as **two separate steps** server-side — a read that
+resolves matching primary keys, then a separate write to exactly those keys — never a single atomic
+`UPDATE ... WHERE` statement. A pre-write read is not an atomic compare-and-set.
+
+**That filtered-PATCH request was also simply malformed, and a real production run proved it.**
+After the field was provisioned and Solaris resolved to World 4, every single write in a live apply
+run failed: `PATCH /files?filter=...` with body `{"world_id": 4}` returned
+`400 INVALID_PAYLOAD: "data" is required` — 0 of 76 candidates assigned. Directus's
+`api/src/controllers/items.ts` (checked at the exact pinned production tag, `v11.12.0`) shows why:
+the **collection-level** route (`PATCH /files`, no id in the path) never reads the URL's `?filter=`
+at all — it reads `req.body.query` — and requires the fields to write in a separate, required
+`req.body.data` key, never the top-level body. The **single-item** route (`PATCH /files/:fileId`,
+the primary key in the path) has no such wrapper: it passes the body directly as the item's fields.
+This script only ever updates one already-identified file at a time, so it never needed the
+collection-level contract in the first place. The fix sends `PATCH /files/:fileId` with a plain
+`{ world_id: ... }` body — the documented, verified single-item contract — and drops the former
+"filtered PATCH as a best-effort second layer" idea entirely, since it added no real protection once
+non-atomicity was already acknowledged, and it was also the thing that was broken.
+
+The script's actual protection against a concurrent writer is a **three-layer, openly non-atomic**
+model, implemented in `assignFileWithVerification`/`readFileWorldId`
 (`backfill-media-world-scope.mjs`):
 1. **Re-read immediately before writing.** If the file's `world_id` is already non-null at that
    instant, skip it — reported as `skipped-already-assigned`, never overwritten.
-2. **Write via the filtered PATCH**, kept only as a best-effort second layer (it still narrows the
-   write to the intended row and the still-null condition at request time), never relied on alone.
+2. **Write via a single-item `PATCH /files/:fileId`** with a plain, unwrapped body — the verified
+   contract for updating one known row by primary key.
 3. **Re-read again immediately after writing**, to confirm the value actually stuck as requested. A
    mismatch — something else wrote a different value in the gap between steps 2 and 3 — is reported
    as a distinct `verification-mismatch` outcome and counted as a failure (nonzero exit), never
@@ -2163,7 +2251,10 @@ maintenance-window alternative is:
   drift.
 - **Acceptance.** Bootstrap idempotent across two runs; `GET /api/worlds/:id/content` byte-identical
   for every World.
-- **Dependencies.** Phase 0. **Rollback.** Drop new collections; binding columns are inert.
+- **Dependencies.** Phase 0. **Rollback.** See [§18.2](#182-rollback-discipline-once-a-deployment-holds-real-data-added-in-review)
+  — non-destructive by default once any collection may hold real rows; the binding columns are
+  inert either way (`binding_mode` stays `'pinned'`). Destructive collection drop is a documented
+  option only for a verified-empty or disposable installation, never the default response.
 - **Independently deployable.** **Yes** — nothing reads any of it.
 
 ## Phase 2 — Read-only Content Studio
@@ -2184,6 +2275,16 @@ maintenance-window alternative is:
 - **API.** `POST/GET/PATCH /api/content/workspaces`; `GET .../entities`;
   `POST .../import`; `GET .../entities/:contentEntityId/revisions`;
   `POST .../adopt-lineage`; `PUT /api/content/lineages/:packageId/owner`.
+- **Import sources, Pass A.** Exactly two: an existing published release (`packageId`+`version`)
+  and a registered provider collection (`gameSystemKey`+`collectionKey`, with an optional category
+  subset). **Importing from another authorized Content Workspace is explicitly deferred, not
+  implemented** — the owner has accepted this; `POST .../import` validates `source.kind` against
+  `'release' | 'provider'` only and rejects `'workspace'` with `400`, so an unsupported request is
+  refused rather than silently ignored or half-run. When workspace-to-workspace import is picked
+  up, it must preserve canonical identity (`contentEntityId` carried, never reminted), provenance
+  (the source workspace recorded as evidence, not re-authored as a fresh import), permissions
+  (access to *both* workspaces), accepted bases (copied with their own snapshot lineage), and the
+  source's authored channels (explicitly carried or explicitly dropped, never silently lost).
 - **Server utils.** `content-workspaces.ts`, `content-workspace-import.ts`,
   `content-package-lineages.ts` — all in `world-content-packs.ts`'s idiom (explicit field lists,
   discriminated results, no HTTP concerns).
@@ -2196,7 +2297,12 @@ maintenance-window alternative is:
 - **Acceptance.** A workspace seeded from XPHB holds one entity per published candidate with
   preserved base data and explicit `baseRefs`; importing twice neither duplicates identities nor loses
   the previous base.
-- **Dependencies.** Phase 1. **Rollback.** Delete workspace rows; nothing else reads them.
+- **Dependencies.** Phase 1. **Rollback.** See [§18.2](#182-rollback-discipline-once-a-deployment-holds-real-data-added-in-review)
+  — once a workspace has been created, imported into, or adopted a lineage, its rows carry
+  authored/imported content, snapshot history, and ownership that nothing else reconstructs.
+  Default rollback withdraws the mutation routes and checks `content_package_lineages` for an
+  adopted owner before touching the publisher; it never deletes workspace rows. Deleting them is a
+  documented option only for a verified-empty or disposable installation.
 - **Independently deployable.** **Yes.**
 
 ## Phase 4 — Presentation editing (inert)

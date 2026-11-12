@@ -36,3 +36,35 @@ includes that category's current candidates in the next published version.
 
 Not implemented here -- this pass only fixed Creator-side consumption of the already-published
 Feature Options; the publication workflow gap above is unchanged.
+
+## Media Gallery thumbnail delivery (recorded 2026-11-12, observed during Content Workspaces Pass A)
+
+Recorded here rather than in
+[character-decisions-presentation-backlog.md](character-decisions-presentation-backlog.md)
+because this is the media/asset axis of the content pipeline
+([content-workspaces-and-studio.md §13](content-workspaces-and-studio.md)), not Character
+Sheet presentation.
+
+**Observed**: Media Gallery cards appear to request original full-size files. Caldera image
+cards reference 146.5 MB originals, and previews stay blank while loading.
+
+**Not yet verified**: that the gallery genuinely downloads the full original is an inference
+from the card markup and the observed delay — **the actual request path has not been
+inspected**. The first task when this is picked up is to confirm what the gallery really
+requests (Directus serves `/assets/:id` with transform parameters such as `?width=&height=&fit=`
+and named presets, so the fix may be a missing query parameter rather than a missing feature).
+Do not assert the full original is downloaded until a network trace or the component's own
+request URL shows it.
+
+**Desired outcome**: gallery cards request appropriately sized thumbnails/transforms or
+generated previews, with lazy loading and useful loading/error states, while the
+**full-resolution original is preserved unchanged** for map use — map overlays and tiling read
+the original by file id and must keep getting the full-resolution asset.
+
+**Do NOT, when this is picked up:**
+- Downscale, re-encode, or replace the stored original. Map tiling depends on it.
+- Introduce a second upload or storage path; the ownership policy
+  (`directus_files.world_id`, Phase 0) stays the single source of truth for which World an
+  asset belongs to.
+
+Not implemented in Pass A — recorded only.

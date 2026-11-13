@@ -40,6 +40,13 @@ describe('uploadImageToDirectus', () => {
     const body = init.body as FormData
     expect(body.get('world_id')).toBe('6')
     expect((body.get('file') as File).name).toBe('portrait.png')
+    // Pass B review follow-up, Item 2: `.get()` is order-independent and
+    // would pass even with the real bug this guards against (Directus
+    // silently drops every field appended AFTER `file`). `entries()`
+    // reflects append order, so this actually proves `file` is LAST.
+    const order = [...body.entries()].map(([key]) => key)
+    expect(order.indexOf('file')).toBe(order.length - 1)
+    expect(order.indexOf('world_id')).toBeLessThan(order.indexOf('file'))
   })
 
   it('omits world_id entirely when no worldId is supplied -- never defaults an owner', async () => {

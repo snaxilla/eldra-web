@@ -166,6 +166,16 @@ export type WorldCapability =
   | 'world.rules.activate'
   | 'world.rules.configure'
   | 'world.content.bind_pack'
+  // Content Workspaces & Studio Phase 6 (content-workspaces-and-studio.md
+  // §14.2). Deliberately separate from `world.content.bind_pack`: binding
+  // an immutable, integrity-verified release and binding a mutable live
+  // workspace (no integrity witness -- §10.1) carry different risk, and a
+  // World that trusts the former should not automatically trust the
+  // latter. Derived from ALL_WORLD_CAPABILITIES like every other World
+  // capability -- owner/gm hold it structurally; worldbuilder/player/
+  // observer do not, since neither their explicit list below nor
+  // `world.content.bind_pack` itself is in WORLDBUILDER_CAPABILITIES.
+  | 'world.content.bind_workspace'
   | 'world.entity.create'
   | 'world.entity.edit'
   | 'world.entity.delete'
@@ -227,6 +237,7 @@ export const ALL_WORLD_CAPABILITIES: readonly WorldCapability[] = [
   'world.rules.activate',
   'world.rules.configure',
   'world.content.bind_pack',
+  'world.content.bind_workspace',
   'world.entity.create',
   'world.entity.edit',
   'world.entity.delete',

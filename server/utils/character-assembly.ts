@@ -68,6 +68,8 @@
 
 import { directusServiceRequest } from './directus'
 import { type ContentCatalogueEntry } from './world-content-catalogue'
+import { legacyAliasKey } from './world-effective-content'
+import type { EffectiveLegacyAlias } from './world-effective-content'
 import { getWorldGameplayCatalogueWithHomebrewSpells } from './homebrew-spell-catalogue'
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
@@ -318,11 +320,19 @@ function resolveEntityImageUrl(entity: any): string | null {
 // Resolves one choice against its category's CURRENT catalogue entries --
 // see design decisions 2 and 3. `label` is only ever used inside a
 // human-readable `reason` string, never as a lookup key.
+// `entityType` + `legacyAliases` -- Content Workspaces & Studio Phase 5/6
+// (content-workspaces-and-studio.md §15.3, generalized from slug renames
+// to shadowing). `legacyAliases` is `undefined` on every call this phase
+// does not touch and on the entire flag-off path (world-content-catalogue.ts
+// never sets it then) -- so a caller that passes nothing behaves EXACTLY
+// as before this parameter existed; this is purely additive.
 function resolveSlot(
   ref: StoredChoiceRef | null,
   category: readonly ContentCatalogueEntry[],
   packs: readonly WorldContentPackResolution[],
-  label: string
+  label: string,
+  entityType: string,
+  legacyAliases?: Record<string, EffectiveLegacyAlias>
 ): CharacterAssemblySlot {
   const packageId = typeof ref?.packageId === 'string' ? ref.packageId : ''
   const slug = typeof ref?.slug === 'string' ? ref.slug : ''
@@ -334,6 +344,19 @@ function resolveSlot(
   const found = category.find((entry) => entry.packageId === packageId && entry.slug === slug)
   if (found) {
     return { status: 'resolved', entry: found }
+  }
+
+  // A reference to a now-SHADOWED legacy address (e.g. the pinned release
+  // a workspace entity's baseRefs names) redirects to its effective
+  // winner, which IS in `category` under its own (different) identity --
+  // never fabricated, never inferred: this alias only exists when the
+  // resolver itself already collapsed the two via declared evidence.
+  const alias = legacyAliases?.[legacyAliasKey(entityType, packageId, slug)]
+  if (alias) {
+    const redirected = category.find((entry) => entry.packageId === alias.packageId && entry.slug === alias.slug)
+    if (redirected) {
+      return { status: 'resolved', entry: redirected }
+    }
   }
 
   const brokenPack = packs.find((pack) => pack.packageId === packageId && !pack.ok)
@@ -361,14 +384,15 @@ function resolveSlot(
 function resolveInventory(
   stored: readonly StoredInventoryItem[],
   items: readonly ContentCatalogueEntry[],
-  packs: readonly WorldContentPackResolution[]
+  packs: readonly WorldContentPackResolution[],
+  legacyAliases?: Record<string, EffectiveLegacyAlias>
 ): AssembledInventoryItem[] {
   return stored.map((item) => {
     if (!item.ref) {
       return { ...item, status: 'custom', title: item.name || 'Item' }
     }
 
-    const slot = resolveSlot(item.ref, items, packs, 'Item')
+    const slot = resolveSlot(item.ref, items, packs, 'Item', 'item', legacyAliases)
 
     if (slot.status === 'resolved') {
       return { ...item, status: 'resolved', title: slot.entry.title, entry: slot.entry }
@@ -391,14 +415,15 @@ function resolveInventory(
 function resolveSpells(
   stored: readonly StoredSpellEntry[],
   spells: readonly ContentCatalogueEntry[],
-  packs: readonly WorldContentPackResolution[]
+  packs: readonly WorldContentPackResolution[],
+  legacyAliases?: Record<string, EffectiveLegacyAlias>
 ): AssembledSpellEntry[] {
   return stored.map((entry) => {
     if (!entry.ref) {
       return { ...entry, status: 'custom', title: entry.name || 'Spell' }
     }
 
-    const slot = resolveSlot(entry.ref, spells, packs, 'Spell')
+    const slot = resolveSlot(entry.ref, spells, packs, 'Spell', 'spell', legacyAliases)
 
     if (slot.status === 'resolved') {
       return { ...entry, status: 'resolved', title: slot.entry.title, entry: slot.entry }
@@ -424,10 +449,11 @@ function resolveSpells(
 function resolveFeats(
   acquired: readonly { featRef: { packageId: string; slug: string }; choiceKey: string }[],
   feats: readonly ContentCatalogueEntry[],
-  packs: readonly WorldContentPackResolution[]
+  packs: readonly WorldContentPackResolution[],
+  legacyAliases?: Record<string, EffectiveLegacyAlias>
 ): CharacterAssemblyFeatSlot[] {
   return acquired.map(({ featRef, choiceKey }) => ({
-    ...resolveSlot(featRef, feats, packs, 'Feat'),
+    ...resolveSlot(featRef, feats, packs, 'Feat', 'feat', legacyAliases),
     choiceKey
   }))
 }
@@ -645,19 +671,19 @@ export async function assembleCharacter(
     characterImageUrl: resolveEntityImageUrl(entity),
     characterType: String(entity.entity_type || 'pc'),
     characterSummary: entity.summary != null ? String(entity.summary) : null,
-    species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
-    class: resolveSlot(classRef, catalogue.classes, catalogue.packs, 'Class'),
-    subclass: resolveSlot(subclassRef, catalogue.subclasses, catalogue.packs, 'Subclass'),
-    background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
+    species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species', 'species', catalogue.legacyAliases),
+    class: resolveSlot(classRef, catalogue.classes, catalogue.packs, 'Class', 'class', catalogue.legacyAliases),
+    subclass: resolveSlot(subclassRef, catalogue.subclasses, catalogue.packs, 'Subclass', 'subclass', catalogue.legacyAliases),
+    background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background', 'background', catalogue.legacyAliases),
     abilityScores,
     rulesChoices,
-    inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs),
+    inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs, catalogue.legacyAliases),
     notes,
     health,
-    spells: resolveSpells(spellcasting?.spells ?? [], catalogue.spells, catalogue.packs),
+    spells: resolveSpells(spellcasting?.spells ?? [], catalogue.spells, catalogue.packs, catalogue.legacyAliases),
     expendedSlots: spellcasting?.expendedSlots ?? {},
     progression,
-    feats: resolveFeats([...acquiredFeatsByKey.values()], catalogue.feats, catalogue.packs),
+    feats: resolveFeats([...acquiredFeatsByKey.values()], catalogue.feats, catalogue.packs, catalogue.legacyAliases),
     resources,
     currency,
     packs: catalogue.packs

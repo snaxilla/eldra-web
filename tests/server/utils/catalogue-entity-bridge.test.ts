@@ -8,9 +8,18 @@
 // raw 5etools payload, not a mocked stand-in for it.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  catalogueEntryToBlocks,
+  getCatalogueBackedEntityRows,
+  getCatalogueBackedEnemyRows
+} from '../../../server/utils/catalogue-entity-bridge'
+import type { WorldContentCatalogue, WorldContentEntry } from '../../../server/utils/world-content-runtime'
+import type { EffectiveEntity } from '../../../server/utils/world-effective-content'
 
-const { resolveWorldContentMock } = vi.hoisted(() => ({
-  resolveWorldContentMock: vi.fn()
+const { resolveWorldContentMock, isEffectiveContentEnabledMock, resolveEffectiveContentMock } = vi.hoisted(() => ({
+  resolveWorldContentMock: vi.fn(),
+  isEffectiveContentEnabledMock: vi.fn(() => false),
+  resolveEffectiveContentMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/world-content-runtime', async () => {
@@ -23,11 +32,10 @@ vi.mock('../../../server/utils/world-content-runtime', async () => {
   }
 })
 
-import {
-  getCatalogueBackedEntityRows,
-  getCatalogueBackedEnemyRows
-} from '../../../server/utils/catalogue-entity-bridge'
-import type { WorldContentCatalogue, WorldContentEntry } from '../../../server/utils/world-content-runtime'
+vi.mock('../../../server/utils/world-effective-content', () => ({
+  isEffectiveContentEnabled: isEffectiveContentEnabledMock,
+  resolveEffectiveContent: resolveEffectiveContentMock
+}))
 
 function entry(overrides: Partial<WorldContentEntry> = {}): WorldContentEntry {
   return {
@@ -66,6 +74,9 @@ function resolved(entries: WorldContentEntry[]): WorldContentCatalogue {
 
 beforeEach(() => {
   resolveWorldContentMock.mockReset()
+  isEffectiveContentEnabledMock.mockReset()
+  isEffectiveContentEnabledMock.mockReturnValue(false)
+  resolveEffectiveContentMock.mockReset()
 })
 
 describe('getCatalogueBackedEntityRows', () => {
@@ -219,5 +230,111 @@ describe('getCatalogueBackedEnemyRows', () => {
     expect(rows).toHaveLength(2)
     const healthy = rows.find((r) => r.slug === 'goblin-mm')!
     expect(healthy.statblock?.armor_class).toBe(15)
+  })
+})
+
+// Content Workspaces & Studio Phase 5/6 (§8.9). Flag off is covered by
+// every test above, unmodified.
+describe('getCatalogueBackedEntityRows -- effective-content path (flag on)', () => {
+  function effectiveEntry(overrides: Record<string, unknown> = {}) {
+    return {
+      systemKey: 'dnd5e', entityType: 'item', title: 'Potion of Healing', slug: 'potion-of-healing-phb',
+      externalId: 'Potion of Healing__PHB', provider: '5etools-json',
+      data: { name: 'Potion of Healing', source: 'PHB', rarity: 'common' },
+      packageId: 'eldra.content.srd-5.1', packageVersion: '1.0.0',
+      presentation: { kind: 'item', name: 'Potion of Healing', description: [], facts: [], sections: [], notes: [] },
+      customization: { customized: false, authoredFields: [] },
+      ...overrides
+    }
+  }
+
+  it('resolves through resolveEffectiveContent, not resolveWorldContent, when the flag is on', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [effectiveEntry()], byEntityType: { item: [effectiveEntry()] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+
+    expect(resolveEffectiveContentMock).toHaveBeenCalledWith('5')
+    expect(resolveWorldContentMock).not.toHaveBeenCalled()
+    expect(rows).toHaveLength(1)
+  })
+
+  it('overlays an authored description onto the synthesized item_core block when the entity is customized', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const customized = effectiveEntry({
+      customization: { customized: true, authoredFields: [{ channel: 'presentation', path: 'description' }] },
+      presentation: { kind: 'item', name: 'Potion of Healing', description: ['An authored description nobody could derive from the raw data.'], facts: [], sections: [], notes: [] }
+    })
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [customized], byEntityType: { item: [customized] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    const itemCore = rows[0]!.blocks.find((b) => b.blockKey === 'item_core')
+
+    expect(itemCore?.data?.description).toBe('An authored description nobody could derive from the raw data.')
+  })
+
+  it('does NOT overlay a description for an entity that was never customized -- avoids a second, possibly divergent recomputation', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const entryFixture = effectiveEntry({ presentation: { kind: 'item', name: 'Potion of Healing', description: ['Would-be presentation text.'], facts: [], sections: [], notes: [] } })
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [entryFixture], byEntityType: { item: [entryFixture] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    const itemCore = rows[0]!.blocks.find((b) => b.blockKey === 'item_core')
+
+    expect(itemCore?.data?.description).not.toBe('Would-be presentation text.')
+  })
+
+  it('never overlays a description for feat -- feat_core has no description field in the legacy shape', () => {
+    const featEntry: WorldContentEntry = { systemKey: 'dnd5e', entityType: 'feat', title: 'Alert', slug: 'alert', externalId: 'x', provider: '5etools-json', data: { name: 'Alert' }, packageId: 'eldra.a', packageVersion: '1.0.0' }
+    const effective: EffectiveEntity = { ...featEntry, presentation: null, customization: { customized: true, authoredFields: [] } }
+    // import_source.imported_at is stamped fresh on every call, so compare
+    // only the feat_core block -- the one DESCRIPTION_BLOCK_BY_ENTITY_TYPE
+    // would have touched, had feat been in that map.
+    const featCoreBefore = catalogueEntryToBlocks('feat', featEntry).find((b) => b.blockKey === 'feat_core')
+    const featCoreAfter = catalogueEntryToBlocks('feat', featEntry, effective).find((b) => b.blockKey === 'feat_core')
+    expect(featCoreAfter).toEqual(featCoreBefore)
+  })
+
+  it('sets effectiveImageOverride to the authored URL when the image field was specifically overridden', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const customized = effectiveEntry({
+      customization: { customized: true, authoredFields: [{ channel: 'presentation', path: 'image' }] },
+      presentation: { kind: 'item', name: 'Potion of Healing', description: [], facts: [], sections: [], notes: [], image: { url: '/api/assets/f1' } }
+    })
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [customized], byEntityType: { item: [customized] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    expect(rows[0]!.effectiveImageOverride).toEqual({ url: '/api/assets/f1' })
+  })
+
+  it('sets effectiveImageOverride to null (explicit suppression) when the image field was overridden to nothing -- never falls back to a source image', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const customized = effectiveEntry({
+      customization: { customized: true, authoredFields: [{ channel: 'presentation', path: 'image' }] },
+      presentation: { kind: 'item', name: 'Potion of Healing', description: [], facts: [], sections: [], notes: [], image: null }
+    })
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [customized], byEntityType: { item: [customized] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    expect(rows[0]!.effectiveImageOverride).toBeNull()
+  })
+
+  it('leaves effectiveImageOverride undefined when the image field was never touched -- the existing fluff/block chain decides, unchanged', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const customized = effectiveEntry({
+      customization: { customized: true, authoredFields: [{ channel: 'presentation', path: 'description' }] }
+    })
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [customized], byEntityType: { item: [customized] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    expect(rows[0]!.effectiveImageOverride).toBeUndefined()
+  })
+
+  it('never sets effectiveImageOverride when the flag is off', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(false)
+    resolveWorldContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [], byEntityType: { item: [{ systemKey: 'dnd5e', entityType: 'item', title: 'X', slug: 'x', externalId: 'x', provider: '5etools-json', data: {}, packageId: 'eldra.a', packageVersion: '1.0.0' }] } })
+
+    const rows = await getCatalogueBackedEntityRows('5', ['item'])
+    expect(rows[0]!.effectiveImageOverride).toBeUndefined()
   })
 })

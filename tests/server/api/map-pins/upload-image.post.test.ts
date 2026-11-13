@@ -111,7 +111,16 @@ describe('POST /api/map-pins/upload-image', () => {
         return { data: { id: 'map-1', world: 6 } }
       }
       if (path === '/files' && options?.method === 'POST') {
-        expect((options.body as FormData).get('world_id')).toBe('6')
+        const form = options.body as FormData
+        expect(form.get('world_id')).toBe('6')
+        // Pass B review follow-up, Item 2: `.get()` is order-independent
+        // and would pass even with the real bug this is guarding against
+        // (Directus silently drops every field appended AFTER `file`).
+        // `entries()` reflects append order, so this actually proves
+        // `file` is LAST.
+        const order = [...form.entries()].map(([key]) => key)
+        expect(order.indexOf('file')).toBe(order.length - 1)
+        expect(order.indexOf('world_id')).toBeLessThan(order.indexOf('file'))
         return { data: { id: 'file-1' } }
       }
       throw new Error(`unexpected call: ${path}`)

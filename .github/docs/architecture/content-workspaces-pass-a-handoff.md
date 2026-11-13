@@ -4,28 +4,32 @@ Durable recovery record for the Pass A implementation (Phases 1–3 of
 [content-workspaces-and-studio.md](content-workspaces-and-studio.md)). A fresh session should be
 able to continue from this file without repeating the investigation.
 
-**Status:** Pass A implementation complete and awaiting commit/push/deployment approval. Verified
-by unit tests, route tests, and a real-database integration run against a disposable instance.
-**Browser acceptance is explicitly pending** — the owner performs it after deployment; see
-"Post-deployment browser acceptance" below. **Nothing committed, pushed, or deployed. No production
-operation of any kind was performed.**
+**Status:** Pass A is committed (4 commits) and, per the owner, deployed with its schema
+provisioned and verified in production. **A deployment-caused authorization defect was found
+afterward** (existing platform administrators never received the three new Content Studio
+capabilities — see "Existing platform administrators need an explicit capability grant" below) and
+is now fixed at the documentation/provisioning level, with regression tests, **awaiting commit
+approval for this increment**. **Browser acceptance of Content Studio itself is still explicitly
+pending** — the owner performs it after applying the grant fix below. **Nothing in this session was
+committed, pushed, deployed, or run against production.**
 
 ## Position
 
 | | |
 | --- | --- |
 | Branch | `main` |
-| HEAD | `eca8783` feat(media): add World-scope backfill tool for pre-existing unowned images |
-| Committed Pass A work | none — everything is working-tree only |
+| HEAD | `cc97882` docs(content): document Pass A, non-destructive rollback, and deferred scope |
+| Committed Pass A work | 4 commits: `5eaee6d` (identity+schema), `db048a9` (storage/import/lineage guard), `60149d2` (Studio UI), `cc97882` (docs) |
+| This increment (authorization fix) | working-tree only, not committed — 2 docs + 3 test files |
 
 ## Baseline measured at the start, and the result now
 
-| Check | Baseline | After Pass A | After cleanup pass |
+| Check | Baseline | After Pass A | After authorization fix |
 | --- | --- | --- | --- |
-| `npx vitest run` | 283 files / **5760** tests | 293 files / **6027** tests, **all passing** | unchanged (no runtime behavior touched in cleanup) |
+| `npx vitest run` | 283 files / **5760** tests | 293 files / **6027** tests, all passing (after the cleanup pass fixed the one new lint finding below) | 294 files / **6040** tests, **all passing** |
 | `npm run typecheck` | **910** diagnostics | **910** — zero new | **910** — unchanged |
-| `npx eslint .` | **5941** problems | 5942 (+1, `admin.vue` `import/first`) | **5941** — fixed, back to baseline exactly |
-| `npm run build` | passed | passed | **passed** (re-run after the `admin.vue` import move) |
+| `npx eslint .` | **5941** problems | **5941** — a transient +1 (`admin.vue` `import/first`) was fixed in the same pass | **5941** — unchanged |
+| `npm run build` | passed | passed | not re-run — no runtime/client code changed this increment, only docs and tests |
 | `git diff --check` | clean | clean | **clean** |
 
 **The one new lint finding — fixed.** `app/pages/worlds/[id]/admin.vue` had gone 49 → 50
@@ -184,11 +188,23 @@ of `content-workspaces-and-studio.md`).
 
 ## Deployment — verified, not merely asserted
 
-Pass A executed nothing against production. Everything below was checked against the actual
-schema-missing error classification (`server/utils/content-workspace-schema.ts`) and the publisher
-guard (`checkLineagePublication` inside `content-package-lineages.ts`), either by reading the code
-path directly or by exercising it with the existing test suite — not inferred from the architecture
-document's own description of itself.
+Pass A executed nothing against production from within this repository/session. Everything below
+was checked against the actual schema-missing error classification
+(`server/utils/content-workspace-schema.ts`) and the publisher guard (`checkLineagePublication`
+inside `content-package-lineages.ts`), either by reading the code path directly or by exercising it
+with the existing test suite — not inferred from the architecture document's own description of
+itself.
+
+**Status as of the authorization-fix session.** The owner has since run steps 3–4 below against
+production directly (`create-content-workspaces-schema.mjs`, `alter-world-content-pack-bindings-
+binding-modes.mjs`, `verify-content-workspaces-schema.mjs`) and reported success: "Bindings not in
+'pinned' mode: 0" / "Content Workspaces schema verified: constraints present, items readable,
+unauthenticated access refused." **Schema provisioning and its verification are therefore done.**
+What surfaced afterward, in the browser, was the capability-grant gap in point **9** below — a
+separate, data-only fix, not a schema problem. The service-token **write**-permission item in point
+**5**/**8** remains the one outstanding prerequisite neither this session nor the owner's schema run
+established (that run only reads/writes schema metadata via an admin-equivalent flow, not item-level
+writes through the application's own `DIRECTUS_TOKEN`).
 
 **1. Behaviour with the new schema absent.** `withWorkspaceSchema` classifies a `403 FORBIDDEN`
 from Directus (confirmed empirically against 11.12.0: this is what a nonexistent collection
@@ -287,14 +303,102 @@ very next script invocation with no restart or manual cache-clear step.
 style cache exists for the workspace modules — every read in `content-workspaces.ts` and
 `content-package-lineages.ts` goes straight to Directus on every call).
 
-**8. Remaining production prerequisites not yet completed.** Exactly one, named above in (5): a
-live confirmation that the production `DIRECTUS_TOKEN` can **write** to `content_workspaces`,
-`content_workspace_entities`, `content_entity_source_snapshots`, `content_entity_revisions`,
-`content_package_lineages` (the two append-only/schema-only collections,
-`content_release_channels` and `content_pack_assets`, are not written by any Pass A code path and
-need only the read/default-deny check above). Nothing else — schema shape, defaults, indexes,
-uniqueness, default-deny, and read access are all independently verified against a real Directus
-11.12.0, not merely asserted from the architecture document.
+**8. Remaining production prerequisites not yet completed.** Two — the service-token write check
+named above in (5), and a **separate, now-confirmed-necessary** signed-in-user capability grant,
+(9) below. Keep these two apart: (5)/this item is about what the **application's own
+`DIRECTUS_TOKEN`** can do to Directus; (9) is about what a **human account's** `eldra_platform_grants`
+rows say Directus/Eldra should let that signed-in person do — entirely different systems, and
+conflating them was not the cause of the incident in (9), but is exactly the distinction that makes
+its cause legible. The service-token item: a live confirmation that the production `DIRECTUS_TOKEN`
+can **write** to `content_workspaces`, `content_workspace_entities`,
+`content_entity_source_snapshots`, `content_entity_revisions`, `content_package_lineages` (the two
+append-only/schema-only collections, `content_release_channels` and `content_pack_assets`, are not
+written by any Pass A code path and need only the read/default-deny check above). Schema shape,
+defaults, indexes, uniqueness, default-deny, and read access are all independently verified against
+a real Directus 11.12.0, not merely asserted from the architecture document.
+
+**9. Existing platform administrators need an explicit capability grant — confirmed by a real
+deployment incident, now fixed operationally (no code change).** Phase 1's capability vocabulary
+grew by three (`platform.contentworkspace.view|create|edit`). Declaring a capability in
+`ALL_PLATFORM_CAPABILITIES` (`server/utils/authorization.ts`) makes every route that checks it
+start requiring it immediately; it grants **nobody** that capability. An account whose
+`eldra_platform_grants` rows were written against the vocabulary *as it stood before this phase*
+holds every capability that existed then and none of these three. Game Admin's own page gate
+(`isAdmin`, `app/composables/useAuth.ts`, checked against `platform.settings.manage` only — a
+different, broader, pre-existing capability) still lets that account in, which is exactly why the
+observed symptom was "the Content Studio shell renders, but its own request fails with `Missing
+capability 'platform.contentworkspace.view'`" rather than being locked out of Game Admin entirely.
+
+Root cause, traced and confirmed, not guessed: `scripts/directus/lib/platform-admin-plan.mjs`'s
+`planPlatformAdminBootstrap` already diffs the **current** `PLATFORM_CAPABILITIES` vocabulary
+against each account's `existingGrants` and plans a `create-grant` write for exactly what's
+missing (confirmed correct by existing tests, and now additionally regression-tested against the
+real, current vocabulary rather than only a synthetic fixture — see Tests below). The planner was
+never wrong. `bootstrap-eldra-platform-admin.mjs` — the only thing that actually calls it against a
+real instance — was simply never re-run for the existing administrator's account after this
+phase's vocabulary grew. This is a genuinely idempotent, already-supported "upgrade" path; nothing
+about it needed to change.
+
+**Every alternative cause was checked directly against the code, not assumed away:**
+
+| Candidate cause | How it was ruled out |
+| --- | --- |
+| Capability-string typo/mismatch | Every `platform.contentworkspace.*` occurrence in the repo greped and compared — all four files (`authorization.ts`, `platform-admin-plan.mjs`, `bootstrap-eldra-platform-admin.mjs`, the thirteen routes) spell all three identically; no stray fifth copy of the vocabulary exists anywhere |
+| A parser/serializer dropping the new names | `resolvePlatformCapabilities` (`authorization.ts`) filters granted strings against `ALL_PLATFORM_CAPABILITIES` itself — the same array already containing the three new ones, no separate hardcoded allowlist; `/api/auth/me.get.ts` returns `listPlatformGrants(account.id)`'s result **completely unfiltered** — there is no server-side serialization step that could drop a name even if one existed |
+| Client-side filtering dropping the new names | `useAuth.ts`'s `hasPlatformCapability` is `platformCapabilities.value.includes(capability)` — a plain array check with no allowlist. **Now executable-tested**, not just read (`tests/composables/useAuth.test.ts`): a state array containing the three new capabilities is correctly recognized, one genuinely missing them is correctly denied, and `isAdmin` is confirmed to check only `platform.settings.manage`, independent of the Content Studio ones — reproducing the exact "shell renders, request 403s" symptom in a unit test |
+| Server-side caching of grants | `listPlatformGrants` (`server/utils/eldra-accounts.ts`) is a fresh Directus `GET` on every call — no memoization, no TTL |
+| Stale client session state | Real, but secondary — see the session-refresh note below; it explains why a browser tab open *before* a grant is applied won't see it without a reload, never why the grant itself would be missing |
+| Account misclassification | Identity is resolved by `(provider, provider_subject)` only (`resolveAccountForIdentity`) — unaffected by, and with no code path connecting it to, the capability vocabulary |
+| World ownership implying platform rights | Never true in this codebase — `can()`'s world branch and platform branch are fully independent; §21/`WORLD_ROLE_CAPABILITIES` never populates a `PlatformCapability`. Explicitly regression-tested (see Tests below): a principal holding every World capability there is, or just `platform.settings.manage`, still has none of the three Content Studio ones |
+
+**Exact operator command** (idempotent; safe to run even if some grants already exist — it reports
+them as already-satisfied and writes nothing for them):
+
+```
+# 1. Find the existing administrator's Directus user id (read-only; already the script's own
+#    documented workflow, nothing new):
+node scripts/directus/bootstrap-eldra-platform-admin.mjs --list-users
+
+# 2. Preview the plan (no writes) -- confirms it proposes exactly the three new grants and
+#    nothing else (no new Account, no membership change) for that id:
+node scripts/directus/bootstrap-eldra-platform-admin.mjs --directus-user-id=<the id from step 1>
+
+# 3. Apply it:
+node scripts/directus/bootstrap-eldra-platform-admin.mjs --directus-user-id=<the id from step 1> --apply
+```
+
+Repeat step 3 (naming each one's id) for every account that was already a platform administrator
+before this phase. A brand-new administrator provisioned *after* this phase is unaffected — they
+receive the full current vocabulary, including these three, on their first bootstrap.
+
+**Is redeployment or a session refresh needed?** **No redeployment** — this is a data write
+(`eldra_platform_grants` rows), not a code or schema change; the application code enforcing these
+capabilities is already live. **A session refresh is needed for the browser tab that was already
+open and signed in before the grant was applied**, and here is precisely why: `GET /api/auth/me`
+(`server/api/auth/me.get.ts`) recomputes `platformCapabilities` fresh from the database on every
+call — there is no server-side staleness to clear. The staleness is entirely client-side:
+`app/middleware/admin.ts` only calls `fetchMe()` when `state.value.ready` is false, and Nuxt's
+`useState('eldra-auth', …)` keeps `ready: true` across client-side navigation within an
+already-loaded session, so a tab that loaded *before* the grant was applied keeps its old,
+in-memory capability list until something resets `ready` to false. **A full page reload (not a
+click within the already-loaded app) is sufficient** — a cold request starts `ready` at `false`
+again, which re-runs `fetchMe()` and picks up the new grant immediately. Signing out and back in
+also works (the same reason), but is not required.
+
+**Tests added for this incident** (all passing; see Verification at the end of this document):
+
+| Boundary | Where |
+| --- | --- |
+| Existing administrator receives exactly the missing capabilities; nothing else moves | `tests/scripts/platform-admin-plan.test.ts` — real-vocabulary upgrade path, 4 tests |
+| A brand-new administrator receives the full current vocabulary in one pass | same file |
+| Idempotent against the real vocabulary (re-run plans nothing once granted) | same file |
+| `grant_key` is scoped to the resolved account only — never a different one | same file |
+| World-only administrator (every World capability, zero platform grants) denied | `tests/server/utils/authorization.test.ts` |
+| Ordinary player denied | same file |
+| Holding `platform.settings.manage` does not also grant the three Content Studio capabilities | same file — the exact gap this incident reports |
+| Granting exactly the three resolves it | same file |
+| Authorized Studio request still requires access to the specific requested World | `tests/server/api/content/content-workspace-routes.test.ts` (pre-existing, re-confirmed passing, unmodified) |
+| Client capability check (`hasPlatformCapability`) recognizes/denies correctly; `isAdmin` is independent of the Content Studio capabilities; state is shared across calls, never reset implicitly | `tests/composables/useAuth.test.ts` — new, since no test for this composable existed at all |
 
 **Rollback — non-destructive by default.** See
 [content-workspaces-and-studio.md §18.2](content-workspaces-and-studio.md#182-rollback-discipline-once-a-deployment-holds-real-data-added-in-review)

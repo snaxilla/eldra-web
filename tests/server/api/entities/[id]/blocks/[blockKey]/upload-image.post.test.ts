@@ -71,7 +71,17 @@ describe('POST /api/entities/:id/blocks/:blockKey/upload-image', () => {
       if (path === '/items/entities/5') return { data: { id: 5, world_id: 6 } }
       if (path === '/items/block_instances') return { data: [{ id: 'block-1', data: {} }] }
       if (path === '/files' && options?.method === 'POST') {
-        expect((options.body as FormData).get('world_id')).toBe('6')
+        const form = options.body as FormData
+        expect(form.get('world_id')).toBe('6')
+        // Pass B review follow-up, Item 2: `.get()` is order-independent
+        // and would pass even with the real bug this is guarding against
+        // (Directus silently drops every field appended AFTER `file`).
+        // `entries()` reflects append order, so this actually proves
+        // `file` is LAST.
+        const order = [...form.entries()].map(([key]) => key)
+        expect(order.indexOf('file')).toBe(order.length - 1)
+        expect(order.indexOf('world_id')).toBeLessThan(order.indexOf('file'))
+        expect(order.indexOf('title')).toBeLessThan(order.indexOf('file'))
         return { data: { id: 'file-1' } }
       }
       if (path === '/items/block_instances/block-1') return { data: {} }

@@ -129,23 +129,32 @@ export async function listMaps(worldId: string) {
 }
 
 // `worldId` stamps `directus_files.world_id` in the SAME multipart create
-// request as the file itself (Directus applies any other form field
-// alongside `file` to the created item) -- media ownership policy
-// follow-up. Optional, and never defaulted by this shared helper itself:
+// request as the file itself -- media ownership policy follow-up. Appended
+// BEFORE `file` in the form (see the field-order note inside the function
+// body: Directus ignores any field placed after `file`). Optional, and
+// never defaulted by this shared helper itself:
 // the one caller (maps/upload.post.ts) always has an already-authorized
 // World in scope and passes it explicitly, so this function never invents
 // or guesses an owner.
 export async function uploadFile(buffer: Buffer, filename: string, mime: string, worldId?: string | number) {
   const form = new FormData()
 
+  // FIELD ORDER IS LOAD-BEARING. Pass B review follow-up, Item 2's
+  // multipart audit: Directus's own multipart file handler ignores every
+  // form field placed AFTER `file` (confirmed empirically against a live
+  // Directus 11.12.0, with BOTH the web `FormData` used elsewhere in this
+  // codebase and this file's own `form-data` package -- the behavior is
+  // Directus's own multipart parser, not specific to either client
+  // library). `file` must be appended LAST, or `world_id` is silently
+  // dropped regardless of the value passed here.
+  if (worldId !== undefined && worldId !== null && String(worldId).trim()) {
+    form.append('world_id', String(worldId))
+  }
+
   form.append('file', buffer, {
     filename,
     contentType: mime || 'application/octet-stream'
   })
-
-  if (worldId !== undefined && worldId !== null && String(worldId).trim()) {
-    form.append('world_id', String(worldId))
-  }
 
   const contentLength = await getFormLength(form)
 

@@ -61,7 +61,16 @@ beforeEach(() => {
 describe('POST /api/worlds/:id/presentation/upload-background', () => {
   it('stamps world_id in the SAME multipart request as the file', async () => {
     fetchMock.mockImplementationOnce(async (_url: string, init: { body?: unknown }) => {
-      expect((init.body as FormData).get('world_id')).toBe('6')
+      const form = init.body as FormData
+      expect(form.get('world_id')).toBe('6')
+      // Pass B review follow-up, Item 2: `.get()` is order-independent
+      // and would pass even with the real bug this is guarding against
+      // (Directus silently drops every field appended AFTER `file`).
+      // `entries()` reflects append order, so this actually proves
+      // `file` is LAST.
+      const order = [...form.entries()].map(([key]) => key)
+      expect(order.indexOf('file')).toBe(order.length - 1)
+      expect(order.indexOf('world_id')).toBeLessThan(order.indexOf('file'))
       return { ok: true, status: 200, text: async () => JSON.stringify({ data: { id: 'bg-1' } }) }
     })
 

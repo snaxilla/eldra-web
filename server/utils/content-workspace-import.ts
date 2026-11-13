@@ -59,9 +59,9 @@ import { describeDirectusError, isDirectusUniqueViolation, withWorkspaceSchema }
 import {
   CONTENT_ENTITY_SOURCE_SNAPSHOTS_COLLECTION,
   CONTENT_WORKSPACE_ENTITIES_COLLECTION,
-  listWorkspaceEntityIdentities,
-  touchContentWorkspace
+  listWorkspaceEntityIdentities
 } from './content-workspaces'
+import { touchWorkspaceRevisionAtomic } from './content-workspace-entity-atomic'
 
 const MAX_BATCH_ROWS = 25
 const MAX_BATCH_BYTES = 600_000
@@ -509,7 +509,43 @@ export async function importIntoWorkspace(input: {
       await writeAdditions(context, plan)
       await writePendingReviews(context, plan)
     })
-    if (progress.entitiesCreated > 0) await touchContentWorkspace(workspace.id)
+    // Bumps content_workspaces.revision atomically -- the SAME cache
+    // witness world-content-sources.ts's loadWorkspaceAsSource checks, so
+    // a live-bound World sees newly imported entities on its next request
+    // rather than a stale cached materialization.
+    //
+    // UNCONDITIONAL, DELIBERATELY -- this used to run only when
+    // `progress.entitiesCreated > 0`. The entity/snapshot writes above and
+    // this touch are NOT one transaction (this module's own header already
+    // says so: the REST API has no cross-collection transaction), so a
+    // process that writes the entities above and then fails or crashes
+    // before this line leaves a workspace whose entities are durably
+    // persisted but whose cache-witness revision was never bumped. The old
+    // gate made that unrecoverable: a RETRY of the exact same import plans
+    // against those now-already-present entities, so `planWorkspaceImport`
+    // classifies them as `unchanged`, `entitiesCreated` is 0 on the retry,
+    // and the gate above would skip the touch a second time -- the cache
+    // stays stale forever, even though the retry is reported as a
+    // successful, complete import. Touching unconditionally on every
+    // successful (non-dry-run) call closes that gap: a true no-op re-import
+    // bumps the revision one extra, harmless time (over-invalidating a
+    // cache is always safe; under-invalidating is not), and a retry that
+    // repairs a stale witness left behind by a prior partial failure now
+    // actually repairs it.
+    // THE FAILURE ITSELF MUST SURFACE, NOT JUST THE ATTEMPT.
+    // `touchWorkspaceRevisionAtomic` used to swallow a persistence failure
+    // internally (console.error only, `void` return) -- a caller could not
+    // observe it, so this import always returned `ok: true` even when the
+    // cache witness was never actually bumped. It now returns a result; a
+    // failure here is thrown (caught by this function's own catch, just
+    // below) specifically so this call is reported as incomplete/retry-safe
+    // rather than a false success, per the review's own required guarantee
+    // ("if rows persist but the revision bump fails, the operation must
+    // not report complete success").
+    const touched = await touchWorkspaceRevisionAtomic(workspace.id)
+    if (!touched.ok) {
+      throw new Error(`The workspace cache witness could not be updated after the import: ${touched.message}`)
+    }
   } catch (error) {
     if (error instanceof Error && error.name === 'ContentWorkspaceSchemaError') throw error
     return {

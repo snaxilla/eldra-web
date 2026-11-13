@@ -86,6 +86,12 @@ import { resolveFeatMechanics, type CanonicalFeatMechanics } from '../../app/lib
 import { resolveItemAttunementRequired, resolveItemMechanics, type CanonicalItemMechanics } from '../../app/lib/item-mechanics'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
+// Content Workspaces & Studio Phase 5/6 (content-workspaces-and-studio.md
+// §8.9 -- "the effective-content boundary"). Behind ELDRA_EFFECTIVE_CONTENT,
+// default off: see getWorldContentCatalogue's own header for exactly what
+// changes, and the no-op theorem (world-effective-content.ts) for why
+// flag-off behavior is provably unchanged.
+import { isEffectiveContentEnabled, resolveEffectiveContent, type EffectiveLegacyAlias } from './world-effective-content'
 
 // ---------------------------------------------------------------------------
 // The catalogue entry shape -- identity + provenance only. See design
@@ -207,6 +213,13 @@ export type FeatureOptionCatalogueEntry = ContentCatalogueEntry
 
 export type WorldGameplayCatalogue = {
   worldId: string
+  // Unchanged type even for the effective-content path: a live workspace
+  // source that cannot be found reports through
+  // WorldContentPackResolution's own existing 'not-found' failure stage
+  // (world-effective-content.ts's WorkspaceSourceResolution header
+  // explains why this is reused rather than a parallel union member --
+  // introducing one here previously widened this field enough to degrade
+  // unrelated components' $fetch/useFetch type inference project-wide).
   packs: WorldContentPackResolution[]
   species: SpeciesCatalogueEntry[]
   classes: ClassCatalogueEntry[]
@@ -224,6 +237,15 @@ export type WorldGameplayCatalogue = {
   // extension 'subclasses' already was -- see design decision 2's own
   // "closed, not speculative" posture.
   featureOptions: FeatureOptionCatalogueEntry[]
+  // Content Workspaces & Studio Phase 5/6 (§15.3 -- the character
+  // reference "rename fix," generalized to shadowing). Populated ONLY on
+  // the effective-content path, and only with real redirects (empty
+  // object otherwise -- see EffectiveCatalogue.legacyAliases's own note).
+  // `undefined` on the flag-off path: character-assembly.ts's resolveSlot
+  // treats "no map" and "empty map" identically (no redirect consulted),
+  // so this is a pure addition, never a behavior change for a caller that
+  // does not pass it through.
+  legacyAliases?: Record<string, EffectiveLegacyAlias>
 }
 
 // The exact, closed entityType -> catalogue-collection mapping -- see
@@ -231,7 +253,7 @@ export type WorldGameplayCatalogue = {
 // preview5eTools* functions already write (verified directly against each:
 // 'species', 'class', 'background', 'feat', 'item', 'spell', 'enemy',
 // and -- Character Progression Phase 1C -- 'subclass').
-type CatalogueCategory = keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs'>
+type CatalogueCategory = keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs' | 'legacyAliases'>
 
 const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
   species: 'species',
@@ -291,7 +313,16 @@ const ACTION_CATEGORY_BY_CATALOGUE_CATEGORY: Partial<Record<CatalogueCategory, C
   spells: 'spell'
 }
 
-function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory): ContentCatalogueEntry {
+// `precomputedPresentation` is `undefined` on the legacy (flag-off) path
+// -- compute as always -- and otherwise an EffectiveEntity's own
+// `presentation` (possibly itself `null`, a legitimate "unpresentable"
+// result that must NOT trigger recomputation). §8.9: "uses entry.presentation
+// when present instead of recomputing it."
+function toCatalogueEntry(
+  entry: WorldContentEntry,
+  category: CatalogueCategory,
+  precomputedPresentation?: PresentationEntry | null
+): ContentCatalogueEntry {
   const base: ContentCatalogueEntry = {
     packageId: entry.packageId,
     packageVersion: entry.packageVersion,
@@ -315,16 +346,20 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
 
   const kind = PRESENTATION_KIND_BY_CATEGORY[category]
   if (kind) {
-    // `data` is read here and NOWHERE else in this module -- and it is
-    // handed straight to the resolver rather than inspected. One malformed
-    // entry must never take down a World's whole catalogue, so a throwing
-    // resolver degrades this entry to `presentation: null` and leaves the
-    // other 37 intact. Same "absence is legal, and must stay visible"
-    // posture design decision 3 applies to a broken pack binding.
-    try {
-      base.presentation = resolveContentPresentation(entry.systemKey, kind, entry.data)
-    } catch {
-      base.presentation = null
+    if (precomputedPresentation !== undefined) {
+      base.presentation = precomputedPresentation
+    } else {
+      // `data` is read here and NOWHERE else in this module -- and it is
+      // handed straight to the resolver rather than inspected. One malformed
+      // entry must never take down a World's whole catalogue, so a throwing
+      // resolver degrades this entry to `presentation: null` and leaves the
+      // other 37 intact. Same "absence is legal, and must stay visible"
+      // posture design decision 3 applies to a broken pack binding.
+      try {
+        base.presentation = resolveContentPresentation(entry.systemKey, kind, entry.data)
+      } catch {
+        base.presentation = null
+      }
     }
   }
 
@@ -414,18 +449,22 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
   return base
 }
 
-// The canonical entry point for this consumer layer. Composes
-// resolveWorldContent (Content Resolution Phase 1) and nothing else --
-// this function performs no I/O of its own. A World with zero bindings, or
-// whose bound packs contain none of the six known categories, resolves to
-// a catalogue with every collection empty, never an error -- the same
-// "absence is legal" posture resolveWorldContent already established.
+// The canonical entry point for this consumer layer. Flag off (default):
+// composes resolveWorldContent and nothing else, UNCHANGED from before
+// Phase 5 -- this is the no-op theorem's own guarantee, carried up to
+// this layer. Flag on: composes resolveEffectiveContent instead (§8.9 --
+// "both the gameplay catalogue and the admin bridge consume
+// EffectiveCatalogue; neither reads content_packs.content directly
+// again"), and uses each EffectiveEntity's own already-resolved
+// `presentation` instead of recomputing it from `data` -- the ONE
+// behavioral difference §8.9 names explicitly. Every other field
+// (actions/spellMechanics/featMechanics/itemMechanics/attunementRequired)
+// is still computed from `data` exactly as before, because Phase 5/6 add
+// no mechanics materialization step (that is Phase 7).
 export async function getWorldContentCatalogue(worldId: string | number): Promise<WorldGameplayCatalogue> {
-  const resolved = await resolveWorldContent(worldId)
-
   const catalogue: WorldGameplayCatalogue = {
-    worldId: resolved.worldId,
-    packs: resolved.packs,
+    worldId: String(worldId),
+    packs: [],
     species: [],
     classes: [],
     backgrounds: [],
@@ -436,6 +475,23 @@ export async function getWorldContentCatalogue(worldId: string | number): Promis
     subclasses: [],
     featureOptions: []
   }
+
+  if (isEffectiveContentEnabled()) {
+    const effective = await resolveEffectiveContent(worldId)
+    catalogue.packs = effective.packs
+    if (Object.keys(effective.legacyAliases).length) catalogue.legacyAliases = effective.legacyAliases
+
+    for (const entry of effective.entries) {
+      const category = ENTITY_TYPE_TO_CATEGORY[entry.entityType]
+      if (!category) continue
+      catalogue[category].push(toCatalogueEntry(entry, category, entry.presentation))
+    }
+
+    return catalogue
+  }
+
+  const resolved = await resolveWorldContent(worldId)
+  catalogue.packs = resolved.packs
 
   for (const entry of resolved.entries) {
     const category = ENTITY_TYPE_TO_CATEGORY[entry.entityType]

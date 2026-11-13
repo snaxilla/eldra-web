@@ -30,7 +30,8 @@ const SCRIPTS = [
   'create-character-ownership-schema.mjs',
   'create-media-world-scope-schema.mjs',
   'create-content-workspaces-schema.mjs',
-  'alter-world-content-pack-bindings-binding-modes.mjs'
+  'alter-world-content-pack-bindings-binding-modes.mjs',
+  'alter-content-workspaces-revision-counters.mjs'
 ]
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url))

@@ -15,6 +15,10 @@ import {
   validateWorkspacePatch,
   validateContentEntityIdParam,
   validatePackageIdParam,
+  validateCheckpointRequest,
+  validatePresentationPatchRequest,
+  validatePresentationPathParam,
+  validateRevertRequest,
   isWorkspaceId,
   WORKSPACE_PAGE_MAX_LIMIT
 } from '../../../app/lib/content-workspaces/validation'
@@ -155,5 +159,71 @@ describe('param validators', () => {
   it('accepts only a uuid workspace id', () => {
     expect(isWorkspaceId('3f1451cb-fa22-4559-badc-f36e85a7af64')).toBe(true)
     expect(isWorkspaceId('not-a-uuid')).toBe(false)
+  })
+})
+
+describe('validatePresentationPatchRequest', () => {
+  it('accepts a well-formed single edit', () => {
+    const result = validatePresentationPatchRequest({ expectedRevision: 0, edits: [{ path: 'name', value: 'Fine Shortsword' }] })
+    expect(result).toEqual({ ok: true, value: { expectedRevision: 0, edits: [{ path: 'name', value: 'Fine Shortsword' }] } })
+  })
+
+  it('accepts several distinct edits in one request', () => {
+    const result = validatePresentationPatchRequest({ expectedRevision: 2, edits: [{ path: 'name', value: 'X' }, { path: 'image', value: null }] })
+    expect(result.ok).toBe(true)
+  })
+
+  it('requires expectedRevision as a non-negative whole number', () => {
+    expect(validatePresentationPatchRequest({ edits: [{ path: 'name', value: 'X' }] }).ok).toBe(false)
+    expect(validatePresentationPatchRequest({ expectedRevision: -1, edits: [{ path: 'name', value: 'X' }] }).ok).toBe(false)
+    expect(validatePresentationPatchRequest({ expectedRevision: 1.5, edits: [{ path: 'name', value: 'X' }] }).ok).toBe(false)
+  })
+
+  it('requires a non-empty edits array', () => {
+    expect(validatePresentationPatchRequest({ expectedRevision: 0, edits: [] }).ok).toBe(false)
+    expect(validatePresentationPatchRequest({ expectedRevision: 0 }).ok).toBe(false)
+  })
+
+  it('refuses a path outside the presentation allowlist -- the protected-field guarantee, enforced before any write', () => {
+    const result = validatePresentationPatchRequest({ expectedRevision: 0, edits: [{ path: 'data', value: 'x' }] })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.problems[0]).toMatch(/not an editable presentation field/)
+  })
+
+  it('refuses a duplicate path within the same request', () => {
+    const result = validatePresentationPatchRequest({ expectedRevision: 0, edits: [{ path: 'name', value: 'A' }, { path: 'name', value: 'B' }] })
+    expect(result.ok).toBe(false)
+  })
+
+  it('caps the number of edits accepted per request', () => {
+    const edits = Array.from({ length: 21 }, (_, i) => ({ path: 'name', value: String(i) }))
+    // Duplicates would also fail, but the point here is the bound itself.
+    const result = validatePresentationPatchRequest({ expectedRevision: 0, edits: [{ path: 'name', value: 'x' }, ...edits.slice(1)] })
+    expect(result.ok).toBe(false)
+  })
+})
+
+describe('validateRevertRequest / validatePresentationPathParam', () => {
+  it('validateRevertRequest accepts a well-formed expectedRevision', () => {
+    expect(validateRevertRequest({ expectedRevision: 0 })).toEqual({ ok: true, value: { expectedRevision: 0 } })
+    expect(validateRevertRequest({}).ok).toBe(false)
+    expect(validateRevertRequest({ expectedRevision: -1 }).ok).toBe(false)
+  })
+
+  it('validatePresentationPathParam accepts only an editable presentation field', () => {
+    expect(validatePresentationPathParam('name').ok).toBe(true)
+    expect(validatePresentationPathParam('data').ok).toBe(false)
+    expect(validatePresentationPathParam('__proto__').ok).toBe(false)
+  })
+})
+
+describe('validateCheckpointRequest', () => {
+  it('accepts a well-formed label', () => {
+    expect(validateCheckpointRequest({ label: 'Before the big revision' })).toEqual({ ok: true, value: { label: 'Before the big revision' } })
+  })
+
+  it('requires a non-empty label', () => {
+    expect(validateCheckpointRequest({ label: '' }).ok).toBe(false)
+    expect(validateCheckpointRequest({}).ok).toBe(false)
   })
 })

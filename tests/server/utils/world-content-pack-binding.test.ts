@@ -11,12 +11,20 @@ const {
   loadPublishedContentPackMock,
   findContentPackBindingMock,
   saveContentPackBindingMock,
-  removeContentPackBindingMock
+  removeContentPackBindingMock,
+  saveWorkspaceBindingMock,
+  removeWorkspaceBindingMock,
+  getContentWorkspaceMock,
+  isEffectiveContentEnabledMock
 } = vi.hoisted(() => ({
   loadPublishedContentPackMock: vi.fn(),
   findContentPackBindingMock: vi.fn(),
   saveContentPackBindingMock: vi.fn(),
-  removeContentPackBindingMock: vi.fn()
+  removeContentPackBindingMock: vi.fn(),
+  saveWorkspaceBindingMock: vi.fn(),
+  removeWorkspaceBindingMock: vi.fn(),
+  getContentWorkspaceMock: vi.fn(),
+  isEffectiveContentEnabledMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/content-packs', () => ({
@@ -26,10 +34,20 @@ vi.mock('../../../server/utils/content-packs', () => ({
 vi.mock('../../../server/utils/world-content-packs', () => ({
   findContentPackBinding: findContentPackBindingMock,
   saveContentPackBinding: saveContentPackBindingMock,
-  removeContentPackBinding: removeContentPackBindingMock
+  removeContentPackBinding: removeContentPackBindingMock,
+  saveWorkspaceBinding: saveWorkspaceBindingMock,
+  removeWorkspaceBinding: removeWorkspaceBindingMock
 }))
 
-import { bindContentPackToWorld, unbindContentPackFromWorld } from '../../../server/utils/world-content-pack-binding'
+vi.mock('../../../server/utils/content-workspaces', () => ({ getContentWorkspace: getContentWorkspaceMock }))
+vi.mock('../../../server/utils/world-effective-content', () => ({ isEffectiveContentEnabled: isEffectiveContentEnabledMock }))
+
+import {
+  bindContentPackToWorld,
+  bindWorkspaceLiveToWorld,
+  unbindContentPackFromWorld,
+  unbindWorkspaceFromWorld
+} from '../../../server/utils/world-content-pack-binding'
 import type { WorldContentPackBindingRecord } from '../../../server/utils/world-content-packs'
 
 function publishedPackResult(overrides: { packageId?: string; version?: string; integrityHash?: string } = {}) {
@@ -93,6 +111,10 @@ beforeEach(() => {
   findContentPackBindingMock.mockReset()
   saveContentPackBindingMock.mockReset()
   removeContentPackBindingMock.mockReset()
+  saveWorkspaceBindingMock.mockReset()
+  removeWorkspaceBindingMock.mockReset()
+  getContentWorkspaceMock.mockReset()
+  isEffectiveContentEnabledMock.mockReset()
 })
 
 describe('bindContentPackToWorld -- bind a published pack', () => {
@@ -258,5 +280,57 @@ describe('unbindContentPackFromWorld', () => {
     expect(result.unbound).toBe(false)
     if (result.unbound) throw new Error('expected not-bound')
     expect(result.stage).toBe('not-bound')
+  })
+})
+
+// Content Workspaces & Studio Phase 6.
+describe('bindWorkspaceLiveToWorld', () => {
+  it('refuses to bind while the effective resolver is disabled -- Phase 6 requires Phase 5 already enabled', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(false)
+
+    const result = await bindWorkspaceLiveToWorld(4, 'w1')
+
+    expect(result).toEqual({ bound: false, stage: 'resolver-disabled' })
+    expect(getContentWorkspaceMock).not.toHaveBeenCalled()
+    expect(saveWorkspaceBindingMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to bind a workspace that does not exist, writing nothing', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    getContentWorkspaceMock.mockResolvedValue(null)
+
+    const result = await bindWorkspaceLiveToWorld(4, 'w1')
+
+    expect(result).toEqual({ bound: false, stage: 'workspace-not-found' })
+    expect(saveWorkspaceBindingMock).not.toHaveBeenCalled()
+  })
+
+  it('binds when the resolver is enabled and the workspace exists', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    getContentWorkspaceMock.mockResolvedValue({ id: 'w1', title: 'Solaris Curated' })
+    const binding = { id: 'b1', worldId: '4', packageId: 'workspace.w1', packageVersion: 'live', packageIntegrity: null, bindingMode: 'workspace', channel: null, workspaceId: 'w1', priority: null, createdAt: null, updatedAt: null }
+    saveWorkspaceBindingMock.mockResolvedValue(binding)
+
+    const result = await bindWorkspaceLiveToWorld(4, 'w1')
+
+    expect(result).toEqual({ bound: true, binding })
+    expect(saveWorkspaceBindingMock).toHaveBeenCalledWith(4, 'w1')
+  })
+})
+
+describe('unbindWorkspaceFromWorld', () => {
+  it('always works, even with the resolver flag off -- unbinding is the rollback path, never gated behind the flag', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(false)
+    removeWorkspaceBindingMock.mockResolvedValue(true)
+
+    const result = await unbindWorkspaceFromWorld(4, 'w1')
+
+    expect(result).toEqual({ unbound: true })
+    expect(isEffectiveContentEnabledMock).not.toHaveBeenCalled()
+  })
+
+  it('reports unbound:false when no such binding existed', async () => {
+    removeWorkspaceBindingMock.mockResolvedValue(false)
+    expect(await unbindWorkspaceFromWorld(4, 'w1')).toEqual({ unbound: false, stage: 'not-bound' })
   })
 })

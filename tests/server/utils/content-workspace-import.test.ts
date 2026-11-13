@@ -24,9 +24,9 @@ vi.mock('../../../server/utils/content-packs', () => ({ loadPublishedContentPack
 vi.mock('../../../server/utils/content-workspaces', () => ({
   CONTENT_WORKSPACE_ENTITIES_COLLECTION: 'content_workspace_entities',
   CONTENT_ENTITY_SOURCE_SNAPSHOTS_COLLECTION: 'content_entity_source_snapshots',
-  listWorkspaceEntityIdentities: listIdentitiesMock,
-  touchContentWorkspace: touchWorkspaceMock
+  listWorkspaceEntityIdentities: listIdentitiesMock
 }))
+vi.mock('../../../server/utils/content-workspace-entity-atomic', () => ({ touchWorkspaceRevisionAtomic: touchWorkspaceMock }))
 
 const WORKSPACE_ID = 'a1111111-1111-4111-8111-111111111111'
 const PACKAGE_ID = 'eldra.solaris.xphb'
@@ -132,7 +132,7 @@ beforeEach(() => {
   directusServiceRequestMock.mockReset()
   loadPublishedContentPackMock.mockReset()
   listIdentitiesMock.mockReset().mockResolvedValue([])
-  touchWorkspaceMock.mockReset().mockResolvedValue(undefined)
+  touchWorkspaceMock.mockReset().mockResolvedValue({ ok: true })
 })
 
 describe('dry run', () => {
@@ -293,7 +293,13 @@ describe('repeated import', () => {
     const outcome = await runImport()
 
     expect(writes).toHaveLength(0)
-    expect(touchWorkspaceMock).not.toHaveBeenCalled()
+    // Called unconditionally now (Pass B review follow-up, Item 3) --
+    // see content-workspace-import.ts's own header on the touch call:
+    // gating it on `entitiesCreated > 0` made a stale cache witness left
+    // by a PRIOR partial failure unrecoverable, because a retry's own
+    // entities classify as `unchanged` too. The extra touch on a true
+    // no-op re-import is harmless (over-invalidating a cache is safe).
+    expect(touchWorkspaceMock).toHaveBeenCalledTimes(1)
     if (!outcome.ok) return
     expect(outcome.report.counts).toMatchObject({ unchanged: 1, added: 0, changedNeedsReview: 0 })
   })
@@ -392,6 +398,72 @@ describe('partial failure', () => {
     expect(outcome).toMatchObject({ ok: false, stage: 'conflict', retrySafe: true })
     if (outcome.ok) return
     expect(outcome.message).toMatch(/Nothing was overwritten/i)
+  })
+})
+
+// Pass B review follow-up, Item 3: the entity/snapshot writes and the
+// cache-witness revision touch are NOT one transaction (this module's own
+// header says so -- the REST API has no cross-collection transaction), so
+// this proves the specific failure mode the review named: an entity write
+// that durably succeeds, followed by a revision-touch failure, must not be
+// reported as success, and a RETRY (whose entities now classify as
+// `unchanged`) must still repair the witness. The mocked
+// `touchWorkspaceMock` failure/success sequence is the failure INJECTION;
+// the "unchanged on retry" shape is real planner behavior
+// (`planWorkspaceImport`), not mocked.
+describe('cache witness repair on retry (Item 3)', () => {
+  it('a revision-touch failure after a successful entity write is reported as failure, not success', async () => {
+    const entry = candidate()
+    servePack([entry])
+    recordWrites()
+    // touchWorkspaceRevisionAtomic no longer throws on failure -- it
+    // RETURNS a discriminated failure, which content-workspace-import.ts
+    // is responsible for turning into a thrown (caught) error.
+    touchWorkspaceMock.mockResolvedValueOnce({ ok: false, reason: 'persistence-failure', message: 'connection reset' })
+
+    const outcome = await runImport()
+
+    expect(touchWorkspaceMock).toHaveBeenCalledTimes(1)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.stage).toBe('write-failed')
+    expect(outcome.retrySafe).toBe(true)
+    expect(outcome.message).toMatch(/cache witness/i)
+    expect(outcome.message).toMatch(/connection reset/)
+    // The entity row really did land before the touch failed.
+    expect(outcome.progress.entitiesCreated).toBe(1)
+  })
+
+  it('a retry repairs the witness even though the entity now classifies as unchanged, with no duplicate write', async () => {
+    const entry = candidate()
+    servePack([entry])
+
+    // Simulates the state LEFT BEHIND by the failure above: the entity
+    // (and its snapshot) are already durably present from the first,
+    // reported-as-failed attempt.
+    listIdentitiesMock.mockResolvedValue([{
+      contentEntityId: 'ce_abcdefghijklmnopqrstuvwxyz',
+      systemKey: 'dnd5e', entityType: 'item', slug: 'shortsword-xphb', title: 'Shortsword',
+      sourceKey: sourceEntryKey({ kind: 'release', packageId: PACKAGE_ID }, 'dnd5e', 'item', 'shortsword-xphb'),
+      baseDataHash: hashBaseData(entry)
+    }])
+    const writes = recordWrites()
+    touchWorkspaceMock.mockResolvedValueOnce({ ok: true }) // the retry's own touch SUCCEEDS this time
+
+    const outcome = await runImport()
+
+    // No duplicate entity/snapshot write, and no authored data touched --
+    // the retry plans this entity as `unchanged`, exactly like the
+    // 'repeated import' test above.
+    expect(writes).toHaveLength(0)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.progress.entitiesCreated).toBe(0)
+    expect(outcome.report.counts).toMatchObject({ unchanged: 1, added: 0 })
+    // The witness is repaired BECAUSE the touch still runs even though
+    // nothing new was written this call -- this is the exact guarantee
+    // the unconditional touch exists for.
+    expect(touchWorkspaceMock).toHaveBeenCalledTimes(1)
   })
 })
 

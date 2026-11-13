@@ -34,6 +34,11 @@ describe('uploadFile', () => {
     const body = form.getBuffer().toString('utf8')
     expect(body).toMatch(/name="world_id"\r\n\r\n6/)
     expect(body).toMatch(/name="file"; filename="map\.png"/)
+    // Pass B review follow-up, Item 2: the real bug this guards against
+    // is Directus silently dropping every field placed AFTER `file` in
+    // the raw multipart body -- so this asserts the actual byte POSITION
+    // of each part, not merely that both substrings appear somewhere.
+    expect(body.indexOf('name="world_id"')).toBeLessThan(body.indexOf('name="file"'))
   })
 
   it('omits world_id entirely when no worldId is supplied -- never defaults an owner', async () => {

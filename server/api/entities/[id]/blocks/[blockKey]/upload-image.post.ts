@@ -97,9 +97,15 @@ export default defineEventHandler(async (event) => {
   // multipart create request as the file, stamped from the entity's own
   // already-verified owning World (resolved above), never from
   // client-supplied metadata.
-  form.append('file', blob, filename)
+  //
+  // FIELD ORDER IS LOAD-BEARING. Pass B review follow-up, Item 2's
+  // multipart audit: Directus's own multipart file handler ignores every
+  // form field placed AFTER `file` (confirmed empirically against a live
+  // Directus 11.12.0). `file` must be appended LAST, or `title`/`world_id`
+  // are silently dropped regardless of the values passed here.
   form.append('title', title)
   form.append('world_id', worldId)
+  form.append('file', blob, filename)
 
   const fileRes = await directusServiceRequest('/files', {
     method: 'POST',

@@ -34,7 +34,7 @@ export const CONTENT_ENTITY_SOURCE_SNAPSHOTS_COLLECTION = 'content_entity_source
 export const CONTENT_ENTITY_REVISIONS_COLLECTION = 'content_entity_revisions'
 
 const WORKSPACE_FIELDS =
-  'id,workspace_key,title,description,system_key,source_game_system_key,source_collection_key,status,owner_account_id,created_at,updated_at'
+  'id,workspace_key,title,description,system_key,source_game_system_key,source_collection_key,status,owner_account_id,revision,created_at,updated_at'
 
 // Never includes base_data or an override channel.
 const ENTITY_SUMMARY_FIELDS =
@@ -76,6 +76,7 @@ function normalizeWorkspace(row: DirectusRow): ContentWorkspace {
     sourceCollectionKey: optionalText(row.source_collection_key),
     status: row.status === 'archived' ? 'archived' : 'active',
     ownerAccountId: optionalText(row.owner_account_id),
+    revision: Number.isFinite(Number(row.revision)) ? Number(row.revision) : 0,
     createdAt: optionalText(row.created_at),
     updatedAt: optionalText(row.updated_at)
   }
@@ -222,15 +223,6 @@ export async function updateContentWorkspace(workspaceId: string, patch: Workspa
       body
     })
     return normalizeWorkspace(writtenRow(res))
-  })
-}
-
-export async function touchContentWorkspace(workspaceId: string): Promise<void> {
-  await withWorkspaceSchema(CONTENT_WORKSPACES_COLLECTION, async () => {
-    await dx(`/items/${CONTENT_WORKSPACES_COLLECTION}/${workspaceId}`, {
-      method: 'PATCH',
-      body: { updated_at: new Date().toISOString() }
-    })
   })
 }
 

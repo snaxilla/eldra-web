@@ -6,8 +6,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { resolveWorldContentMock } = vi.hoisted(() => ({
-  resolveWorldContentMock: vi.fn()
+const { resolveWorldContentMock, isEffectiveContentEnabledMock, resolveEffectiveContentMock } = vi.hoisted(() => ({
+  resolveWorldContentMock: vi.fn(),
+  isEffectiveContentEnabledMock: vi.fn(() => false),
+  resolveEffectiveContentMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/world-content-runtime', async () => {
@@ -19,6 +21,11 @@ vi.mock('../../../server/utils/world-content-runtime', async () => {
     resolveWorldContent: resolveWorldContentMock
   }
 })
+
+vi.mock('../../../server/utils/world-effective-content', () => ({
+  isEffectiveContentEnabled: isEffectiveContentEnabledMock,
+  resolveEffectiveContent: resolveEffectiveContentMock
+}))
 
 import { getWorldContentCatalogue } from '../../../server/utils/world-content-catalogue'
 import type { WorldContentCatalogue, WorldContentEntry } from '../../../server/utils/world-content-runtime'
@@ -52,6 +59,9 @@ function resolved(overrides: Partial<WorldContentCatalogue> = {}): WorldContentC
 
 beforeEach(() => {
   resolveWorldContentMock.mockReset()
+  isEffectiveContentEnabledMock.mockReset()
+  isEffectiveContentEnabledMock.mockReturnValue(false)
+  resolveEffectiveContentMock.mockReset()
 })
 
 describe('getWorldContentCatalogue', () => {
@@ -477,5 +487,72 @@ describe('getWorldContentCatalogue -- presentation models', () => {
       expect(catalogue.items[0]).toHaveProperty('itemMechanics', null)
       expect(catalogue.items[1]!.itemMechanics?.kind).toBe('weapon')
     })
+  })
+})
+
+// Content Workspaces & Studio Phase 5/6 (§8.9 -- the effective-content
+// boundary). Flag off is covered by every test above, unmodified; this
+// block is specifically the ONE behavioral difference the flag turns on.
+describe('getWorldContentCatalogue -- effective-content path (flag on)', () => {
+  function effectiveEntity(overrides: Record<string, unknown> = {}) {
+    return {
+      systemKey: 'dnd5e', entityType: 'item', title: 'Shortsword', slug: 'shortsword-xphb',
+      externalId: 'Shortsword__XPHB', provider: '5etools', data: { name: 'Shortsword' },
+      packageId: 'eldra.solaris.xphb', packageVersion: '1.0.0',
+      presentation: { kind: 'item', name: 'Authored Presentation, Pre-Resolved', description: [], facts: [], sections: [], notes: [] },
+      customization: { customized: false, authoredFields: [] },
+      ...overrides
+    }
+  }
+
+  it('resolves through resolveEffectiveContent instead of resolveWorldContent when the flag is on', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [effectiveEntity()], byEntityType: {}, legacyAliases: {} })
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(resolveEffectiveContentMock).toHaveBeenCalledWith('5')
+    expect(resolveWorldContentMock).not.toHaveBeenCalled()
+    expect(catalogue.items).toHaveLength(1)
+  })
+
+  it("uses the EffectiveEntity's own pre-resolved presentation instead of recomputing it from data (§8.9's one named difference)", async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [effectiveEntity()], byEntityType: {}, legacyAliases: {} })
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.items[0]!.presentation?.name).toBe('Authored Presentation, Pre-Resolved')
+  })
+
+  it('a pre-resolved presentation of null is honored, never silently recomputed', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs: [], entries: [effectiveEntity({ presentation: null })], byEntityType: {}, legacyAliases: {} })
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.items[0]!.presentation).toBeNull()
+  })
+
+  it('still computes itemMechanics/attunementRequired from data -- Phase 5/6 adds no mechanics step', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    resolveEffectiveContentMock.mockResolvedValue({
+      worldId: '5', packs: [], byEntityType: {}, legacyAliases: {},
+      entries: [effectiveEntity({ data: { name: 'Shortsword', weapon: true, type: 'M|XPHB', weaponCategory: 'simple', mastery: ['Vex|XPHB'] } })]
+    })
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.items[0]!.itemMechanics?.kind).toBe('weapon')
+  })
+
+  it('relays packs, including a live workspace source failure, unmodified', async () => {
+    isEffectiveContentEnabledMock.mockReturnValue(true)
+    const packs = [{ ok: false as const, packageId: 'workspace.w1', version: 'live', failure: { stage: 'not-found' as const, packageId: 'workspace.w1', version: 'live' } }]
+    resolveEffectiveContentMock.mockResolvedValue({ worldId: '5', packs, entries: [], byEntityType: {}, legacyAliases: {} })
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.packs).toEqual(packs)
   })
 })

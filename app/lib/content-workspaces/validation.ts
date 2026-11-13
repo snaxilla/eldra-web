@@ -2,6 +2,7 @@
 // call these and turn `{ ok: false }` into a 400; nothing here knows HTTP.
 
 import { isAddressSegment, isContentEntityId, isPackageId } from '../content-identity'
+import { PRESENTATION_OVERRIDE_PATHS, isValidOverridePath } from '../content-authoring/overrides'
 import type { ContentWorkspaceStatus } from './types'
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; problems: string[] }
@@ -209,4 +210,86 @@ export function validateContentEntityIdParam(value: unknown): Validated<string> 
 
 export function validatePackageIdParam(value: unknown): Validated<string> {
   return isPackageId(value) ? { ok: true, value } : { ok: false, problems: ['packageId is malformed'] }
+}
+
+// ---------------------------------------------------------------------------
+// Presentation editing (Phase 4)
+// ---------------------------------------------------------------------------
+
+const MAX_EDITS_PER_REQUEST = 20
+
+export type PresentationEditInput = { path: string; value: unknown }
+export type PresentationPatchRequest = { expectedRevision: number; edits: PresentationEditInput[] }
+
+export function validatePresentationPatchRequest(body: unknown): Validated<PresentationPatchRequest> {
+  if (!isPlainObject(body)) return { ok: false, problems: ['request body must be an object'] }
+  const problems: string[] = []
+
+  const rawExpectedRevision = body.expectedRevision
+  const validRevision = typeof rawExpectedRevision === 'number' && Number.isInteger(rawExpectedRevision) && rawExpectedRevision >= 0
+  if (!validRevision) {
+    problems.push('expectedRevision must be a whole number >= 0, naming the revision this edit was based on')
+  }
+  // Only ever read when problems is empty (validRevision is then true), so this fallback is never surfaced.
+  const expectedRevision = validRevision ? (rawExpectedRevision as number) : 0
+
+  const rawEdits = body.edits
+  if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
+    problems.push('edits must be a non-empty array')
+  } else if (rawEdits.length > MAX_EDITS_PER_REQUEST) {
+    problems.push(`edits must contain at most ${MAX_EDITS_PER_REQUEST} entries per request`)
+  }
+
+  const edits: PresentationEditInput[] = []
+  const seenPaths = new Set<string>()
+
+  if (Array.isArray(rawEdits)) {
+    for (const raw of rawEdits) {
+      if (!isPlainObject(raw) || typeof raw.path !== 'string') {
+        problems.push('each edit must be an object with a string path')
+        continue
+      }
+      if (!isValidOverridePath('presentation', raw.path)) {
+        problems.push(`'${raw.path}' is not an editable presentation field. Editable fields: ${PRESENTATION_OVERRIDE_PATHS.join(', ')}`)
+        continue
+      }
+      if (seenPaths.has(raw.path)) {
+        problems.push(`'${raw.path}' appears more than once in the same request`)
+        continue
+      }
+      seenPaths.add(raw.path)
+      edits.push({ path: raw.path, value: raw.value })
+    }
+  }
+
+  if (problems.length) return { ok: false, problems }
+  return { ok: true, value: { expectedRevision, edits } }
+}
+
+export type RevertPathRequest = { expectedRevision: number }
+
+export function validateRevertRequest(body: unknown): Validated<RevertPathRequest> {
+  if (!isPlainObject(body)) return { ok: false, problems: ['request body must be an object'] }
+  const expectedRevision = body.expectedRevision
+  if (typeof expectedRevision !== 'number' || !Number.isInteger(expectedRevision) || expectedRevision < 0) {
+    return { ok: false, problems: ['expectedRevision must be a whole number >= 0, naming the revision this revert was based on'] }
+  }
+  return { ok: true, value: { expectedRevision } }
+}
+
+export function validatePresentationPathParam(value: unknown): Validated<string> {
+  if (typeof value !== 'string' || !isValidOverridePath('presentation', value)) {
+    return { ok: false, problems: [`'${String(value)}' is not an editable presentation field. Editable fields: ${PRESENTATION_OVERRIDE_PATHS.join(', ')}`] }
+  }
+  return { ok: true, value }
+}
+
+export type CheckpointRequest = { label: string }
+
+export function validateCheckpointRequest(body: unknown): Validated<CheckpointRequest> {
+  if (!isPlainObject(body)) return { ok: false, problems: ['request body must be an object'] }
+  const label = typeof body.label === 'string' ? body.label.trim() : ''
+  if (!label) return { ok: false, problems: ['label is required'] }
+  if (label.length > MAX_TITLE_LENGTH) return { ok: false, problems: [`label must be at most ${MAX_TITLE_LENGTH} characters`] }
+  return { ok: true, value: { label } }
 }

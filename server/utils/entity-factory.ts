@@ -43,11 +43,18 @@ export async function uploadImageToDirectus(filePart: any, worldId?: string | nu
     type: filePart.type || 'application/octet-stream'
   })
 
-  form.append('file', blob, filePart.filename || 'entity-image')
-
+  // Item 2 E2E integration (Pass B review follow-up) caught a real bug
+  // here against a live Directus 11.12.0: Directus's multipart file
+  // handler ignores every form field that comes AFTER `file` in request
+  // order -- `world_id` was silently dropped on every upload through this
+  // helper, regardless of the argument passed, confirmed empirically
+  // (curl against the disposable instance: `file` first -> world_id null;
+  // `file` last -> world_id set). `file` must be appended LAST.
   if (worldId !== undefined && worldId !== null && String(worldId).trim()) {
     form.append('world_id', String(worldId))
   }
+
+  form.append('file', blob, filePart.filename || 'entity-image')
 
   const res = await fetch(`${baseUrl()}/files`, {
     method: 'POST',

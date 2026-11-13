@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { directusServiceRequest } from '../../../utils/directus'
 import { getCatalogueBackedEntityRows } from '../../../utils/catalogue-entity-bridge'
+import { resolveDerivedImageUrl } from '../../../../app/lib/content-presentation/effective-image'
 
 const CLASS_DATA_DIR = '/opt/eldra/datasets/5etools-src/data/class'
 const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
@@ -116,6 +117,7 @@ function spellFluffImageUrl(row: any) {
   const imagePath = found?.images?.[0]?.href?.path
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
+
 
 function entityImageUrl(row: any) {
   const image = row?.image
@@ -564,12 +566,15 @@ export default defineEventHandler(async (event) => {
 
   return rows.map((row: any) => {
     const entityBlocks = blocksByEntityId.get(String(row.id)) || []
-    const derivedImageUrl =
-      entityImageUrl(row) ||
-      extractImageUrl(entityBlocks) ||
-      classFluffImageUrl(row) ||
-      raceFluffImageUrl(row) ||
-      spellFluffImageUrl(row)
+    const derivedImageUrl = resolveDerivedImageUrl(
+      row.effectiveImageOverride,
+      () =>
+        entityImageUrl(row) ||
+        extractImageUrl(entityBlocks) ||
+        classFluffImageUrl(row) ||
+        raceFluffImageUrl(row) ||
+        spellFluffImageUrl(row)
+    )
 
     const overviewText = extractOverviewText(entityBlocks)
     const coreText = extractCoreText(entityBlocks)

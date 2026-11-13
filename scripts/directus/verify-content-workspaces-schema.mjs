@@ -13,7 +13,9 @@
 
 import {
   BINDING_MODE_FIELDS,
-  CONTENT_WORKSPACE_COLLECTIONS
+  CONTENT_WORKSPACE_COLLECTIONS,
+  ENTITY_REVISION_FIELDS,
+  WORKSPACE_REVISION_FIELDS
 } from './lib/content-workspace-schema-spec.mjs'
 import { createDirectusClient, findSchemaProblems, resolveDirectusConfig } from './lib/schema-helpers.mjs'
 
@@ -29,7 +31,7 @@ const dx = createDirectusClient(config)
 async function verify() {
   const problems = []
 
-  for (const spec of [...CONTENT_WORKSPACE_COLLECTIONS, BINDING_MODE_FIELDS]) {
+  for (const spec of [...CONTENT_WORKSPACE_COLLECTIONS, BINDING_MODE_FIELDS, ENTITY_REVISION_FIELDS, WORKSPACE_REVISION_FIELDS]) {
     problems.push(...await findSchemaProblems(dx, spec))
   }
 

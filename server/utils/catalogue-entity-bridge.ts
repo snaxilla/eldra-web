@@ -63,6 +63,13 @@
 // Article" (which both operate on a real entities/:id) do not apply to it.
 
 import { resolveWorldContent, type WorldContentEntry } from './world-content-runtime'
+// Content Workspaces & Studio Phase 5/6 (§8.9): "catalogue-entity-bridge.ts
+// takes EffectiveEntity[] instead of calling resolveWorldContent itself...
+// and overlays entry.presentation's description onto the synthesized
+// blocks so an authored description appears in the admin browser too."
+// Behind ELDRA_EFFECTIVE_CONTENT, default off -- flag-off behavior below
+// is byte-identical to before this import existed.
+import { isEffectiveContentEnabled, resolveEffectiveContent, type EffectiveEntity } from './world-effective-content'
 import { preview5eToolsSpecies } from '../../app/lib/importers/5etools-species'
 import { preview5eToolsClasses } from '../../app/lib/importers/5etools-classes'
 import { preview5eToolsFeats } from '../../app/lib/importers/5etools-feats'
@@ -92,6 +99,20 @@ export type CatalogueBridgeRow = {
   created_at: string | null
   updated_at: string | null
   image: null
+  // Content Workspaces & Studio Phase 5/6 (§8.9, admin image propagation
+  // follow-up). The ONE additive, centrally-defined signal
+  // server/api/worlds/[id]/entities.get.ts's own `derivedImageUrl`
+  // computation checks BEFORE its existing entityImageUrl/extractImageUrl/
+  // fluff-fallback chain -- see that file's own comment at the check site.
+  // `undefined` (the ordinary case: flag off, or no authored image
+  // opinion) means "no override, use the existing chain unchanged" --
+  // preserves every pre-existing fluff-derived image untouched.
+  // `{ url }` means the author set an image -- takes precedence over
+  // everything else. `null` means the author explicitly suppressed the
+  // source image -- stops the chain with NO image, which plain block data
+  // (extractImageUrl) cannot express (a missing/falsy block field there
+  // just falls through to the next fallback instead of stopping).
+  effectiveImageOverride?: { url: string } | null
   __source: 'catalogue'
   blocks: CatalogueBridgeBlock[]
 }
@@ -132,6 +153,61 @@ export function catalogueTemplateId(packageId: string, slug: string): string {
   return `catalogue:${packageId}:${slug}`
 }
 
+// Which block + field holds this entity type's narrative description --
+// the ONE field the architecture doc's §8.9 names explicitly for the
+// authored-presentation overlay. Not every bridged type has one: `feat`'s
+// legacy `feat_core` block never had a `description` field (it uses
+// `benefits` instead -- a structural fact of the pre-existing legacy
+// shape, not an omission here), so it is deliberately absent from this
+// map rather than guessed at.
+const DESCRIPTION_BLOCK_BY_ENTITY_TYPE: Partial<Record<string, { blockKey: string; field: string }>> = {
+  item: { blockKey: 'item_core', field: 'description' },
+  spell: { blockKey: 'spell_core', field: 'description' },
+  species: { blockKey: 'species_core', field: 'description' },
+  class: { blockKey: 'class_core', field: 'description' }
+}
+
+// Overlays an authored presentation's description onto the ONE block/field
+// that already carries a textual description for this entity type --
+// mutating a COPY of `blocks`, never the input. Only overlays when the
+// author actually expressed an opinion (customization.customized), so an
+// un-customized entry's admin-rendered description is derived from the
+// SAME `data` it always was, not a second, possibly differently-formatted
+// recomputation of the identical text.
+function overlayAuthoredDescription(entityType: string, blocks: CatalogueBridgeBlock[], entry: EffectiveEntity): CatalogueBridgeBlock[] {
+  if (!entry.customization.customized || !entry.presentation?.description?.length) return blocks
+  const target = DESCRIPTION_BLOCK_BY_ENTITY_TYPE[entityType]
+  if (!target) return blocks
+
+  const text = entry.presentation.description.join('\n\n')
+  let found = false
+  const overlaid = blocks.map((block) => {
+    if (block.blockKey !== target.blockKey) return block
+    found = true
+    return { ...block, data: { ...block.data, [target.field]: text } }
+  })
+
+  if (found) return overlaid
+  // No existing block of this key (e.g. an authored-origin workspace
+  // entity with no upstream base) -- add one rather than silently
+  // dropping the authored description.
+  return [...blocks, { block_key: target.blockKey, blockKey: target.blockKey, label: target.blockKey, repeatable: false, sort: blocks.length, data: { [target.field]: text } }]
+}
+
+// The ONE place this module decides whether an authored image decision
+// exists at all, independent of entity type -- unlike description, no
+// per-category block/field mapping is needed, because this is relayed
+// through CatalogueBridgeRow.effectiveImageOverride directly, never
+// through a block. Checks `customization.authoredFields` (NOT merely
+// "is this entry customized at all") so a customized entry whose author
+// never touched the image field correctly returns `undefined` (inherit),
+// not a stale/absent value masquerading as a decision.
+function effectiveImageOverrideFor(entry: EffectiveEntity): { url: string } | null | undefined {
+  const imageWasAuthored = entry.customization.authoredFields.some((field) => field.channel === 'presentation' && field.path === 'image')
+  if (!imageWasAuthored) return undefined
+  return entry.presentation?.image ? { url: entry.presentation.image.url } : null
+}
+
 // Single-entry version of getCatalogueBackedEntityRows's per-entry
 // conversion -- extracted so a caller that already has ONE specific entry
 // in hand (e.g. the Homebrew Forge resolving a client-selected template by
@@ -140,13 +216,20 @@ export function catalogueTemplateId(packageId: string, slug: string): string {
 // through the list-building loop. `getCatalogueBackedEntityRows` below now
 // calls this too, so there is exactly one place that knows how to turn a
 // catalogue entry's raw `data` into `.blocks` per entity type.
-export function catalogueEntryToBlocks(entityType: string, entry: WorldContentEntry): CatalogueBridgeBlock[] {
+//
+// `effectiveEntry`, when given, is the SAME entry's EffectiveEntity form
+// (presentation + customization) -- used only to overlay an authored
+// description (§8.9); `entry`'s own `data` is still what blocks are built
+// from either way, so a mechanics correction on a workspace-sourced
+// winner's raw data appears here with no separate step.
+export function catalogueEntryToBlocks(entityType: string, entry: WorldContentEntry, effectiveEntry?: EffectiveEntity): CatalogueBridgeBlock[] {
   const previewer = PREVIEWER_BY_ENTITY_TYPE[entityType]
   if (!previewer) return []
 
   try {
     const preview = previewer([entry.data])
-    return toCatalogueBlocks(preview.items[0]?.blocks)
+    const blocks = toCatalogueBlocks(preview.items[0]?.blocks)
+    return effectiveEntry ? overlayAuthoredDescription(entityType, blocks, effectiveEntry) : blocks
   } catch {
     return []
   }
@@ -203,14 +286,22 @@ export async function getCatalogueBackedEntityRows(
   const wanted = Array.from(new Set(entityTypes.filter((type) => type in PREVIEWER_BY_ENTITY_TYPE)))
   if (!wanted.length) return []
 
-  const resolved = await resolveWorldContent(worldId)
+  // Flag off: UNCHANGED from before Phase 5 -- resolveWorldContent, no
+  // effective entry, no overlay. Flag on: §8.9's "neither reads
+  // content_packs.content directly again" -- byEntityType now comes from
+  // the SAME resolveEffectiveContent the gameplay catalogue consumes.
+  const useEffective = isEffectiveContentEnabled()
+  const byEntityType = useEffective
+    ? (await resolveEffectiveContent(worldId)).byEntityType
+    : (await resolveWorldContent(worldId)).byEntityType
+
   const rows: CatalogueBridgeRow[] = []
 
   for (const entityType of wanted) {
     const previewer = PREVIEWER_BY_ENTITY_TYPE[entityType]
     if (!previewer) continue
 
-    const entries = resolved.byEntityType[entityType] || []
+    const entries = byEntityType[entityType] || []
 
     for (const entry of entries) {
       // One malformed published entry must never take down the whole
@@ -219,7 +310,7 @@ export async function getCatalogueBackedEntityRows(
       // `spellMechanics`/`featMechanics`/`itemMechanics`. Delegated to
       // catalogueEntryToBlocks so this exact degrade behavior has one
       // implementation shared with the Homebrew Forge's template resolver.
-      const blocks = catalogueEntryToBlocks(entityType, entry)
+      const blocks = catalogueEntryToBlocks(entityType, entry, useEffective ? (entry as EffectiveEntity) : undefined)
 
       rows.push({
         id: catalogueTemplateId(entry.packageId, entry.slug),
@@ -234,6 +325,7 @@ export async function getCatalogueBackedEntityRows(
         created_at: null,
         updated_at: null,
         image: null,
+        effectiveImageOverride: useEffective ? effectiveImageOverrideFor(entry as EffectiveEntity) : undefined,
         __source: 'catalogue',
         blocks
       })

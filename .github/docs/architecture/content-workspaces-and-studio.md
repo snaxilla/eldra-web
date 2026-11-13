@@ -1642,6 +1642,23 @@ routes call `requireCapability` explicitly for anything finer.
 | `world.content.bind_workspace` | world | Bind a **live, mutable** workspace |
 | `world.content.customize` | world | World-level overrides — **reserved, not implemented (Q4)** |
 
+**New capabilities require a grant, not just a declaration — a real deployment incident, not a
+hypothetical.** `platform.contentworkspace.view|create|edit` exist in the vocabulary
+(`ALL_PLATFORM_CAPABILITIES`, `server/utils/authorization.ts`) and in every route that checks them
+the moment this phase's code ships. They do **not** exist for any account until a row for that
+capability is written to `eldra_platform_grants`. The existing platform administrator who was
+granted the vocabulary **as it stood before this phase** holds every capability that existed then
+and **none of these three** — Game Admin's own gate (`isAdmin`, checked against
+`platform.settings.manage` only) still lets them in, so the Content Studio *shell* renders, and
+only the API calls inside it answer `403 Missing capability 'platform.contentworkspace.view'`. This
+is not a bug in `can()` or in the planner (`scripts/directus/lib/platform-admin-plan.mjs` already
+diffs the full current vocabulary against each account's existing grants and tops up only what's
+missing, verified by `tests/scripts/platform-admin-plan.test.ts`'s real-vocabulary upgrade-path
+tests) — it is a **deployment step that must be repeated** every time the platform-capability
+vocabulary grows, for every account that already holds platform grants. See the deployment
+checklist's own step for the exact command; there is no automatic path, by design (§6.2 rule 2:
+identity is matched by subject, never inferred or broadened by default).
+
 ## 14.3 The matrix
 
 | Action | Required |
@@ -2288,7 +2305,13 @@ maintenance-window alternative is:
 - **Server utils.** `content-workspaces.ts`, `content-workspace-import.ts`,
   `content-package-lineages.ts` — all in `world-content-packs.ts`'s idiom (explicit field lists,
   discriminated results, no HTTP concerns).
-- **Capabilities.** `platform.contentworkspace.view|create|edit`.
+- **Capabilities.** `platform.contentworkspace.view|create|edit`. **Deploying this phase's code
+  does not, by itself, let anyone use it** — see [§14.2](#142-new-capabilities)'s own note and the
+  deployment checklist's grant-upgrade step: every account that already holds platform grants from
+  before this phase needs `bootstrap-eldra-platform-admin.mjs --apply` re-run against it to receive
+  these three. This was the exact cause of a real deployment incident (Content Studio's shell
+  rendering while its own requests answered `403 Missing capability
+  'platform.contentworkspace.view'` for the existing platform administrator).
 - **Tests.** Workspace CRUD; import writes `base_data` + `base_data_hash` + `contentEntityId` + the
   **observed** `baseRefs`; import writes a `content_entity_source_snapshots` row **before**
   `base_data` advances, and **aborts the advance if the snapshot write fails**; re-import maps to the

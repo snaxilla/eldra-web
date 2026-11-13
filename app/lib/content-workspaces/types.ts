@@ -16,6 +16,13 @@ export type ContentWorkspace = {
   sourceCollectionKey: string | null
   status: ContentWorkspaceStatus
   ownerAccountId: string | null
+  // Monotonic, incremented whenever any entity in this workspace is
+  // written (server/utils/content-workspace-entities.ts's
+  // touchWorkspaceRevision). The collision-safe live-binding cache
+  // witness Phase 6 uses instead of updated_at (content-workspaces-and-
+  // studio.md §10.1's own warning: two saves in the same millisecond
+  // would otherwise produce the same timestamp-derived cache key).
+  revision: number
   createdAt: string | null
   updatedAt: string | null
 }

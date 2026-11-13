@@ -38,9 +38,13 @@
 import { loadPublishedContentPack, type ContentPackLoadFailure } from './content-packs'
 import {
   removeContentPackBinding,
+  removeWorkspaceBinding,
   saveContentPackBinding,
+  saveWorkspaceBinding,
   type WorldContentPackBindingRecord
 } from './world-content-packs'
+import { getContentWorkspace } from './content-workspaces'
+import { isEffectiveContentEnabled } from './world-effective-content'
 
 export type ContentPackBindResult =
   | { bound: false; stage: 'package-load'; failure: ContentPackLoadFailure }
@@ -103,5 +107,52 @@ export async function unbindContentPackFromWorld(
   packageId: string
 ): Promise<ContentPackUnbindResult> {
   const removed = await removeContentPackBinding(worldId, packageId)
+  return removed ? { unbound: true } : { unbound: false, stage: 'not-bound' }
+}
+
+// ---------------------------------------------------------------------------
+// Content Workspaces & Studio Phase 6 -- live workspace binding
+// ---------------------------------------------------------------------------
+
+export type WorkspaceBindResult =
+  | { bound: false; stage: 'resolver-disabled' }
+  | { bound: false; stage: 'workspace-not-found' }
+  | { bound: true; binding: WorldContentPackBindingRecord }
+
+// Binds a World live to a Content Workspace -- mirrors
+// bindContentPackToWorld's verify-then-write split exactly, with two
+// verifications of its own instead of one:
+//   1. The effective resolver must be ENABLED (§18's Phase 6 dependency:
+//      "requires Phase 5 already enabled" -- binding a mutable source
+//      while the resolver that could collapse it onto a pinned entry is
+//      off would display duplicates, violating R2/R8).
+//   2. The workspace must actually exist.
+// Neither check writes anything on failure.
+export async function bindWorkspaceLiveToWorld(
+  worldId: string | number,
+  workspaceId: string
+): Promise<WorkspaceBindResult> {
+  if (!isEffectiveContentEnabled()) return { bound: false, stage: 'resolver-disabled' }
+
+  const workspace = await getContentWorkspace(workspaceId)
+  if (!workspace) return { bound: false, stage: 'workspace-not-found' }
+
+  const binding = await saveWorkspaceBinding(worldId, workspaceId)
+  return { bound: true, binding }
+}
+
+export type WorkspaceUnbindResult =
+  | { unbound: false; stage: 'not-bound' }
+  | { unbound: true }
+
+// Unbinding ALWAYS works, including with the resolver flag off -- the
+// documented rollback path (§18's "Rollback: Unbind -> the World returns
+// to pinned") must never itself be gated behind the thing it is
+// recovering from.
+export async function unbindWorkspaceFromWorld(
+  worldId: string | number,
+  workspaceId: string
+): Promise<WorkspaceUnbindResult> {
+  const removed = await removeWorkspaceBinding(worldId, workspaceId)
   return removed ? { unbound: true } : { unbound: false, stage: 'not-bound' }
 }

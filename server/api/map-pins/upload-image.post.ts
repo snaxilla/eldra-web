@@ -127,8 +127,13 @@ export default defineEventHandler(async (event) => {
   // copies the bytes once; a pin image is small enough that the copy is
   // not worth avoiding at the cost of an unchecked buffer-type assertion.
   const blob = new Blob([new Uint8Array(file.data)], { type: file.mimeType || 'application/octet-stream' })
-  uploadForm.append('file', blob, file.filename || 'pin-image-upload')
+  // FIELD ORDER IS LOAD-BEARING. Pass B review follow-up, Item 2's
+  // multipart audit: Directus's own multipart file handler ignores every
+  // form field placed AFTER `file` (confirmed empirically against a live
+  // Directus 11.12.0). `file` must be appended LAST, or `world_id` is
+  // silently dropped regardless of the value passed here.
   uploadForm.append('world_id', worldId)
+  uploadForm.append('file', blob, file.filename || 'pin-image-upload')
 
   const uploaded = await directusServiceRequest('/files', {
     method: 'POST',

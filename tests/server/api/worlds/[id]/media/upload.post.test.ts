@@ -142,6 +142,16 @@ describe('POST /api/worlds/:id/media/upload', () => {
         expect(options.body.get('title')).toBe('Sword Coast')
         expect(options.body.get('description')).toBe('Eldra media upload for world 6')
         expect(options.body.get('world_id')).toBe('6')
+        // Pass B review follow-up, Item 2: `.get()` is order-independent
+        // and would pass even with the real bug this guards against
+        // (Directus silently drops every field appended AFTER `file`).
+        // `entries()` reflects append order, so this actually proves
+        // `file` is LAST.
+        const order = [...(options.body as FormData).entries()].map(([key]) => key)
+        expect(order.indexOf('file')).toBe(order.length - 1)
+        expect(order.indexOf('title')).toBeLessThan(order.indexOf('file'))
+        expect(order.indexOf('description')).toBeLessThan(order.indexOf('file'))
+        expect(order.indexOf('world_id')).toBeLessThan(order.indexOf('file'))
         return {
           data: {
             id: 'file-42',

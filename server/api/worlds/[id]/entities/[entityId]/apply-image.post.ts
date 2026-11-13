@@ -90,8 +90,13 @@ export default defineEventHandler(async (event) => {
   // client-supplied metadata.
   const form = new FormData()
   const blob = new Blob([filePart.data], { type: filePart.type || 'application/octet-stream' })
-  form.append('file', blob, filePart.filename || 'entity-image-upload')
+  // FIELD ORDER IS LOAD-BEARING. Pass B review follow-up, Item 2's
+  // multipart audit: Directus's own multipart file handler ignores every
+  // form field placed AFTER `file` (confirmed empirically against a live
+  // Directus 11.12.0). `file` must be appended LAST, or `world_id` is
+  // silently dropped regardless of the value passed here.
   form.append('world_id', String(worldId))
+  form.append('file', blob, filePart.filename || 'entity-image-upload')
 
   const uploadRes = await fetch(`${baseUrl()}/files`, {
     method: 'POST',

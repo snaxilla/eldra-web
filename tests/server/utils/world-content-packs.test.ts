@@ -17,9 +17,13 @@ vi.mock('../../../server/utils/directus', () => ({
 
 import {
   findContentPackBinding,
+  findWorkspaceBindingForWorld,
   listContentPackBindingsForWorld,
   removeContentPackBinding,
-  saveContentPackBinding
+  removeWorkspaceBinding,
+  saveContentPackBinding,
+  saveWorkspaceBinding,
+  workspaceBindingPseudoPackageId
 } from '../../../server/utils/world-content-packs'
 
 type FakeRow = Record<string, any>
@@ -113,6 +117,14 @@ describe('findContentPackBinding -- existing binding', () => {
       packageId: 'eldra.srd-5.1',
       packageVersion: '1.0.0',
       packageIntegrity: 'sha256-abc',
+      // Content Workspaces & Studio Phase 1's additive columns: a row
+      // written before they existed (or that simply never set them)
+      // reads as a plain pinned binding -- 'pinned' is binding_mode's own
+      // NOT NULL DEFAULT, backfilled onto every existing row.
+      bindingMode: 'pinned',
+      channel: null,
+      workspaceId: null,
+      priority: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z'
     })
@@ -258,5 +270,76 @@ describe('translation correctness', () => {
     const found = await findContentPackBinding(11, 'eldra.srd-5.1')
 
     expect(found).toEqual(saved)
+  })
+})
+
+// Content Workspaces & Studio Phase 6 -- live workspace binding. Reuses
+// the exact same collection and row shape as a pinned binding (see
+// saveWorkspaceBinding's own header for why), so the fake store above
+// needs no changes at all to exercise it.
+describe('workspaceBindingPseudoPackageId', () => {
+  it('is a stable, deterministic function of the workspace id', () => {
+    expect(workspaceBindingPseudoPackageId('w1')).toBe('workspace.w1')
+    expect(workspaceBindingPseudoPackageId('w1')).toBe(workspaceBindingPseudoPackageId('w1'))
+    expect(workspaceBindingPseudoPackageId('w1')).not.toBe(workspaceBindingPseudoPackageId('w2'))
+  })
+})
+
+describe('saveWorkspaceBinding', () => {
+  it('creates a workspace-mode binding with no real packageId/version/integrity', async () => {
+    const rows = createFakeDirectusStore([])
+
+    const binding = await saveWorkspaceBinding(4, 'w1')
+
+    expect(binding).toMatchObject({
+      worldId: '4',
+      packageId: 'workspace.w1',
+      packageVersion: 'live',
+      packageIntegrity: null,
+      bindingMode: 'workspace',
+      workspaceId: 'w1'
+    })
+    expect(rows).toHaveLength(1)
+  })
+
+  it('touches (never duplicates) an existing binding for the same World+workspace', async () => {
+    const rows = createFakeDirectusStore([
+      { id: 'b1', world_id: 4, package_id: 'workspace.w1', package_version: 'live', package_integrity: null, binding_mode: 'workspace', workspace_id: 'w1', channel: null, priority: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+    ])
+
+    await saveWorkspaceBinding(4, 'w1')
+
+    expect(rows).toHaveLength(1)
+  })
+
+  it('does not disturb an existing PINNED binding to a different (real) package for the same World', async () => {
+    const rows = createFakeDirectusStore([
+      { id: 'b1', world_id: 4, package_id: 'eldra.solaris.xphb', package_version: '1.0.0', package_integrity: 'sha256-x', binding_mode: 'pinned', channel: null, workspace_id: null, priority: null, created_at: null, updated_at: null }
+    ])
+
+    await saveWorkspaceBinding(4, 'w1')
+
+    expect(rows).toHaveLength(2)
+    const pinned = await findContentPackBinding(4, 'eldra.solaris.xphb')
+    expect(pinned?.bindingMode).toBe('pinned')
+  })
+})
+
+describe('findWorkspaceBindingForWorld / removeWorkspaceBinding', () => {
+  it('finds a workspace binding by (worldId, workspaceId)', async () => {
+    createFakeDirectusStore([])
+    await saveWorkspaceBinding(4, 'w1')
+
+    const found = await findWorkspaceBindingForWorld(4, 'w1')
+    expect(found).toMatchObject({ bindingMode: 'workspace', workspaceId: 'w1' })
+  })
+
+  it('removes a workspace binding, reporting false (never an error) when none existed', async () => {
+    createFakeDirectusStore([])
+    expect(await removeWorkspaceBinding(4, 'w1')).toBe(false)
+
+    await saveWorkspaceBinding(4, 'w1')
+    expect(await removeWorkspaceBinding(4, 'w1')).toBe(true)
+    expect(await findWorkspaceBindingForWorld(4, 'w1')).toBeNull()
   })
 })

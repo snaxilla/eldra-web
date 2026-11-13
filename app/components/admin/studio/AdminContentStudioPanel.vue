@@ -24,6 +24,8 @@
 
 import { computed, ref, watch } from 'vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
+import AdminStudioWorkspacesPanel from './AdminStudioWorkspacesPanel.vue'
+import StudioCustomizeInWorkspaceDialog from './StudioCustomizeInWorkspaceDialog.vue'
 import {
   STUDIO_DEFAULT_LIMIT,
   type StudioFacet,
@@ -32,6 +34,13 @@ import {
 } from './studioSearchQuery'
 
 const props = defineProps<{ worldId: string | number }>()
+
+// Content Workspaces & Studio Phase 4/6 -- the minimum in-app workflow
+// (workspace create/import/edit/bind) lives in its own tab, reusing
+// Pass A's existing Browse tab unchanged below. Browse stays read-only;
+// nothing here gives Browse an Edit action yet (see the Pass B handoff's
+// own "Remaining" note on "Customize in workspace").
+const activeTab = ref<'browse' | 'workspaces'>('browse')
 
 type SearchResponse = {
   worldId: string
@@ -60,6 +69,11 @@ const state = ref<LoadState>('idle')
 const errorMessage = ref('')
 const result = ref<SearchResponse | null>(null)
 const selected = ref<StudioResultRow | null>(null)
+// "Customize in workspace" from Browse -- Content Workspaces & Studio
+// Phase 4/6 follow-up. Tracks which row's dialog is open, if any; closed
+// whenever a different row is selected (selecting a row already resets
+// `selected` via the toggle in `select()` below).
+const customizingAddress = ref<string | null>(null)
 const filtersOpen = ref(false)
 
 const rows = computed(() => result.value?.rows ?? [])
@@ -167,6 +181,7 @@ function nextPage() {
 
 function select(row: StudioResultRow) {
   selected.value = selected.value?.address === row.address ? null : row
+  customizingAddress.value = null
 }
 
 function provenanceOf(row: StudioResultRow): string {
@@ -178,6 +193,40 @@ function provenanceOf(row: StudioResultRow): string {
 
 <template>
   <section class="mt-6 grid gap-5">
+    <nav
+      class="flex gap-2"
+      aria-label="Content Studio sections"
+    >
+      <button
+        type="button"
+        class="min-h-10 rounded-none border px-4 text-sm transition"
+        :class="activeTab === 'browse'
+          ? 'border-eldra-accent bg-eldra-accent/15 text-eldra-text-strong'
+          : 'border-eldra-accent/24 text-eldra-text-soft hover:border-eldra-accent/60'"
+        :aria-pressed="activeTab === 'browse'"
+        @click="activeTab = 'browse'"
+      >
+        Browse
+      </button>
+      <button
+        type="button"
+        class="min-h-10 rounded-none border px-4 text-sm transition"
+        :class="activeTab === 'workspaces'
+          ? 'border-eldra-accent bg-eldra-accent/15 text-eldra-text-strong'
+          : 'border-eldra-accent/24 text-eldra-text-soft hover:border-eldra-accent/60'"
+        :aria-pressed="activeTab === 'workspaces'"
+        @click="activeTab = 'workspaces'"
+      >
+        Workspaces
+      </button>
+    </nav>
+
+    <AdminStudioWorkspacesPanel
+      v-if="activeTab === 'workspaces'"
+      :world-id="worldId"
+    />
+
+    <template v-else>
     <header class="eldra-ornate-panel eldra-frame-corners rounded-none border border-eldra-accent/24 bg-eldra-panel p-5 backdrop-blur">
       <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div class="min-w-0">
@@ -466,6 +515,23 @@ function provenanceOf(row: StudioResultRow): string {
                       empty-message="This Content Pack publishes no further details for this entry."
                     />
                   </div>
+
+                  <div class="mt-3 border-t border-eldra-accent/24 pt-3">
+                    <button
+                      v-if="customizingAddress !== row.address"
+                      type="button"
+                      class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-strong hover:border-eldra-accent"
+                      @click="customizingAddress = row.address"
+                    >
+                      Customize in workspace…
+                    </button>
+                    <StudioCustomizeInWorkspaceDialog
+                      v-else
+                      :world-id="worldId"
+                      :row="row"
+                      @close="customizingAddress = null"
+                    />
+                  </div>
                 </div>
               </article>
             </li>
@@ -495,5 +561,6 @@ function provenanceOf(row: StudioResultRow): string {
         </template>
       </div>
     </div>
+    </template>
   </section>
 </template>

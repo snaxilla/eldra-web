@@ -716,6 +716,75 @@ describe('can', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Content Studio capability regression. A real deployment incident: the
+// owner could open Game Admin (gated by platform.settings.manage) but
+// Content Studio's own API calls answered "Missing capability
+// 'platform.contentworkspace.view'". Root cause was an un-repeated grant
+// step (see content-workspaces-pass-a-handoff.md), never a bug in can()
+// itself -- this locks down that can() was never the problem, and proves
+// the actual fix (a grant) is both necessary and sufficient.
+// ---------------------------------------------------------------------------
+
+describe('can -- Content Studio capability (deployment incident regression)', () => {
+  it('a World-only administrator (owner role, zero platform grants) is denied platform.contentworkspace.view', () => {
+    const principal: Principal = {
+      accountId: 'world-owner-1',
+      platformCapabilities: new Set(),
+      worldCapabilities: new Map([['world-5', new Set(WORLD_ROLE_CAPABILITIES.owner)]]),
+      accountLookupKeys: []
+    }
+
+    expect(can(principal, 'platform.contentworkspace.view', { kind: 'platform' })).toBe(false)
+  })
+
+  it('an ordinary player is denied platform.contentworkspace.view', () => {
+    const principal: Principal = {
+      accountId: 'player-3',
+      platformCapabilities: new Set(),
+      worldCapabilities: new Map([['world-5', new Set(WORLD_ROLE_CAPABILITIES.player)]]),
+      accountLookupKeys: []
+    }
+
+    expect(can(principal, 'platform.contentworkspace.view', { kind: 'platform' })).toBe(false)
+  })
+
+  it('holding the broader Game Admin gate (platform.settings.manage) does NOT also grant platform.contentworkspace.view -- the exact gap this incident reports', () => {
+    const principal: Principal = {
+      accountId: 'admin-pre-phase-1',
+      platformCapabilities: new Set(['platform.settings.manage', 'platform.account.manage', 'platform.world.create']),
+      worldCapabilities: new Map(),
+      accountLookupKeys: []
+    }
+
+    // Reaches Game Admin -- useAuth.ts's isAdmin checks exactly this.
+    expect(can(principal, 'platform.settings.manage', { kind: 'platform' })).toBe(true)
+    // ...but Content Studio's own routes require the specific capability,
+    // which a pre-this-phase grant set never included.
+    expect(can(principal, 'platform.contentworkspace.view', { kind: 'platform' })).toBe(false)
+    expect(can(principal, 'platform.contentworkspace.create', { kind: 'platform' })).toBe(false)
+    expect(can(principal, 'platform.contentworkspace.edit', { kind: 'platform' })).toBe(false)
+  })
+
+  it('granting exactly the three Content Studio capabilities resolves it -- confirms the fix is a grant, not a code change', () => {
+    const principal: Principal = {
+      accountId: 'admin-upgraded-1',
+      platformCapabilities: new Set([
+        'platform.settings.manage',
+        'platform.contentworkspace.view',
+        'platform.contentworkspace.create',
+        'platform.contentworkspace.edit'
+      ]),
+      worldCapabilities: new Map(),
+      accountLookupKeys: []
+    }
+
+    expect(can(principal, 'platform.contentworkspace.view', { kind: 'platform' })).toBe(true)
+    expect(can(principal, 'platform.contentworkspace.create', { kind: 'platform' })).toBe(true)
+    expect(can(principal, 'platform.contentworkspace.edit', { kind: 'platform' })).toBe(true)
+  })
+})
+
 describe('requireCapability', () => {
   it('throws 401 when there is no principal (unauthenticated)', () => {
     expectThrowsWithStatus(() => requireCapability(null, 'world.read', { kind: 'world', worldId: '1' }), 401)

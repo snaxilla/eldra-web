@@ -183,4 +183,31 @@ export const BINDING_MODE_FIELDS = {
   ]
 }
 
+// Additive counters -- Content Workspaces & Studio Phase 4/6. Neither
+// collection's existing rows need a value other than the default: every
+// entity/workspace that predates this column has made zero authored
+// writes, so starting at 0 is exact, not a placeholder.
+//
+// `content_workspace_entities.revision` is the per-entity optimistic-
+// concurrency witness Phase 4's editor conditions writes on (§ "Safe
+// saving and revisions" in the Pass B brief). `content_workspaces.revision`
+// is the per-workspace monotonic counter Phase 6's live-binding cache key
+// uses instead of an updated_at timestamp, because two saves inside the
+// same millisecond would otherwise produce the same cache key (the brief's
+// own explicit warning: "do not assume timestamp changes alone guarantee
+// distinct keys under concurrent or rapid saves").
+export const ENTITY_REVISION_FIELDS = {
+  collection: 'content_workspace_entities',
+  fields: [
+    { field: 'revision', type: 'integer', required: true, defaultValue: 0, note: 'Optimistic-concurrency counter. Incremented by exactly 1 on every accepted write.' }
+  ]
+}
+
+export const WORKSPACE_REVISION_FIELDS = {
+  collection: 'content_workspaces',
+  fields: [
+    { field: 'revision', type: 'integer', required: true, defaultValue: 0, note: 'Monotonic counter, incremented whenever any entity in this workspace is written. Collision-safe live-binding cache key.' }
+  ]
+}
+
 export const CONTENT_WORKSPACE_COLLECTION_NAMES = CONTENT_WORKSPACE_COLLECTIONS.map((spec) => spec.collection)

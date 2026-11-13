@@ -88,22 +88,33 @@ export default defineEventHandler(async (event) => {
 
   // Media ownership policy follow-up -- `world_id` (and title/description,
   // which used to ride a SEPARATE, failure-swallowed PATCH after this same
-  // POST) are now set in the SAME multipart request that creates the file,
-  // matching Directus's own documented behavior of applying any other form
-  // field alongside `file` to the created item. This closes a real gap the
-  // old two-request shape had: the previous PATCH was `.catch(() => null)`'d,
-  // so a PATCH failure would have reported this route's own full `200`
-  // success while silently leaving the file with `world_id: null` (and no
-  // title/description) -- a File that is fully created but not fully
-  // owned, reported as if it were. With everything in one request, there is
-  // no such partial-success window: either the create succeeds with
-  // ownership attached, or nothing is created at all.
+  // POST) are set in the SAME multipart request that creates the file,
+  // closing a real gap the old two-request shape had: the previous PATCH
+  // was `.catch(() => null)`'d, so a PATCH failure would have reported
+  // this route's own full `200` success while silently leaving the file
+  // with `world_id: null` (and no title/description) -- a File that is
+  // fully created but not fully owned, reported as if it were. With
+  // everything in one request, there is no such partial-success window:
+  // either the create succeeds with ownership attached, or nothing is
+  // created at all.
+  //
+  // FIELD ORDER IS LOAD-BEARING. Item 2's E2E integration (Pass B review
+  // follow-up) caught, against a live Directus 11.12.0, that Directus's
+  // multipart file handler ignores every form field placed AFTER `file`
+  // -- confirmed empirically (curl against the disposable instance: with
+  // `file` appended first, `world_id`/`title`/`description` all silently
+  // stayed null/filename-derived; with `file` appended LAST, all three
+  // stuck). The ORIGINAL field order here had `file` first, meaning this
+  // route's own stated fix for the "File created but not fully owned"
+  // gap was never actually effective in production -- every uploaded
+  // Media Gallery file has had `world_id: null` regardless of this code.
+  // `file` must be appended last.
   const uploadForm = new FormData()
   const blob = new Blob([file.data], { type: file.mimeType || 'application/octet-stream' })
-  uploadForm.append('file', blob, file.filename || 'eldra-media-upload')
   uploadForm.append('title', title)
   uploadForm.append('description', `Eldra media upload for world ${worldId}`)
   uploadForm.append('world_id', worldId)
+  uploadForm.append('file', blob, file.filename || 'eldra-media-upload')
 
   const uploaded = await directusServiceRequest('/files', {
     method: 'POST',

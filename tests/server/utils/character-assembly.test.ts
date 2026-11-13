@@ -380,6 +380,102 @@ describe('assembleCharacter', () => {
   })
 })
 
+// Content Workspaces & Studio Phase 5/6 (§15.3, generalized from slug
+// renames to shadowing). This is Pass B's own explicit regression
+// requirement: "an existing character reference resolves to the effective
+// entity -- even if the winner has a workspace source address."
+describe('assembleCharacter -- legacyAliases redirect (shadowed references)', () => {
+  it('redirects a stored reference naming a now-shadowed legacy address to its effective winner', async () => {
+    const winner = catalogueEntry({ packageId: 'workspace.w1', slug: 'human', title: 'Human (curated)' })
+    const catalogue = fullCatalogue({
+      species: [winner],
+      legacyAliases: { 'species::eldra.content.srd-5.1::human': { packageId: 'workspace.w1', slug: 'human' } }
+    })
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        // The CHARACTER's own stored reference still names the ORIGINAL
+        // pinned pack -- exactly what a character created before this
+        // World ever bound a workspace would have.
+        species: { packageId: 'eldra.content.srd-5.1', slug: 'human' },
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      }
+    )
+
+    const result = await assembleCharacter('5', '42')
+
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    expect(result.blueprint.species).toMatchObject({ status: 'resolved', entry: winner })
+  })
+
+  it('does not redirect when no alias exists for that address -- reports missing exactly as before', async () => {
+    const catalogue = fullCatalogue({ species: [], legacyAliases: {} })
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: { packageId: 'eldra.content.srd-5.1', slug: 'human' },
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      }
+    )
+
+    const result = await assembleCharacter('5', '42')
+
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    expect(result.blueprint.species.status).toBe('missing')
+  })
+
+  it('an alias naming an entry that is ALSO absent from the catalogue still reports missing, never throws', async () => {
+    const catalogue = fullCatalogue({
+      species: [],
+      legacyAliases: { 'species::eldra.content.srd-5.1::human': { packageId: 'workspace.w1', slug: 'human' } }
+    })
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: { packageId: 'eldra.content.srd-5.1', slug: 'human' },
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      }
+    )
+
+    const result = await assembleCharacter('5', '42')
+
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    expect(result.blueprint.species.status).toBe('missing')
+  })
+
+  it('redirects a shadowed inventory item reference the same way', async () => {
+    const winnerItem = catalogueEntry({ packageId: 'workspace.w1', slug: 'shortsword-xphb', title: 'Fine Shortsword' })
+    const catalogue = fullCatalogue({
+      items: [winnerItem],
+      legacyAliases: { 'item::eldra.content.srd-5.1::shortsword-xphb': { packageId: 'workspace.w1', slug: 'shortsword-xphb' } }
+    })
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      { species: selectionRef(catalogue.species[0]), class: selectionRef(catalogue.classes[0]), background: selectionRef(catalogue.backgrounds[0]) },
+      null,
+      { items: [{ instanceId: 'i1', ref: { packageId: 'eldra.content.srd-5.1', slug: 'shortsword-xphb' }, quantity: 1, equipped: false, attuned: false }] }
+    )
+
+    const result = await assembleCharacter('5', '42')
+
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    const item = result.blueprint.inventory.find((i) => i.instanceId === 'i1')
+    expect(item?.status).toBe('resolved')
+    expect(item?.entry).toEqual(winnerItem)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Character Builder / Character Sheet Phase 3 -- ability scores.
 // ---------------------------------------------------------------------------

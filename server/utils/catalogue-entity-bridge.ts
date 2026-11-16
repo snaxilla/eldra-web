@@ -113,6 +113,24 @@ export type CatalogueBridgeRow = {
   // (extractImageUrl) cannot express (a missing/falsy block field there
   // just falls through to the next fallback instead of stopping).
   effectiveImageOverride?: { url: string } | null
+  // Direct-edit consolidation pass -- the context rail's own provenance
+  // label ("From a published Content Pack" vs. "Customized for this
+  // World") was wrong for EVERY catalogue-sourced row, because nothing
+  // distinguished a still-pinned entry from a workspace-sourced effective
+  // winner. `false` (flag off, or a pinned/channel winner) means exactly
+  // what the old blanket label claimed; `true` means this row IS a
+  // workspace-sourced effective winner -- relayed straight from
+  // `EffectiveEntity.customization.customized`, never re-derived.
+  customized: boolean
+  // The winning candidate's own packageId -- a real release packageId
+  // for a pinned/channel winner, or the `workspace.<id>` pseudo-id for a
+  // workspace-sourced one (world-content-sources.ts's own convention).
+  // Lets a caller (the direct-edit "Edit" entry point) tell which case it
+  // is without a second resolve call.
+  packageId?: string
+  // Set only for a workspace-sourced winner -- the exact entity to open
+  // in the shared editor, again without a second resolve round trip.
+  contentEntityId?: string
   __source: 'catalogue'
   blocks: CatalogueBridgeBlock[]
 }
@@ -326,6 +344,9 @@ export async function getCatalogueBackedEntityRows(
         updated_at: null,
         image: null,
         effectiveImageOverride: useEffective ? effectiveImageOverrideFor(entry as EffectiveEntity) : undefined,
+        customized: useEffective ? Boolean((entry as EffectiveEntity).customization?.customized) : false,
+        packageId: entry.packageId,
+        contentEntityId: useEffective ? (entry as EffectiveEntity).contentEntityId : undefined,
         __source: 'catalogue',
         blocks
       })

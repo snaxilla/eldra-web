@@ -13,21 +13,23 @@ import { createError, defineEventHandler, getQuery, getRouterParam } from 'h3'
 
 import { validateContentEntityIdParam } from '../../../../../../../app/lib/content-workspaces/validation'
 import { getWorkspaceEntityDetail } from '../../../../../../utils/content-workspace-entities'
-import { previewEntityPresentation } from '../../../../../../utils/content-workspace-presentation'
+import { previewEntityPresentation, rawPayloadOf } from '../../../../../../utils/content-workspace-presentation'
+import { catalogueEntryToBlocks } from '../../../../../../utils/catalogue-entity-bridge'
+import { collectionSummaryMetaLines } from '../../../../../../utils/entity-collection-summary'
 import {
   orBadRequest,
-  requirePlatformCapability,
   requireWorkspace,
+  requireWorkspaceEntityAccess,
   requireWorkspaceIdParam,
   withWorkspaceHttp
 } from '../../../../../../utils/content-workspace-http'
 
 export default defineEventHandler(async (event) => {
-  requirePlatformCapability(event, 'platform.contentworkspace.view')
   const workspaceId = requireWorkspaceIdParam(getRouterParam(event, 'workspaceId'))
   const contentEntityId = orBadRequest(validateContentEntityIdParam(getRouterParam(event, 'contentEntityId')))
   const query = getQuery(event) as Record<string, unknown>
   const worldId = typeof query.worldId === 'string' && query.worldId ? query.worldId : null
+  await requireWorkspaceEntityAccess(event, 'platform.contentworkspace.view', workspaceId, worldId, 'read')
 
   return await withWorkspaceHttp(async () => {
     await requireWorkspace(workspaceId)
@@ -37,6 +39,18 @@ export default defineEventHandler(async (event) => {
 
     const preview = await previewEntityPresentation(entity, { worldId })
 
-    return { entity, preview }
+    // Direct-edit consolidation pass, section 7: the SAME mechanics
+    // meta-lines the category rail shows (established helpers, never a
+    // second provider parser) -- so the shared editor's own preview
+    // never disagrees with what the admin already saw on the card.
+    let metaLines: string[] = []
+    try {
+      const blocks = catalogueEntryToBlocks(entity.entityType, { data: rawPayloadOf(entity) } as never)
+      metaLines = collectionSummaryMetaLines({ entity_type: entity.entityType, slug: entity.slug }, blocks)
+    } catch {
+      metaLines = []
+    }
+
+    return { entity, preview: { ...preview, metaLines } }
   })
 })

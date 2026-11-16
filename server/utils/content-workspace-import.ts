@@ -90,7 +90,7 @@ async function loadImportSource(
   source: WorkspaceImportSource,
   workspace: ContentWorkspace
 ): Promise<{ ok: true; source: LoadedSource } | ImportSourceFailure> {
-  if (source.kind === 'release') {
+  if (source.kind === 'release' || source.kind === 'entity') {
     const loaded = await loadPublishedContentPack(source.packageId, source.version)
     if (!loaded.ok) {
       return {
@@ -101,12 +101,37 @@ async function loadImportSource(
     }
 
     const { manifest, content } = loaded.package
+
+    // `entity`: the SAME release load as `release`, filtered down to the
+    // one matching candidate before anything else runs -- the planner,
+    // snapshot writer, and retry path below never know the difference,
+    // so every identity/provenance/retry guarantee a release import has
+    // applies here unchanged. The candidate is NEVER hand-copied or
+    // stripped -- it is the exact envelope `loadPublishedContentPack`
+    // returned (rulesFacet, baseRefs, slugAliases and all), just reduced
+    // to a list of one.
+    const candidates = source.kind === 'entity'
+      ? (content as ContentPublicationCandidate[]).filter(
+          (candidate) => candidate.entityType === source.entityType && candidate.slug === source.slug
+        )
+      : (content as ContentPublicationCandidate[])
+
+    if (source.kind === 'entity' && !candidates.length) {
+      return {
+        ok: false,
+        stage: 'source-not-found',
+        message: `'${source.slug}' (${source.entityType}) was not found in ${source.packageId}@${source.version}.`
+      }
+    }
+
     return {
       ok: true,
       source: {
         lineage: { kind: 'release', packageId: source.packageId },
-        label: `${manifest.title} ${source.version}`,
-        candidates: content as ContentPublicationCandidate[],
+        label: source.kind === 'entity'
+          ? `${manifest.title} ${source.version} — ${source.slug}`
+          : `${manifest.title} ${source.version}`,
+        candidates,
         warnings: [],
         refFor: (candidate) => ({
           provider: candidate.provider,

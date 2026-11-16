@@ -178,6 +178,22 @@ export async function getContentWorkspace(workspaceId: string): Promise<ContentW
   })
 }
 
+// Direct-edit consolidation pass: a World's own deterministic local
+// workspace is found by a well-known `workspace_key`
+// (content-entity-direct-edit.ts's own `worldLocalWorkspaceKey`), never by
+// a new id column on `worlds` -- `workspace_key` is already UNIQUE, so
+// this is a lookup, not new schema.
+export async function getContentWorkspaceByKey(workspaceKey: string): Promise<ContentWorkspace | null> {
+  return await withWorkspaceSchema(CONTENT_WORKSPACES_COLLECTION, async () => {
+    const res = await dx(`/items/${CONTENT_WORKSPACES_COLLECTION}`, {
+      method: 'GET',
+      query: { filter: { workspace_key: { _eq: workspaceKey } }, limit: 1, fields: WORKSPACE_FIELDS }
+    })
+    const row = rows(res)[0]
+    return row ? normalizeWorkspace(row) : null
+  })
+}
+
 export type CreateWorkspaceResult =
   | { ok: true; workspace: ContentWorkspace }
   | { ok: false; stage: 'key-taken'; workspaceKey: string }

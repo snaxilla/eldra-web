@@ -21,7 +21,12 @@ export type EntityPresentationPreview = {
   imageUnavailableReason?: 'not-found' | 'world-scope-mismatch' | 'unsupported-kind'
 }
 
-function rawPayloadOf(entity: WorkspaceEntityDetail): unknown {
+// Exported for the entity-detail route's own mechanics preview (direct-
+// edit consolidation pass, section 7: "include existing item mechanics
+// in the shared editor preview through established helpers") -- reusing
+// the SAME raw-payload extraction this module's own presentation
+// resolution already relies on, rather than a second implementation.
+export function rawPayloadOf(entity: WorkspaceEntityDetail): unknown {
   const source = entity.origin === 'authored' ? entity.authoredData : entity.baseData
   if (!source || typeof source !== 'object') return null
   // base_data/authored_data are stored as a ContentPublicationCandidate --

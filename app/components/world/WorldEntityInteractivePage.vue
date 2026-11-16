@@ -7,6 +7,8 @@ import {
   itemCodeLabel as collectionClientItemCodeLabel,
   serverMetaLines as resolveServerMetaLines
 } from '~/lib/world-entity-collection/server-meta-lines'
+import { presentationKindForEntityType } from '~/lib/content-presentation/kind-for-entity-type'
+import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
 
 const props = defineProps<{
   entityType: string
@@ -968,6 +970,42 @@ const selectedEntity = computed(() => {
   return (entities.value || []).find((entity: any) => String(entity.id) === String(selectedEntityId.value)) || null
 })
 
+// Direct Content Editing consolidation pass -- "Edit" is offered only
+// for the categories the shared presentation editor actually supports
+// (species/class/background/spell/item/featureOption -- the SAME closed
+// set catalogue-entity-bridge.ts's own previewer dispatch and
+// presentationKindForEntityType already agree on). Unsupported
+// categories (location, character/npc, feat, enemy/monster, ...) simply
+// never show the button, reported explicitly rather than guessed at.
+const directEditSupported = computed(() => Boolean(presentationKindForEntityType(props.entityType)))
+const directEditing = ref(false)
+
+function openDirectEdit() {
+  directEditing.value = true
+}
+
+function closeDirectEdit() {
+  directEditing.value = false
+}
+
+async function onDirectEditSaved(contentEntityId?: string) {
+  // The SAME row/selection/search stays put -- only the underlying data
+  // (title/image/summary/mechanics) is refreshed, so returning from the
+  // editor shows the update in place rather than losing context.
+  await refresh()
+  if (!contentEntityId) return
+  // Identity-safe re-selection: `contentEntityId` is the canonical id the
+  // save/split workflow itself just returned -- the one piece of
+  // evidence that's never ambiguous between two unrelated entities that
+  // happen to share a slug+entityType. `await nextTick()` guarantees the
+  // `watch(filteredEntities, ...)` above (which may have just cleared
+  // selectedEntityId because the row's OLD `id` vanished) has already run
+  // before this overrides it with the correct new row.
+  await nextTick()
+  const match = (entities.value || []).find((entity: any) => String(entity.contentEntityId || '') === String(contentEntityId))
+  if (match) selectedEntityId.value = String(match.id)
+}
+
 const selectedSummary = computed(() => {
   // Falls back to the already-loaded summary entity when there is no
   // richer detail fetch (catalogue-sourced selection -- see
@@ -993,6 +1031,18 @@ watch(filteredEntities, (items) => {
 
   if (selectedEntityId.value) {
     const stillExists = items.some((entity: any) => String(entity.id) === String(selectedEntityId.value))
+    // A catalogue-sourced entity's `id` embeds its backing packageId
+    // (`catalogue:<packageId>:<slug>` -- see catalogue-entity-bridge.ts),
+    // which legitimately changes the moment a direct edit customizes it
+    // for this World. An earlier version of this watcher re-pointed
+    // selection by matching slug+entityType against the previous list --
+    // REMOVED: slug/entityType is not identity evidence (two UNRELATED
+    // packages can publish the same slug+entityType pair as two separate
+    // effective entities in the same World's catalogue), so that match
+    // could silently select the WRONG entity. This watcher now only ever
+    // clears a vanished selection; `onDirectEditSaved` below re-selects
+    // the correct row itself, using the canonical contentEntityId the
+    // save/split workflow actually returned -- never a guess.
     if (!stillExists) selectedEntityId.value = null
   }
 }, { deep: true })
@@ -1608,12 +1658,48 @@ async function createLocationArticle() {
               Open Article
             </NuxtLink>
 
-            <p
-              v-else
-              class="text-center text-xs uppercase tracking-[0.2em] text-eldra-text-faint"
+            <template v-else>
+              <!-- Direct-edit consolidation pass: this used to be a
+                   BLANKET "From a published Content Pack" for every
+                   catalogue-sourced row, customized or not -- wrong
+                   whenever `customized` is true. `customized`/
+                   `effectiveImageOverride` only exist when the effective
+                   resolver ran at all (ELDRA_EFFECTIVE_CONTENT); absent
+                   (`undefined`) means "the flag is off, or this row
+                   predates that question," which is exactly the old
+                   pinned-only behavior and keeps the original label. -->
+              <p
+                v-if="selectedEntity.customized"
+                class="text-center text-xs uppercase tracking-[0.2em] text-emerald-300"
+              >
+                Customized for this World
+              </p>
+              <p
+                v-else
+                class="text-center text-xs uppercase tracking-[0.2em] text-eldra-text-faint"
+              >
+                From a published Content Pack
+              </p>
+            </template>
+
+            <button
+              v-if="mode === 'build' && directEditSupported"
+              type="button"
+              class="eldra-button mt-2 block w-full rounded-none px-4 py-3 text-center text-sm font-medium"
+              @click="openDirectEdit"
             >
-              From a published Content Pack
-            </p>
+              Edit
+            </button>
+
+            <WorldEntityDirectEditDialog
+              v-if="directEditing"
+              :world-id="worldId"
+              :entity-type="entityType"
+              :slug="selectedEntity.slug"
+              :title="selectedEntity.title"
+              @close="closeDirectEdit"
+              @saved="onDirectEditSaved"
+            />
           </div>
         </div>
       </aside>

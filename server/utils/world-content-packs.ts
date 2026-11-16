@@ -284,3 +284,32 @@ export async function saveWorkspaceBinding(
 export async function removeWorkspaceBinding(worldId: string | number, workspaceId: string): Promise<boolean> {
   return await removeContentPackBinding(worldId, workspaceBindingPseudoPackageId(workspaceId))
 }
+
+// The reverse of findWorkspaceBindingForWorld -- every World a workspace is
+// CURRENTLY live-bound to, not just one. Direct-edit consolidation pass:
+// needed to tell a "local" workspace (bound to exactly the one World asking
+// to customize it) from a "shared" one (bound to several), so a direct edit
+// can offer "customize for this World only" vs. "edit the shared collection"
+// honestly. Returns world ids ONLY, deliberately -- never a title/name,
+// which would require re-checking the caller's own visibility into each of
+// those OTHER Worlds before disclosing it (content-workspaces-and-studio.md
+// §FINISH "do not disclose inaccessible World names"); a bare count or id
+// list carries no name to leak.
+export async function listWorldsBoundToWorkspace(workspaceId: string): Promise<string[]> {
+  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { workspace_id: { _eq: workspaceId } },
+          { binding_mode: { _eq: 'workspace' } }
+        ]
+      },
+      limit: -1,
+      fields: 'world_id'
+    }
+  })
+
+  const rows = Array.isArray(res?.data) ? res.data : []
+  return rows.map((row: any) => String(row.world_id))
+}

@@ -160,6 +160,15 @@ export function validateEntityListFilter(query: Record<string, unknown>): Valida
 export type WorkspaceImportSource =
   | { kind: 'release'; packageId: string; version: string }
   | { kind: 'provider'; gameSystemKey: string; collectionKey: string; categories: string[] | null }
+  // Direct-edit consolidation pass: imports EXACTLY one entity out of a
+  // release, never the whole book. Reuses the SAME release load
+  // (loadPublishedContentPack) and the SAME write/snapshot/retry path a
+  // `release` import uses -- the only difference is which candidates reach
+  // the planner (content-workspace-import.ts's own loadImportSource
+  // filters `content` down to the one matching entityType+slug before
+  // anything else runs), so every existing identity/provenance/retry
+  // guarantee applies unchanged.
+  | { kind: 'entity'; packageId: string; version: string; entityType: string; slug: string }
 
 export type WorkspaceImportRequest = { source: WorkspaceImportSource; dryRun: boolean }
 
@@ -201,7 +210,28 @@ export function validateImportRequest(body: unknown): Validated<WorkspaceImportR
     }
   }
 
-  return { ok: false, problems: ["source.kind must be 'release' or 'provider'"] }
+  if (raw.kind === 'entity') {
+    if (!isPackageId(raw.packageId)) problems.push('source.packageId is malformed')
+    if (typeof raw.version !== 'string' || !VERSION_PATTERN.test(raw.version)) problems.push('source.version is malformed')
+    if (!isAddressSegment(raw.entityType)) problems.push('source.entityType is malformed')
+    if (!isAddressSegment(raw.slug)) problems.push('source.slug is malformed')
+    if (problems.length) return { ok: false, problems }
+    return {
+      ok: true,
+      value: {
+        dryRun,
+        source: {
+          kind: 'entity',
+          packageId: raw.packageId as string,
+          version: raw.version as string,
+          entityType: raw.entityType as string,
+          slug: raw.slug as string
+        }
+      }
+    }
+  }
+
+  return { ok: false, problems: ["source.kind must be 'release', 'provider', or 'entity'"] }
 }
 
 export function validateContentEntityIdParam(value: unknown): Validated<string> {

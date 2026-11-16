@@ -12,18 +12,20 @@ import {
 import { revertPresentationPath } from '../../../../../../../../utils/content-workspace-entities'
 import {
   orBadRequest,
-  requirePlatformCapability,
   requireWorkspace,
+  requireWorkspaceEntityAccess,
   requireWorkspaceIdParam,
   withWorkspaceHttp
 } from '../../../../../../../../utils/content-workspace-http'
 
 export default defineEventHandler(async (event) => {
-  const principal = requirePlatformCapability(event, 'platform.contentworkspace.edit')
   const workspaceId = requireWorkspaceIdParam(getRouterParam(event, 'workspaceId'))
   const contentEntityId = orBadRequest(validateContentEntityIdParam(getRouterParam(event, 'contentEntityId')))
   const path = orBadRequest(validatePresentationPathParam(getRouterParam(event, 'path')))
-  const request = orBadRequest(validateRevertRequest(await readBody(event)))
+  const rawBody = await readBody(event)
+  const worldId = typeof rawBody?.worldId === 'string' && rawBody.worldId ? rawBody.worldId : null
+  const principal = await requireWorkspaceEntityAccess(event, 'platform.contentworkspace.edit', workspaceId, worldId, 'write')
+  const request = orBadRequest(validateRevertRequest(rawBody))
 
   return await withWorkspaceHttp(async () => {
     await requireWorkspace(workspaceId, { mutable: true })

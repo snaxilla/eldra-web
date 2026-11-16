@@ -14,17 +14,19 @@ import { applyPresentationEdits, getWorkspaceEntityDetail } from '../../../../..
 import { computePresentationBaseValueHash, resolveBasePresentation } from '../../../../../../utils/content-workspace-presentation'
 import {
   orBadRequest,
-  requirePlatformCapability,
   requireWorkspace,
+  requireWorkspaceEntityAccess,
   requireWorkspaceIdParam,
   withWorkspaceHttp
 } from '../../../../../../utils/content-workspace-http'
 
 export default defineEventHandler(async (event) => {
-  const principal = requirePlatformCapability(event, 'platform.contentworkspace.edit')
   const workspaceId = requireWorkspaceIdParam(getRouterParam(event, 'workspaceId'))
   const contentEntityId = orBadRequest(validateContentEntityIdParam(getRouterParam(event, 'contentEntityId')))
-  const request = orBadRequest(validatePresentationPatchRequest(await readBody(event)))
+  const rawBody = await readBody(event)
+  const worldId = typeof rawBody?.worldId === 'string' && rawBody.worldId ? rawBody.worldId : null
+  const principal = await requireWorkspaceEntityAccess(event, 'platform.contentworkspace.edit', workspaceId, worldId, 'write')
+  const request = orBadRequest(validatePresentationPatchRequest(rawBody))
 
   return await withWorkspaceHttp(async () => {
     await requireWorkspace(workspaceId, { mutable: true })

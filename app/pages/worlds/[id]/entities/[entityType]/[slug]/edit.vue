@@ -137,31 +137,51 @@ function onClose() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl p-6">
-    <div class="mb-6 flex items-center justify-between gap-3">
-      <div class="min-w-0">
-        <NuxtLink
-          :to="returnPath"
-          class="text-xs uppercase tracking-[0.25em] text-eldra-accent-text hover:underline"
-        >
-          ← Back to {{ categoryLabel }}
-        </NuxtLink>
-        <h1 class="eldra-display mt-2 truncate text-2xl text-eldra-text-strong">
-          {{ entityTitle }}
-        </h1>
-      </div>
+  <!-- Scrolling fix. world-workspace.vue's own content column is
+       `h-full w-full overflow-hidden` (deliberately -- the layout shell
+       is fixed, never the body/page), handing this page a BOUNDED, real
+       height through its `slot`. This root previously ignored that
+       entirely (plain `max-w-5xl p-6`, no height of its own), so once
+       the form + live preview + mechanics grew taller than the
+       available height, the ancestor's `overflow-hidden` simply CLIPPED
+       the rest -- nothing was ever scrollable, Mechanics/Save/checkpoint
+       at the bottom were unreachable. Fixed the same way the narrow
+       rail's own aside already does it (`h-full` + `overflow-y-auto`):
+       this root is `flex h-full min-h-0 flex-col` so it actually fills
+       (and is bounded by) that real height; the heading/back-link stays
+       `shrink-0` outside any scroll region; the ONE scroll container is
+       the body below, `min-h-0 flex-1 overflow-y-auto` -- `min-h-0` is
+       required on a flex child or it refuses to shrink below its own
+       content size, which is exactly what let the ancestor's
+       `overflow-hidden` clip it instead of this `overflow-y-auto` ever
+       engaging. -->
+  <div class="flex h-full min-h-0 flex-col">
+    <div class="shrink-0 border-b border-eldra-accent/16 p-6 pb-4">
+      <NuxtLink
+        :to="returnPath"
+        class="text-xs uppercase tracking-[0.25em] text-eldra-accent-text hover:underline"
+      >
+        ← Back to {{ categoryLabel }}
+      </NuxtLink>
+      <h1 class="eldra-display mt-2 truncate text-2xl text-eldra-text-strong">
+        {{ entityTitle }}
+      </h1>
     </div>
 
-    <WorldEntityDirectEditDialog
-      :world-id="worldId"
-      :entity-type="entityType"
-      :slug="slug"
-      :title="entityTitle"
-      surface="full"
-      :seed-draft="transferredDraft"
-      @saved="onSaved"
-      @close="onClose"
-      @dirty-change="onDirtyChange"
-    />
+    <div class="min-h-0 flex-1 overflow-y-auto p-6">
+      <div class="mx-auto max-w-5xl">
+        <WorldEntityDirectEditDialog
+          :world-id="worldId"
+          :entity-type="entityType"
+          :slug="slug"
+          :title="entityTitle"
+          surface="full"
+          :seed-draft="transferredDraft"
+          @saved="onSaved"
+          @close="onClose"
+          @dirty-change="onDirtyChange"
+        />
+      </div>
+    </div>
   </div>
 </template>

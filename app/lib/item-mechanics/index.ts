@@ -20,6 +20,27 @@ export {
   type ItemUnavailableReason
 } from './eligibility'
 
+export { resolveEffectiveItemData } from './effective-data'
+
+export {
+  ITEM_MECHANICS_OVERRIDE_PATHS,
+  ITEM_RARITY_OPTIONS,
+  WEAPON_DAMAGE_TYPE_OPTIONS,
+  WEAPON_PROPERTY_EDIT_OPTIONS,
+  isItemMechanicsOverridePath,
+  isSupportedDamageDiceExpression,
+  validateItemMechanicsOverrideValue,
+  effectiveAttunementValue,
+  effectiveDamageValue,
+  propertyRows,
+  buildPropertyOverrideArray,
+  type ItemMechanicsOverridePath,
+  type ItemAttunementOverrideValue,
+  type ItemDamageOverrideValue,
+  type PropertyRow,
+  type PropertyRowState
+} from './dnd5e-editing'
+
 const RESOLVERS: Record<string, ItemMechanicsResolver> = {
   dnd5e: resolveDnd5eItemMechanics
 }

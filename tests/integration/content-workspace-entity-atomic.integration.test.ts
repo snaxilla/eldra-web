@@ -142,7 +142,7 @@ describe('writeWorkspaceEntityOverrideAtomic -- single write', () => {
   it('writes the override, bumps the entity revision, records history, and bumps the workspace revision -- all together', async () => {
     const result = await writeWorkspaceEntityOverrideAtomic({
       workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-      column: 'authored_presentation', newValue: overridesFor('Fine Shortsword'),
+      columns: { authored_presentation: overridesFor('Fine Shortsword') },
       revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'Fine Shortsword' }] }
     })
 
@@ -162,7 +162,7 @@ describe('writeWorkspaceEntityOverrideAtomic -- single write', () => {
   it('rejects a stale expectedRevision as a conflict, writing NOTHING -- no entity change, no history row, no workspace bump', async () => {
     const result = await writeWorkspaceEntityOverrideAtomic({
       workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 5,
-      column: 'authored_presentation', newValue: overridesFor('Should Not Apply'),
+      columns: { authored_presentation: overridesFor('Should Not Apply') },
       revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
     })
 
@@ -181,7 +181,7 @@ describe('writeWorkspaceEntityOverrideAtomic -- single write', () => {
   it('reports not-found for an entity that does not exist, writing nothing', async () => {
     const result = await writeWorkspaceEntityOverrideAtomic({
       workspaceId, contentEntityId: 'ce_zzzzzzzzzzzzzzzzzzzzzzzzzz', expectedRevision: 0,
-      column: 'authored_presentation', newValue: overridesFor('X'),
+      columns: { authored_presentation: overridesFor('X') },
       revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
     })
     expect(result.ok).toBe(false)
@@ -190,17 +190,78 @@ describe('writeWorkspaceEntityOverrideAtomic -- single write', () => {
   })
 })
 
+function mechanicsOverridesFor(path: string, value: unknown) {
+  return [{ channel: 'mechanics', path, value, authoredBy: 'acct-1', authoredAt: new Date().toISOString(), baseValueHash: null }]
+}
+
+// Items Mechanics Editing, release one -- the combined-save guarantee
+// (brief item 2): one request touching BOTH authored_presentation and
+// authored_mechanics must be one transaction, one revision increment, one
+// history row -- never two separate writes that could partially land.
+describe('writeWorkspaceEntityOverrideAtomic -- combined multi-column write', () => {
+  it('writes BOTH columns, bumps the entity revision by exactly 1, and records exactly ONE history row', async () => {
+    const result = await writeWorkspaceEntityOverrideAtomic({
+      workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
+      columns: {
+        authored_presentation: overridesFor('Fine Shortsword'),
+        authored_mechanics: mechanicsOverridesFor('rarity', 'rare')
+      },
+      revision: {
+        kind: 'autosave', label: null, actorAccountId: ACCOUNT_A,
+        diff: [
+          { channel: 'mechanics', path: 'rarity', from: undefined, to: 'rare' },
+          { channel: 'presentation', path: 'name', from: undefined, to: 'Fine Shortsword' }
+        ]
+      }
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.entity.revision).toBe(1) // +1, never +2, despite two columns
+
+    const row = await readEntity(entityId)
+    expect(row.revision).toBe(1)
+    expect(row.authored_presentation[0].value).toBe('Fine Shortsword')
+    expect(row.authored_mechanics[0].value).toBe('rare')
+    expect(await countRevisions('ce_aaaaaaaaaaaaaaaaaaaaaaaaaa')).toBe(1) // ONE coherent history row, not two
+
+    const workspace = await readWorkspace(workspaceId)
+    expect(workspace.revision).toBe(1)
+  })
+
+  it('a stale expectedRevision rejects the WHOLE combined write -- neither column changes, no partial persistence', async () => {
+    const result = await writeWorkspaceEntityOverrideAtomic({
+      workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 5,
+      columns: {
+        authored_presentation: overridesFor('Should Not Apply'),
+        authored_mechanics: mechanicsOverridesFor('rarity', 'legendary')
+      },
+      revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('conflict')
+
+    const row = await readEntity(entityId)
+    expect(row.revision).toBe(0)
+    expect(row.authored_presentation).toEqual([])
+    expect(row.authored_mechanics).toEqual([])
+    expect(await countRevisions('ce_aaaaaaaaaaaaaaaaaaaaaaaaaa')).toBe(0)
+  })
+})
+
 describe('concurrency -- two saves against the SAME entity at the same expectedRevision', () => {
   it('exactly one succeeds, the other is a conflict; final state matches the winner; history has exactly one new row', async () => {
     const [a, b] = await Promise.all([
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('Writer A'),
+        columns: { authored_presentation: overridesFor('Writer A') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'Writer A' }] }
       }),
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('Writer B'),
+        columns: { authored_presentation: overridesFor('Writer B') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_B, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'Writer B' }] }
       })
     ])
@@ -230,12 +291,12 @@ describe('concurrency -- two saves against the SAME entity at the same expectedR
     const [save, revert] = await Promise.all([
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('New Name'),
+        columns: { authored_presentation: overridesFor('New Name') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'New Name' }] }
       }),
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: [],
+        columns: { authored_presentation: [] },
         revision: { kind: 'revert', label: 'Reverted presentation.name', actorAccountId: ACCOUNT_B, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: undefined }] }
       })
     ])
@@ -254,12 +315,12 @@ describe('concurrency -- two saves against DIFFERENT entities, same workspace', 
     const [a, b] = await Promise.all([
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('A Edit'),
+        columns: { authored_presentation: overridesFor('A Edit') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'A Edit' }] }
       }),
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_bbbbbbbbbbbbbbbbbbbbbbbbbb', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('B Edit'),
+        columns: { authored_presentation: overridesFor('B Edit') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_B, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'B Edit' }] }
       })
     ])
@@ -285,12 +346,12 @@ describe('concurrency -- two saves against DIFFERENT entities, same workspace', 
     await Promise.all([
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('A Edit'),
+        columns: { authored_presentation: overridesFor('A Edit') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
       }),
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_bbbbbbbbbbbbbbbbbbbbbbbbbb', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('B Edit'),
+        columns: { authored_presentation: overridesFor('B Edit') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_B, diff: [] }
       })
     ])
@@ -305,7 +366,7 @@ describe('concurrency -- different workspaces never interfere', () => {
   it('a write to one workspace never bumps a different workspace\'s revision', async () => {
     await writeWorkspaceEntityOverrideAtomic({
       workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-      column: 'authored_presentation', newValue: overridesFor('Edit'),
+      columns: { authored_presentation: overridesFor('Edit') },
       revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
     })
 
@@ -326,7 +387,7 @@ describe('touchWorkspaceRevisionAtomic -- the import executor\'s own writer', ()
       touchWorkspaceRevisionAtomic(workspaceId),
       writeWorkspaceEntityOverrideAtomic({
         workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
-        column: 'authored_presentation', newValue: overridesFor('Edit'),
+        columns: { authored_presentation: overridesFor('Edit') },
         revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [] }
       })
     ])

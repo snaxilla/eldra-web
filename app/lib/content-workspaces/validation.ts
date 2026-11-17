@@ -296,6 +296,73 @@ export function validatePresentationPatchRequest(body: unknown): Validated<Prese
   return { ok: true, value: { expectedRevision, edits } }
 }
 
+// ---------------------------------------------------------------------------
+// Combined entity editing (Items Mechanics Editing, release one)
+// ---------------------------------------------------------------------------
+// Generalizes validatePresentationPatchRequest above to accept edits
+// tagged with a channel. `channel` is OPTIONAL per edit and defaults to
+// 'presentation' -- an existing presentation-only caller sending the OLD
+// body shape (`{expectedRevision, edits: [{path, value}]}`, no `channel`
+// anywhere) validates identically to before. Only SHAPE/well-formedness is
+// checked here (a well-formed presentation path, or a non-empty string for
+// a mechanics path) -- mechanics path/value validation is entity-type-
+// aware and happens in the route, once the entity (and its entityType) has
+// been loaded, mirroring how computePresentationBaseValueHash already
+// defers to post-load context for presentation.
+
+export type EntityEditInput = { channel: 'presentation' | 'mechanics'; path: string; value: unknown }
+export type EntityPatchRequest = { expectedRevision: number; edits: EntityEditInput[] }
+
+export function validateEntityPatchRequest(body: unknown): Validated<EntityPatchRequest> {
+  if (!isPlainObject(body)) return { ok: false, problems: ['request body must be an object'] }
+  const problems: string[] = []
+
+  const rawExpectedRevision = body.expectedRevision
+  const validRevision = typeof rawExpectedRevision === 'number' && Number.isInteger(rawExpectedRevision) && rawExpectedRevision >= 0
+  if (!validRevision) {
+    problems.push('expectedRevision must be a whole number >= 0, naming the revision this edit was based on')
+  }
+  const expectedRevision = validRevision ? (rawExpectedRevision as number) : 0
+
+  const rawEdits = body.edits
+  if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
+    problems.push('edits must be a non-empty array')
+  } else if (rawEdits.length > MAX_EDITS_PER_REQUEST) {
+    problems.push(`edits must contain at most ${MAX_EDITS_PER_REQUEST} entries per request`)
+  }
+
+  const edits: EntityEditInput[] = []
+  const seenKeys = new Set<string>()
+
+  if (Array.isArray(rawEdits)) {
+    for (const raw of rawEdits) {
+      if (!isPlainObject(raw) || typeof raw.path !== 'string') {
+        problems.push('each edit must be an object with a string path')
+        continue
+      }
+      const channel = raw.channel === undefined ? 'presentation' : raw.channel
+      if (channel !== 'presentation' && channel !== 'mechanics') {
+        problems.push(`'${raw.path}': channel must be 'presentation' or 'mechanics'`)
+        continue
+      }
+      if (channel === 'presentation' && !isValidOverridePath('presentation', raw.path)) {
+        problems.push(`'${raw.path}' is not an editable presentation field. Editable fields: ${PRESENTATION_OVERRIDE_PATHS.join(', ')}`)
+        continue
+      }
+      const key = `${channel}::${raw.path}`
+      if (seenKeys.has(key)) {
+        problems.push(`'${raw.path}' (${channel}) appears more than once in the same request`)
+        continue
+      }
+      seenKeys.add(key)
+      edits.push({ channel, path: raw.path, value: raw.value })
+    }
+  }
+
+  if (problems.length) return { ok: false, problems }
+  return { ok: true, value: { expectedRevision, edits } }
+}
+
 export type RevertPathRequest = { expectedRevision: number }
 
 export function validateRevertRequest(body: unknown): Validated<RevertPathRequest> {
@@ -311,6 +378,16 @@ export function validatePresentationPathParam(value: unknown): Validated<string>
   if (typeof value !== 'string' || !isValidOverridePath('presentation', value)) {
     return { ok: false, problems: [`'${String(value)}' is not an editable presentation field. Editable fields: ${PRESENTATION_OVERRIDE_PATHS.join(', ')}`] }
   }
+  return { ok: true, value }
+}
+
+// Shape-only (a non-empty string) -- mechanics path validity is
+// entity-type-aware (see server/utils/content-workspace-entities.ts's
+// isValidMechanicsOverridePath), so the real check happens in the route
+// once the entity's entityType is known, same deferral
+// validateEntityPatchRequest above already uses.
+export function validateMechanicsPathParam(value: unknown): Validated<string> {
+  if (typeof value !== 'string' || !value.trim()) return { ok: false, problems: ['path is required'] }
   return { ok: true, value }
 }
 

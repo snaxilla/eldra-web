@@ -28,6 +28,7 @@ import { getContentWorkspace } from './content-workspaces'
 import { listAllWorkspaceEntityDetails, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { resolveBasePresentation } from './content-workspace-presentation'
 import { buildSparseObject } from '../../app/lib/content-authoring/overrides'
+import { resolveEffectiveItemData } from '../../app/lib/item-mechanics'
 import { mergeAuthoredPresentation, type AuthoredPresentation, type PortableAssetRef, type ResolvedImage } from '../../app/lib/content-presentation/authored'
 import type { PresentationEntry } from '../../app/lib/content-presentation/types'
 import type { LegacyBaseRef } from '../../app/lib/content-identity'
@@ -159,6 +160,13 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
     const resolvedImage = resolveWorkspaceImage(sparse, fileWorldIds, worldId)
     const presentation = mergeAuthoredPresentation(basePresentation, sparse, resolvedImage)
 
+    // Items Mechanics Editing, release one: every mechanics/action/display
+    // resolver downstream (resolveItemMechanics, resolveItemAttunementRequired,
+    // resolveWeaponAction via resolveContentActions, item_core's own
+    // presentation facts) reads THIS `data` field uniformly -- merging the
+    // mechanics overlay here, once, means none of them need to change.
+    const innerData = resolveEffectiveItemData(entity.systemKey, (raw as { data?: unknown }).data ?? raw, entity.authoredMechanics)
+
     return {
       systemKey: entity.systemKey,
       entityType: entity.entityType,
@@ -168,7 +176,7 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
       provider: typeof raw.provider === 'string' ? raw.provider : 'workspace',
       sourceBook: typeof raw.sourceBook === 'string' ? raw.sourceBook : undefined,
       sourcePage: typeof raw.sourcePage === 'string' ? raw.sourcePage : undefined,
-      data: (raw as { data?: unknown }).data ?? raw,
+      data: innerData,
       rulesFacet: raw.rulesFacet as RulesFacet | undefined,
       parentClassSlug: typeof raw.parentClassSlug === 'string' ? raw.parentClassSlug : undefined,
       definitionId: typeof raw.definitionId === 'string' ? raw.definitionId : undefined,

@@ -46,7 +46,7 @@ import {
 } from './content-workspaces'
 import type { ContentWorkspace } from '../../app/lib/content-workspaces/types'
 import { importIntoWorkspace } from './content-workspace-import'
-import { applyPresentationEdits, getWorkspaceEntityDetail, type WorkspaceEntityDetail } from './content-workspace-entities'
+import { applyEntityEdits, applyPresentationEdits, getWorkspaceEntityDetail, type EntityChannelEdit, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { computePresentationBaseValueHash, resolveBasePresentation } from './content-workspace-presentation'
 
 const WORKSPACE_PREFIX = 'workspace.'
@@ -344,13 +344,19 @@ export type SplitToLocalResult =
 
 // Materializes a NEW entity in this World's own local workspace, seeded
 // from the SHARED entity's CURRENT effective state -- the inherited
-// starting point is the shared entity's own base data (so mechanics never
-// change), and its CURRENT authored_presentation overrides are copied as
-// the new local entity's OWN initial overrides (sparse -- only the paths
-// actually customized on the shared entity, never the full merged
-// object, so "preserve sparse overrides" holds exactly). Reuses the SAME
-// primitives `customizeEntityForWorld` does (exact-entity import, atomic
-// save) -- no new identity/storage mechanism.
+// starting point is the shared entity's own base data, and its CURRENT
+// authored_presentation AND authored_mechanics overrides are BOTH copied
+// (in one combined write) as the new local entity's OWN initial overrides
+// (sparse -- only the paths actually customized on the shared entity,
+// never the full merged object, so "preserve sparse overrides" holds
+// exactly for both channels). Reuses the SAME primitives
+// `customizeEntityForWorld` does (exact-entity import, atomic save) -- no
+// new identity/storage mechanism.
+//
+// ORDER: import -> seed (combined, atomic) -> bind. See the inline note
+// above bindWorkspaceLiveToWorld's call for why bind must be LAST -- a
+// seed failure must never leave an already-bound, incompletely-customized
+// local copy live for players.
 //
 // COLLAPSE EVIDENCE / LEGACY REFERENCES. The new local entity is imported
 // from the EXACT SAME release (packageId/version) the shared entity's own
@@ -422,6 +428,75 @@ export async function splitSharedEntityToLocalWorkspace(
     return { ok: false, stage: 'not-found', message: 'The entity could not be located in the local workspace after import.' }
   }
 
+  // Seed the new local entity with the shared entity's CURRENT overrides
+  // -- sparse, only the paths actually customized there, never the full
+  // merged presentation/mechanics. An entity with no overrides at all on a
+  // given channel (customized only implicitly, e.g. via a checkpoint with
+  // no field edits) has nothing to seed on THAT channel. Both channels are
+  // seeded in ONE combined applyEntityEdits call (the same atomic
+  // primitive the editor's own Save button uses) rather than two separate
+  // writes -- otherwise a presentation-seed success followed by a
+  // mechanics-seed failure would leave the local entity PARTIALLY seeded
+  // (presentation customized, mechanics silently still base) while this
+  // function still reports `ok: false`, an inconsistent state a caller
+  // retrying would not necessarily notice.
+  //
+  // ORDER, DELIBERATELY: seed BEFORE bind. bindWorkspaceLiveToWorld used to
+  // run right after import, before either seed write -- binding ADDS a
+  // live workspace binding (world-content-pack-binding.ts's own design:
+  // additive, not exclusive), so the World's effective-content resolver
+  // could start preferring this freshly-imported, NOT YET SEEDED local
+  // copy for this one entity (via evidence-collapse + binding-recency
+  // precedence) the moment bind succeeded -- a player-visible regression
+  // (losing the shared entity's customization) that a LATER seed failure
+  // would never undo, even though this function still reports failure to
+  // its caller. Seeding first means a seed failure leaves the local
+  // workspace unbound and therefore invisible to the World's effective
+  // content entirely -- nothing a caller sees as "failed" has already
+  // changed what players see.
+  const current = await getWorkspaceEntityDetail(workspace.id, match.contentEntityId)
+  if (!current) {
+    return { ok: false, stage: 'not-found', message: 'The new local entity could not be found right after import.' }
+  }
+
+  const seedEdits: EntityChannelEdit[] = []
+  if (sharedDetail.authoredPresentation.length) {
+    const basePresentation = resolveBasePresentation(current)
+    for (const override of sharedDetail.authoredPresentation) {
+      seedEdits.push({
+        channel: 'presentation',
+        path: override.path,
+        value: override.value,
+        baseValueHash: computePresentationBaseValueHash(basePresentation, override.path)
+      })
+    }
+  }
+  // Items Mechanics Editing, release one: `authoredMechanics` was
+  // previously never seeded here at all (confirmed during this release's
+  // own investigation) -- a shared entity's mechanics customization was
+  // silently lost on "Customize for this World."
+  if (sharedDetail.authoredMechanics.length) {
+    for (const override of sharedDetail.authoredMechanics) {
+      seedEdits.push({ channel: 'mechanics', path: override.path, value: override.value, baseValueHash: null })
+    }
+  }
+
+  let seeded = current
+  if (seedEdits.length) {
+    const outcome = await applyEntityEdits(workspace.id, match.contentEntityId, current.revision, current.entityType, seedEdits, input.actorAccountId)
+    if (!outcome.ok) {
+      if (outcome.stage === 'persistence-unavailable') return { ok: false, stage: 'persistence-unavailable', message: outcome.message }
+      // A seeding conflict can only mean a concurrent split of the SAME
+      // (World, entity) race -- retry-safe, since the import above is
+      // itself idempotent and will simply find the entity already there.
+      // The local workspace is NOT bound to the World at this point (see
+      // the ordering note above), so this failure is invisible to players
+      // -- nothing was "apparently successful."
+      return { ok: false, stage: 'import-failed', message: 'The new local copy was created, but seeding its initial values hit a conflict -- retry.', retrySafe: true }
+    }
+    seeded = outcome.entity
+  }
+
   const bound = await bindWorkspaceLiveToWorld(input.worldId, workspace.id)
   if (!bound.bound) {
     return {
@@ -432,38 +507,5 @@ export async function splitSharedEntityToLocalWorkspace(
     }
   }
 
-  // Seed the new local entity with the shared entity's CURRENT overrides
-  // -- sparse, only the paths actually customized there, never the full
-  // merged presentation. An entity with no overrides at all (customized
-  // only implicitly, e.g. via a checkpoint with no field edits) has
-  // nothing to seed; the fresh import's own inherited values already
-  // match, so this is skipped rather than writing an empty edit list.
-  if (sharedDetail.authoredPresentation.length) {
-    const localDetail = await getWorkspaceEntityDetail(workspace.id, match.contentEntityId)
-    if (!localDetail) {
-      return { ok: false, stage: 'not-found', message: 'The new local entity could not be found right after import.' }
-    }
-    const basePresentation = resolveBasePresentation(localDetail)
-    const edits = sharedDetail.authoredPresentation.map((override) => ({
-      path: override.path,
-      value: override.value,
-      baseValueHash: computePresentationBaseValueHash(basePresentation, override.path)
-    }))
-
-    const outcome = await applyPresentationEdits(workspace.id, match.contentEntityId, localDetail.revision, edits, input.actorAccountId)
-    if (!outcome.ok) {
-      if (outcome.stage === 'persistence-unavailable') return { ok: false, stage: 'persistence-unavailable', message: outcome.message }
-      // A seeding conflict can only mean a concurrent split of the SAME
-      // (World, entity) race -- retry-safe, since the import above is
-      // itself idempotent and will simply find the entity already there.
-      return { ok: false, stage: 'import-failed', message: 'The new local copy was created, but seeding its initial values hit a conflict -- retry.', retrySafe: true }
-    }
-    return { ok: true, workspaceId: workspace.id, contentEntityId: match.contentEntityId, entity: outcome.entity }
-  }
-
-  const finalDetail = await getWorkspaceEntityDetail(workspace.id, match.contentEntityId)
-  if (!finalDetail) {
-    return { ok: false, stage: 'not-found', message: 'The new local entity could not be found right after import.' }
-  }
-  return { ok: true, workspaceId: workspace.id, contentEntityId: match.contentEntityId, entity: finalDetail }
+  return { ok: true, workspaceId: workspace.id, contentEntityId: match.contentEntityId, entity: seeded }
 }

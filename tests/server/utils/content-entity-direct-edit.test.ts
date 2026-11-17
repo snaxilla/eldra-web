@@ -17,6 +17,7 @@ const {
   listWorkspaceEntityIdentitiesMock,
   importIntoWorkspaceMock,
   applyPresentationEditsMock,
+  applyEntityEditsMock,
   getWorkspaceEntityDetailMock,
   resolveBasePresentationMock,
   computePresentationBaseValueHashMock
@@ -30,6 +31,7 @@ const {
   listWorkspaceEntityIdentitiesMock: vi.fn(),
   importIntoWorkspaceMock: vi.fn(),
   applyPresentationEditsMock: vi.fn(),
+  applyEntityEditsMock: vi.fn(),
   getWorkspaceEntityDetailMock: vi.fn(),
   resolveBasePresentationMock: vi.fn(),
   computePresentationBaseValueHashMock: vi.fn()
@@ -55,6 +57,7 @@ vi.mock('../../../server/utils/content-workspace-import', () => ({
 }))
 vi.mock('../../../server/utils/content-workspace-entities', () => ({
   applyPresentationEdits: applyPresentationEditsMock,
+  applyEntityEdits: applyEntityEditsMock,
   getWorkspaceEntityDetail: getWorkspaceEntityDetailMock
 }))
 vi.mock('../../../server/utils/content-workspace-presentation', () => ({
@@ -301,36 +304,50 @@ describe('splitSharedEntityToLocalWorkspace -- "Customize for this World" from a
   it('refuses when the shared entity has no base release reference (authored-origin, nothing to re-import)', async () => {
     resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_1' }] } })
     listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
-    getWorkspaceEntityDetailMock.mockResolvedValue({ baseSourceRef: null, authoredPresentation: [] })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ baseSourceRef: null, authoredPresentation: [], authoredMechanics: [] })
 
     const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
     expect(result).toMatchObject({ ok: false, stage: 'no-base-reference' })
     expect(importIntoWorkspaceMock).not.toHaveBeenCalled()
   })
 
-  it('imports from the ORIGINAL release, binds the local workspace, and seeds the shared entity\'s CURRENT overrides', async () => {
+  it('imports from the ORIGINAL release, seeds the shared entity\'s CURRENT overrides, then binds the local workspace', async () => {
     resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
     listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
     getWorkspaceEntityDetailMock
       .mockResolvedValueOnce({ // the SHARED entity's own detail
         baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' },
-        authoredPresentation: [{ path: 'description', value: ['Shared edit.'] }]
+        authoredPresentation: [{ path: 'description', value: ['Shared edit.'] }],
+        authoredMechanics: []
       })
-      .mockResolvedValueOnce({ revision: 0 }) // the fresh local entity, right after import
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' }) // the fresh local entity, right after import
     getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
     importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
     listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
     bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: true })
-    applyPresentationEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
 
     const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
 
     expect(importIntoWorkspaceMock).toHaveBeenCalledWith(expect.objectContaining({
       source: { kind: 'entity', packageId: 'eldra.solaris.xphb', version: '1.0.37', entityType: 'item', slug: 'shortsword-xphb' }
     }))
+    expect(applyEntityEditsMock).toHaveBeenCalledWith(
+      'ws-1', 'ce_local', 0, 'item',
+      [{ channel: 'presentation', path: 'description', value: ['Shared edit.'], baseValueHash: 'hash-1' }],
+      'acct-1'
+    )
     expect(bindWorkspaceLiveToWorldMock).toHaveBeenCalledWith(WORLD_ID, 'ws-1')
-    expect(applyPresentationEditsMock).toHaveBeenCalledWith('ws-1', 'ce_local', 0, [{ path: 'description', value: ['Shared edit.'], baseValueHash: 'hash-1' }], 'acct-1')
     expect(result).toEqual({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_local', entity: { revision: 1 } })
+
+    // ORDER: seed before bind -- the seed call's own expectedRevision (0)
+    // is the revision from right after import, proving it ran before any
+    // bind-driven re-read, and the bind call happens strictly after the
+    // seed call resolves (both are awaited sequentially in the function;
+    // invocationCallOrder proves this is not incidental).
+    const seedOrder = applyEntityEditsMock.mock.invocationCallOrder[0]!
+    const bindOrder = bindWorkspaceLiveToWorldMock.mock.invocationCallOrder[0]!
+    expect(seedOrder).toBeLessThan(bindOrder)
 
     // Required regression evidence: the SHARED workspace ('ws-shared',
     // bound to WORLD_ID and '6' both) and its own entity ('ce_shared')
@@ -339,16 +356,16 @@ describe('splitSharedEntityToLocalWorkspace -- "Customize for this World" from a
     // (World '6') and the shared source are therefore structurally
     // unreachable from this call, not merely unaffected by coincidence.
     expect(bindWorkspaceLiveToWorldMock).not.toHaveBeenCalledWith(expect.anything(), 'ws-shared')
-    expect(applyPresentationEditsMock).not.toHaveBeenCalledWith('ws-shared', expect.anything(), expect.anything(), expect.anything(), expect.anything())
-    expect(applyPresentationEditsMock).not.toHaveBeenCalledWith(expect.anything(), 'ce_shared', expect.anything(), expect.anything(), expect.anything())
+    expect(applyEntityEditsMock).not.toHaveBeenCalledWith('ws-shared', expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything())
+    expect(applyEntityEditsMock).not.toHaveBeenCalledWith(expect.anything(), 'ce_shared', expect.anything(), expect.anything(), expect.anything(), expect.anything())
   })
 
-  it('an entity with NO current overrides is imported but seeding is skipped (nothing to seed)', async () => {
+  it('an entity with NO current overrides is imported, seeding is skipped (nothing to seed), and it still binds', async () => {
     resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
     listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
     getWorkspaceEntityDetailMock
-      .mockResolvedValueOnce({ baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' }, authoredPresentation: [] })
-      .mockResolvedValueOnce({ revision: 0 })
+      .mockResolvedValueOnce({ baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' }, authoredPresentation: [], authoredMechanics: [] })
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' })
     getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
     importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
     listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
@@ -356,7 +373,111 @@ describe('splitSharedEntityToLocalWorkspace -- "Customize for this World" from a
 
     const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
 
-    expect(applyPresentationEditsMock).not.toHaveBeenCalled()
-    expect(result).toEqual({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_local', entity: { revision: 0 } })
+    expect(applyEntityEditsMock).not.toHaveBeenCalled()
+    expect(bindWorkspaceLiveToWorldMock).toHaveBeenCalledWith(WORLD_ID, 'ws-1')
+    expect(result).toEqual({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_local', entity: { revision: 0, entityType: 'item' } })
+  })
+
+  // Items Mechanics Editing, release one -- the fix: a shared entity's
+  // authoredMechanics is now carried over to the new local copy, exactly
+  // like authoredPresentation already was. Confirmed missing before this
+  // release (see this release's own investigation).
+  it('seeds presentation AND mechanics overrides together in ONE combined applyEntityEdits call', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
+    listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
+    getWorkspaceEntityDetailMock
+      .mockResolvedValueOnce({ // the SHARED entity's own detail
+        baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' },
+        authoredPresentation: [{ path: 'description', value: ['Shared edit.'] }],
+        authoredMechanics: [{ path: 'rarity', value: 'rare' }]
+      })
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' }) // the fresh local entity, right after import
+    getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
+    bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: true })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+
+    const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
+
+    // ONE call, not two -- both channels in the same edits array.
+    expect(applyEntityEditsMock).toHaveBeenCalledTimes(1)
+    expect(applyEntityEditsMock).toHaveBeenCalledWith(
+      'ws-1', 'ce_local', 0, 'item',
+      expect.arrayContaining([
+        { channel: 'presentation', path: 'description', value: ['Shared edit.'], baseValueHash: 'hash-1' },
+        { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
+      ]),
+      'acct-1'
+    )
+    expect(result).toEqual({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_local', entity: { revision: 1 } })
+  })
+
+  // The core fix this pass makes: a seed failure must NEVER leave an
+  // already-bound, incompletely-customized local copy live for players.
+  // Proven here by showing bind is never even attempted once the combined
+  // seed write fails.
+  it('a seed failure NEVER binds the local workspace to the World -- nothing becomes apparently successful', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
+    listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
+    getWorkspaceEntityDetailMock
+      .mockResolvedValueOnce({
+        baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' },
+        authoredPresentation: [{ path: 'description', value: ['Shared edit.'] }],
+        authoredMechanics: [{ path: 'rarity', value: 'rare' }]
+      })
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' })
+    getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
+    applyEntityEditsMock.mockResolvedValue({ ok: false, stage: 'conflict', current: { revision: 1 } })
+
+    const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
+
+    expect(result).toMatchObject({ ok: false, stage: 'import-failed', retrySafe: true })
+    expect(bindWorkspaceLiveToWorldMock).not.toHaveBeenCalled()
+  })
+
+  it('a seed persistence-unavailable failure is reported distinctly and still never binds', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
+    listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
+    getWorkspaceEntityDetailMock
+      .mockResolvedValueOnce({
+        baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' },
+        authoredPresentation: [],
+        authoredMechanics: [{ path: 'rarity', value: 'rare' }]
+      })
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' })
+    getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
+    applyEntityEditsMock.mockResolvedValue({ ok: false, stage: 'persistence-unavailable', message: 'ELDRA_WORKSPACE_DB_URL is not configured' })
+
+    const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
+
+    expect(result).toEqual({ ok: false, stage: 'persistence-unavailable', message: 'ELDRA_WORKSPACE_DB_URL is not configured' })
+    expect(bindWorkspaceLiveToWorldMock).not.toHaveBeenCalled()
+  })
+
+  it('a bind failure after a successful seed is reported as failure (the local copy stays unbound, harmless)', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({ byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-shared', contentEntityId: 'ce_shared' }] } })
+    listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID), '6'])
+    getWorkspaceEntityDetailMock
+      .mockResolvedValueOnce({
+        baseSourceRef: { packageId: 'eldra.solaris.xphb', version: '1.0.37' },
+        authoredPresentation: [{ path: 'description', value: ['Shared edit.'] }],
+        authoredMechanics: []
+      })
+      .mockResolvedValueOnce({ revision: 0, entityType: 'item' })
+    getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_local', entityType: 'item', slug: 'shortsword-xphb' }])
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+    bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: false, stage: 'workspace-not-found' })
+
+    const result = await splitSharedEntityToLocalWorkspace(splitInput, 'dnd5e')
+
+    expect(applyEntityEditsMock).toHaveBeenCalledTimes(1) // seeding still ran, correctly, before the bind attempt
+    expect(result).toMatchObject({ ok: false, stage: 'import-failed', retrySafe: true })
   })
 })

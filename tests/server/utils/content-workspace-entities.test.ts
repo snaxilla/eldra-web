@@ -12,9 +12,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  applyEntityEdits,
+  applyMechanicsEdits,
   applyPresentationEdits,
   createEntityCheckpoint,
   getWorkspaceEntityDetail,
+  revertMechanicsChannel,
+  revertMechanicsPath,
   revertPresentationChannel,
   revertPresentationPath
 } from '../../../server/utils/content-workspace-entities'
@@ -122,8 +126,8 @@ describe('applyPresentationEdits', () => {
     expect(call.workspaceId).toBe(WORKSPACE_ID)
     expect(call.contentEntityId).toBe(CONTENT_ENTITY_ID)
     expect(call.expectedRevision).toBe(0)
-    expect(call.column).toBe('authored_presentation')
-    expect(call.newValue).toEqual([{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: expect.any(String), baseValueHash: 'sha256-x' }])
+    expect(Object.keys(call.columns)).toEqual(['authored_presentation'])
+    expect(call.columns.authored_presentation).toEqual([{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: expect.any(String), baseValueHash: 'sha256-x' }])
     expect(call.revision.kind).toBe('autosave')
     expect(call.revision.diff).toEqual([{ channel: 'presentation', path: 'name', from: undefined, to: 'Fine Shortsword' }])
   })
@@ -187,7 +191,7 @@ describe('revertPresentationPath / revertPresentationChannel', () => {
     if (outcome.ok) expect(outcome.entity.authoredPresentation.map((o) => o.path)).toEqual(['sourceBook'])
 
     const call = writeOverrideAtomicMock.mock.calls[0]![0]
-    expect(call.newValue).toEqual([existing.authored_presentation[1]])
+    expect(call.columns.authored_presentation).toEqual([existing.authored_presentation[1]])
     expect(call.revision.kind).toBe('revert')
   })
 
@@ -202,7 +206,138 @@ describe('revertPresentationPath / revertPresentationChannel', () => {
     const outcome = await revertPresentationChannel(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, ACCOUNT_ID)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.entity.authoredPresentation).toEqual([])
-    expect(writeOverrideAtomicMock.mock.calls[0]![0].newValue).toEqual([])
+    expect(writeOverrideAtomicMock.mock.calls[0]![0].columns.authored_presentation).toEqual([])
+  })
+})
+
+describe('applyMechanicsEdits / revertMechanicsPath / revertMechanicsChannel', () => {
+  it('refuses a mechanics path on a non-item entity, without reading or writing anything', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ entity_type: 'spell' })] })
+    const outcome = await applyMechanicsEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'spell', [{ path: 'rarity', value: 'rare' }], ACCOUNT_ID)
+    expect(outcome).toEqual({ ok: false, stage: 'invalid-path', path: 'rarity' })
+    expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a path outside the item mechanics allowlist (e.g. a raw 5etools key, not a logical field)', async () => {
+    const outcome = await applyMechanicsEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [{ path: 'reqAttune', value: true }], ACCOUNT_ID)
+    expect(outcome).toEqual({ ok: false, stage: 'invalid-path', path: 'reqAttune' })
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('on success: writes the authored_mechanics column, never authored_presentation', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    writeOverrideAtomicMock.mockResolvedValueOnce({
+      ok: true,
+      entity: entityRow({ revision: 1, authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }] })
+    })
+
+    const outcome = await applyMechanicsEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [{ path: 'rarity', value: 'rare' }], ACCOUNT_ID)
+    expect(outcome.ok).toBe(true)
+
+    const call = writeOverrideAtomicMock.mock.calls[0]![0]
+    expect(Object.keys(call.columns)).toEqual(['authored_mechanics'])
+    expect(call.columns.authored_mechanics).toEqual([{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: expect.any(String), baseValueHash: null }])
+  })
+
+  it('revertMechanicsPath removes exactly the targeted mechanics path', async () => {
+    const existing = entityRow({
+      revision: 0,
+      authored_mechanics: [
+        { channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null },
+        { channel: 'mechanics', path: 'weight', value: 5, authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }
+      ]
+    })
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, authored_mechanics: [existing.authored_mechanics[1]], revision: 1 } })
+
+    const outcome = await revertMechanicsPath(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', 'rarity', ACCOUNT_ID)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.entity.authoredMechanics.map((o) => o.path)).toEqual(['weight'])
+  })
+
+  it('revertMechanicsChannel empties the whole mechanics channel in one call', async () => {
+    const existing = entityRow({
+      revision: 0,
+      authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+    })
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, authored_mechanics: [], revision: 1 } })
+
+    const outcome = await revertMechanicsChannel(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, ACCOUNT_ID)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.entity.authoredMechanics).toEqual([])
+  })
+})
+
+describe('applyEntityEdits (combined presentation + mechanics save)', () => {
+  it('refuses the WHOLE request when any one edit targets an invalid path -- never a partial apply', async () => {
+    const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
+      { channel: 'presentation', path: 'name', value: 'Fine Shortsword', baseValueHash: null },
+      { channel: 'mechanics', path: 'reqAttune', value: true, baseValueHash: null }
+    ], ACCOUNT_ID)
+    expect(outcome).toEqual({ ok: false, stage: 'invalid-path', path: 'reqAttune' })
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+    expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
+  })
+
+  it('a mechanics edit is refused for a non-item entity even when bundled with a valid presentation edit', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ entity_type: 'spell' })] })
+    const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'spell', [
+      { channel: 'presentation', path: 'name', value: 'X', baseValueHash: null },
+      { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
+    ], ACCOUNT_ID)
+    expect(outcome).toEqual({ ok: false, stage: 'invalid-path', path: 'rarity' })
+  })
+
+  it('on success: writes BOTH columns in ONE atomic call, with a diff covering both channels', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    writeOverrideAtomicMock.mockResolvedValueOnce({
+      ok: true,
+      entity: entityRow({
+        revision: 1,
+        authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }],
+        authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+      })
+    })
+
+    const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
+      { channel: 'presentation', path: 'name', value: 'Fine Shortsword', baseValueHash: null },
+      { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
+    ], ACCOUNT_ID)
+
+    expect(outcome.ok).toBe(true)
+    expect(writeOverrideAtomicMock).toHaveBeenCalledTimes(1) // ONE atomic call for both channels, never two
+    const call = writeOverrideAtomicMock.mock.calls[0]![0]
+    expect(Object.keys(call.columns).sort()).toEqual(['authored_mechanics', 'authored_presentation'])
+    expect(call.columns.authored_presentation).toEqual([{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: expect.any(String), baseValueHash: null }])
+    expect(call.columns.authored_mechanics).toEqual([{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: expect.any(String), baseValueHash: null }])
+    expect(call.revision.diff).toEqual(expect.arrayContaining([
+      { channel: 'presentation', path: 'name', from: undefined, to: 'Fine Shortsword' },
+      { channel: 'mechanics', path: 'rarity', from: undefined, to: 'rare' }
+    ]))
+  })
+
+  it('a mechanics-only edit set writes only authored_mechanics, never touching authored_presentation', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: entityRow({ revision: 1 }) })
+
+    await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
+      { channel: 'mechanics', path: 'weight', value: 3, baseValueHash: null }
+    ], ACCOUNT_ID)
+
+    const call = writeOverrideAtomicMock.mock.calls[0]![0]
+    expect(Object.keys(call.columns)).toEqual(['authored_mechanics'])
+  })
+
+  it('a conflict refuses the whole combined write -- the caller\'s draft is never partially applied', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 3 })] })
+    const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
+      { channel: 'presentation', path: 'name', value: 'X', baseValueHash: null },
+      { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
+    ], ACCOUNT_ID)
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok && outcome.stage === 'conflict') expect(outcome.current.revision).toBe(3)
+    expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
   })
 })
 
@@ -221,6 +356,34 @@ describe('createEntityCheckpoint', () => {
     expect(revisionCall[1].body.kind).toBe('checkpoint')
     expect(revisionCall[1].body.label).toBe('Before the big revision')
     expect(revisionCall[1].body.snapshot).toMatchObject({ revision: 2 })
+  })
+
+  // Items Mechanics Editing verification follow-up -- a checkpoint's
+  // snapshot must still capture BOTH channels now that mechanics overrides
+  // are a real, writable thing (not just presentation). This is a
+  // snapshot-completeness guarantee only: no restore action exists
+  // anywhere in this codebase to read a checkpoint's snapshot back --
+  // that remains explicitly out of scope, not implemented by this check.
+  it('the snapshot includes authoredMechanics alongside authoredPresentation when both are set', async () => {
+    directusServiceRequestMock
+      .mockResolvedValueOnce({
+        data: [entityRow({
+          revision: 2,
+          authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }],
+          authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+        })]
+      })
+      .mockResolvedValueOnce({ data: [{ id: 'rev-2' }] })
+
+    await createEntityCheckpoint(WORKSPACE_ID, CONTENT_ENTITY_ID, 'Before the mechanics change', ACCOUNT_ID)
+
+    const revisionCall = directusServiceRequestMock.mock.calls[1]
+    expect(revisionCall[1].body.snapshot.authoredPresentation).toEqual([
+      expect.objectContaining({ path: 'name', value: 'Fine Shortsword' })
+    ])
+    expect(revisionCall[1].body.snapshot.authoredMechanics).toEqual([
+      expect.objectContaining({ path: 'rarity', value: 'rare' })
+    ])
   })
 
   it('reports not-found rather than writing a checkpoint for a nonexistent entity', async () => {

@@ -11,6 +11,8 @@ import getEntity from '../../../../server/api/content/workspaces/[workspaceId]/e
 import patchEntity from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/index.patch'
 import revertChannel from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/overrides/presentation.delete'
 import revertPath from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/overrides/presentation/[path].delete'
+import revertMechanicsChannelRoute from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/overrides/mechanics.delete'
+import revertMechanicsPathRoute from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/overrides/mechanics/[path].delete'
 import createCheckpoint from '../../../../server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/checkpoints.post'
 
 type RouteHandler = (event: H3Event) => Promise<unknown>
@@ -30,19 +32,25 @@ vi.mock('h3', async () => {
 const {
   getContentWorkspaceMock,
   getWorkspaceEntityDetailMock,
-  applyPresentationEditsMock,
+  applyEntityEditsMock,
   revertPresentationChannelMock,
   revertPresentationPathMock,
+  revertMechanicsChannelMock,
+  revertMechanicsPathMock,
   createEntityCheckpointMock,
-  previewEntityPresentationMock
+  previewEntityPresentationMock,
+  rawPayloadOfMock
 } = vi.hoisted(() => ({
   getContentWorkspaceMock: vi.fn(),
   getWorkspaceEntityDetailMock: vi.fn(),
-  applyPresentationEditsMock: vi.fn(),
+  applyEntityEditsMock: vi.fn(),
   revertPresentationChannelMock: vi.fn(),
   revertPresentationPathMock: vi.fn(),
+  revertMechanicsChannelMock: vi.fn(),
+  revertMechanicsPathMock: vi.fn(),
   createEntityCheckpointMock: vi.fn(),
-  previewEntityPresentationMock: vi.fn()
+  previewEntityPresentationMock: vi.fn(),
+  rawPayloadOfMock: vi.fn(() => null)
 }))
 
 const listWorldsBoundToWorkspaceMock = vi.hoisted(() => vi.fn())
@@ -52,15 +60,18 @@ vi.mock('../../../../server/utils/entity-collection-summary', () => ({ collectio
 vi.mock('../../../../server/utils/content-workspaces', () => ({ getContentWorkspace: getContentWorkspaceMock }))
 vi.mock('../../../../server/utils/content-workspace-entities', () => ({
   getWorkspaceEntityDetail: getWorkspaceEntityDetailMock,
-  applyPresentationEdits: applyPresentationEditsMock,
+  applyEntityEdits: applyEntityEditsMock,
   revertPresentationChannel: revertPresentationChannelMock,
   revertPresentationPath: revertPresentationPathMock,
+  revertMechanicsChannel: revertMechanicsChannelMock,
+  revertMechanicsPath: revertMechanicsPathMock,
   createEntityCheckpoint: createEntityCheckpointMock
 }))
 vi.mock('../../../../server/utils/content-workspace-presentation', () => ({
   previewEntityPresentation: previewEntityPresentationMock,
   resolveBasePresentation: vi.fn(() => null),
-  computePresentationBaseValueHash: vi.fn(() => null)
+  computePresentationBaseValueHash: vi.fn(() => null),
+  rawPayloadOf: rawPayloadOfMock
 }))
 
 const WORKSPACE_ID = 'a1111111-1111-4111-8111-111111111111'
@@ -105,17 +116,21 @@ beforeEach(() => {
   h3Mocks.body = { expectedRevision: 0, edits: [{ path: 'name', value: 'Fine Shortsword' }] }
 
   for (const mock of [
-    getContentWorkspaceMock, getWorkspaceEntityDetailMock, applyPresentationEditsMock,
-    revertPresentationChannelMock, revertPresentationPathMock, createEntityCheckpointMock, previewEntityPresentationMock,
+    getContentWorkspaceMock, getWorkspaceEntityDetailMock, applyEntityEditsMock,
+    revertPresentationChannelMock, revertPresentationPathMock, revertMechanicsChannelMock, revertMechanicsPathMock,
+    createEntityCheckpointMock, previewEntityPresentationMock, rawPayloadOfMock,
     listWorldsBoundToWorkspaceMock
   ]) mock.mockReset()
+  rawPayloadOfMock.mockReturnValue(null)
 
   getContentWorkspaceMock.mockResolvedValue(workspace)
   getWorkspaceEntityDetailMock.mockResolvedValue(entityDetail)
   previewEntityPresentationMock.mockResolvedValue({ basePresentation: null, effectivePresentation: null, imageUnavailable: false })
-  applyPresentationEditsMock.mockResolvedValue({ ok: true, entity: { ...entityDetail, revision: 1 } })
+  applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { ...entityDetail, revision: 1 } })
   revertPresentationChannelMock.mockResolvedValue({ ok: true, entity: entityDetail })
   revertPresentationPathMock.mockResolvedValue({ ok: true, entity: entityDetail })
+  revertMechanicsChannelMock.mockResolvedValue({ ok: true, entity: entityDetail })
+  revertMechanicsPathMock.mockResolvedValue({ ok: true, entity: entityDetail })
   createEntityCheckpointMock.mockResolvedValue({ ok: true, revisionId: 'rev-1' })
 })
 
@@ -125,6 +140,8 @@ describe('authentication', () => {
     ['patch entity', patchEntity],
     ['revert channel', revertChannel],
     ['revert path', revertPath],
+    ['revert mechanics channel', revertMechanicsChannelRoute],
+    ['revert mechanics path', revertMechanicsPathRoute],
     ['create checkpoint', createCheckpoint]
   ])('%s refuses an unauthenticated request with 401', async (_name, handler) => {
     await expect(run(handler as RouteHandler, null)).rejects.toMatchObject({ statusCode: 401 })
@@ -141,6 +158,8 @@ describe('platform capability gates', () => {
     ['patch entity', patchEntity],
     ['revert channel', revertChannel],
     ['revert path', revertPath],
+    ['revert mechanics channel', revertMechanicsChannelRoute],
+    ['revert mechanics path', revertMechanicsPathRoute],
     ['create checkpoint', createCheckpoint]
   ])('%s needs platform.contentworkspace.edit, not merely .view', async (_name, handler) => {
     await expect(run(handler as RouteHandler, principal(['platform.contentworkspace.view']))).rejects
@@ -149,7 +168,7 @@ describe('platform capability gates', () => {
 
   it('A WORLD OWNER IS NOT A PLATFORM CONTENT AUTHOR -- every World capability, still refused on every route', async () => {
     const worldOwner = principal([], WORLD_OWNER)
-    for (const handler of [getEntity, patchEntity, revertChannel, revertPath, createCheckpoint]) {
+    for (const handler of [getEntity, patchEntity, revertChannel, revertPath, revertMechanicsChannelRoute, revertMechanicsPathRoute, createCheckpoint]) {
       await expect(run(handler as RouteHandler, worldOwner)).rejects.toMatchObject({ statusCode: 403 })
     }
   })
@@ -168,7 +187,7 @@ describe('World-scoped access (no platform capability, direct-edit entry point)'
     const worldAdmin = principal([], ['world.entity.edit'])
 
     h3Mocks.body = { worldId: WORLD_ID, expectedRevision: 0, edits: [{ path: 'name', value: 'Fine Shortsword' }] }
-    for (const handler of [getEntity, patchEntity, revertChannel, revertPath]) {
+    for (const handler of [getEntity, patchEntity, revertChannel, revertPath, revertMechanicsChannelRoute, revertMechanicsPathRoute]) {
       await expect(run(handler as RouteHandler, worldAdmin)).resolves.toBeDefined()
     }
 
@@ -219,6 +238,8 @@ describe('Two Worlds sharing ONE workspace -- the write-escalation boundary', ()
     ['patch entity', patchEntity as RouteHandler],
     ['revert channel', revertChannel as RouteHandler],
     ['revert path', revertPath as RouteHandler],
+    ['revert mechanics channel', revertMechanicsChannelRoute as RouteHandler],
+    ['revert mechanics path', revertMechanicsPathRoute as RouteHandler],
     ['create checkpoint', createCheckpoint as RouteHandler]
   ]
 
@@ -277,19 +298,60 @@ describe('Two Worlds sharing ONE workspace -- the write-escalation boundary', ()
   })
 })
 
+// Items Mechanics Editing, release one -- proves the entity-detail route's
+// OWN effective-mechanics computation (the call site the investigation's
+// own §5 finding warned a world-content-sources.ts-only fix would miss)
+// actually merges a saved mechanics override, using the real (unmocked)
+// app/lib/item-mechanics resolvers.
+describe('GET entity -- itemMechanicsEditing preview', () => {
+  const viewer = principal(['platform.contentworkspace.view'])
+  const SHORTSWORD_RAW = {
+    name: 'Shortsword', source: 'XPHB', type: 'M|XPHB', weaponCategory: 'martial',
+    property: ['F|XPHB', 'L|XPHB'], mastery: ['Vex|XPHB'], dmg1: '1d6', dmgType: 'P', weapon: true
+  }
+
+  it('reflects a saved damage override, computed from the EFFECTIVE (merged) data, not the base', async () => {
+    rawPayloadOfMock.mockReturnValue(SHORTSWORD_RAW)
+    getWorkspaceEntityDetailMock.mockResolvedValue({
+      ...entityDetail,
+      authoredMechanics: [{ channel: 'mechanics', path: 'damage', value: { dice: '3d8', damageType: 'S' }, authoredBy: 'acct-1', authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+    })
+
+    const result = await run(getEntity, viewer) as { preview: { itemMechanicsEditing: { damage: { dice: string; damageType: string | null }; isWeapon: boolean } } }
+    expect(result.preview.itemMechanicsEditing.damage).toEqual({ dice: '3d8', damageType: 'S' })
+    expect(result.preview.itemMechanicsEditing.isWeapon).toBe(true)
+  })
+
+  it('a non-item entity gets no itemMechanicsEditing block at all', async () => {
+    rawPayloadOfMock.mockReturnValue({ name: 'Fireball' })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ ...entityDetail, entityType: 'spell' })
+
+    const result = await run(getEntity, viewer) as { preview: { itemMechanicsEditing: unknown } }
+    expect(result.preview.itemMechanicsEditing).toBeNull()
+  })
+
+  it('an item with no mechanics overrides reports the BASE values (resolveEffectiveItemData is a no-op)', async () => {
+    rawPayloadOfMock.mockReturnValue(SHORTSWORD_RAW)
+    getWorkspaceEntityDetailMock.mockResolvedValue({ ...entityDetail, authoredMechanics: [] })
+
+    const result = await run(getEntity, viewer) as { preview: { itemMechanicsEditing: { damage: { dice: string } | null } } }
+    expect(result.preview.itemMechanicsEditing.damage).toEqual({ dice: '1d6', damageType: 'P' })
+  })
+})
+
 describe('PATCH -- applying presentation edits', () => {
   const editor = principal(['platform.contentworkspace.edit'])
 
   it('accepts a well-formed edit and returns the updated entity', async () => {
     const result = await run(patchEntity, editor) as { entity: typeof entityDetail }
     expect(result.entity.revision).toBe(1)
-    expect(applyPresentationEditsMock).toHaveBeenCalledWith(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, expect.any(Array), 'acct-1')
+    expect(applyEntityEditsMock).toHaveBeenCalledWith(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', expect.any(Array), 'acct-1')
   })
 
   it('400s a malformed body before calling the server util at all', async () => {
     h3Mocks.body = { expectedRevision: -1, edits: [] }
     await expect(run(patchEntity, editor)).rejects.toMatchObject({ statusCode: 400 })
-    expect(applyPresentationEditsMock).not.toHaveBeenCalled()
+    expect(applyEntityEditsMock).not.toHaveBeenCalled()
   })
 
   it('404s when the entity does not exist', async () => {
@@ -298,7 +360,7 @@ describe('PATCH -- applying presentation edits', () => {
   })
 
   it('surfaces a revision conflict as 409, carrying the current entity -- never silently overwrites', async () => {
-    applyPresentationEditsMock.mockResolvedValueOnce({ ok: false, stage: 'conflict', current: { ...entityDetail, revision: 5 } })
+    applyEntityEditsMock.mockResolvedValueOnce({ ok: false, stage: 'conflict', current: { ...entityDetail, revision: 5 } })
     await expect(run(patchEntity, editor)).rejects.toMatchObject({
       statusCode: 409,
       data: { code: 'revision-conflict', current: { revision: 5 } }
@@ -311,11 +373,58 @@ describe('PATCH -- applying presentation edits', () => {
   })
 
   it('503s distinctly (never a 409) when the atomic persistence layer is unconfigured/unreachable', async () => {
-    applyPresentationEditsMock.mockResolvedValueOnce({ ok: false, stage: 'persistence-unavailable', message: 'ELDRA_WORKSPACE_DB_URL is not configured' })
+    applyEntityEditsMock.mockResolvedValueOnce({ ok: false, stage: 'persistence-unavailable', message: 'ELDRA_WORKSPACE_DB_URL is not configured' })
     await expect(run(patchEntity, editor)).rejects.toMatchObject({
       statusCode: 503,
       data: { code: 'content-workspace-persistence-unavailable' }
     })
+  })
+})
+
+// Items Mechanics Editing, release one -- the SAME route now also accepts
+// `channel: 'mechanics'` edits, mixed with presentation edits or alone, in
+// one combined-save call to applyEntityEdits.
+describe('PATCH -- combined presentation + mechanics edits', () => {
+  const editor = principal(['platform.contentworkspace.edit'])
+
+  it('passes BOTH channels through to applyEntityEdits in one call', async () => {
+    h3Mocks.body = {
+      expectedRevision: 0,
+      edits: [
+        { channel: 'presentation', path: 'name', value: 'Fine Shortsword' },
+        { channel: 'mechanics', path: 'rarity', value: 'rare' }
+      ]
+    }
+    await run(patchEntity, editor)
+    expect(applyEntityEditsMock).toHaveBeenCalledTimes(1)
+    const edits = applyEntityEditsMock.mock.calls[0]![4]
+    expect(edits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ channel: 'presentation', path: 'name', value: 'Fine Shortsword' }),
+      expect.objectContaining({ channel: 'mechanics', path: 'rarity', value: 'rare' })
+    ]))
+  })
+
+  it('a mechanics-only edit set still validates and is accepted', async () => {
+    h3Mocks.body = { expectedRevision: 0, edits: [{ channel: 'mechanics', path: 'weight', value: 2.5 }] }
+    await expect(run(patchEntity, editor)).resolves.toBeDefined()
+  })
+
+  it('400s on an invalid mechanics VALUE (e.g. a damage dice expression the roll parser cannot accept) before calling applyEntityEdits', async () => {
+    h3Mocks.body = { expectedRevision: 0, edits: [{ channel: 'mechanics', path: 'damage', value: { dice: '1d8+2', damageType: 'S' } }] }
+    await expect(run(patchEntity, editor)).rejects.toMatchObject({ statusCode: 400 })
+    expect(applyEntityEditsMock).not.toHaveBeenCalled()
+  })
+
+  it('400s on an unknown channel', async () => {
+    h3Mocks.body = { expectedRevision: 0, edits: [{ channel: 'facet', path: 'x', value: 1 }] }
+    await expect(run(patchEntity, editor)).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('omitting channel defaults to presentation -- an old presentation-only client keeps working unchanged', async () => {
+    h3Mocks.body = { expectedRevision: 0, edits: [{ path: 'name', value: 'Fine Shortsword' }] }
+    await run(patchEntity, editor)
+    const edits = applyEntityEditsMock.mock.calls[0]![4]
+    expect(edits).toEqual([expect.objectContaining({ channel: 'presentation', path: 'name' })])
   })
 })
 
@@ -359,6 +468,54 @@ describe('DELETE overrides/presentation/:path (revert one field)', () => {
   it('503s distinctly when the atomic persistence layer is unavailable', async () => {
     revertPresentationPathMock.mockResolvedValueOnce({ ok: false, stage: 'persistence-unavailable', message: 'unreachable' })
     await expect(run(revertPath, editor)).rejects.toMatchObject({ statusCode: 503, data: { code: 'content-workspace-persistence-unavailable' } })
+  })
+})
+
+describe('DELETE overrides/mechanics (revert all mechanics)', () => {
+  const editor = principal(['platform.contentworkspace.edit'])
+
+  beforeEach(() => { h3Mocks.body = { expectedRevision: 0 } })
+
+  it('reverts the whole mechanics channel', async () => {
+    await run(revertMechanicsChannelRoute, editor)
+    expect(revertMechanicsChannelMock).toHaveBeenCalledWith(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'acct-1')
+  })
+
+  it('surfaces a conflict as 409', async () => {
+    revertMechanicsChannelMock.mockResolvedValueOnce({ ok: false, stage: 'conflict', current: entityDetail })
+    await expect(run(revertMechanicsChannelRoute, editor)).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('503s distinctly when the atomic persistence layer is unavailable', async () => {
+    revertMechanicsChannelMock.mockResolvedValueOnce({ ok: false, stage: 'persistence-unavailable', message: 'unreachable' })
+    await expect(run(revertMechanicsChannelRoute, editor)).rejects.toMatchObject({ statusCode: 503, data: { code: 'content-workspace-persistence-unavailable' } })
+  })
+})
+
+describe('DELETE overrides/mechanics/:path (revert one mechanics field)', () => {
+  const editor = principal(['platform.contentworkspace.edit'])
+
+  beforeEach(() => { h3Mocks.body = { expectedRevision: 0 } })
+
+  it('reverts exactly the named mechanics path, passing the entity\'s entityType through', async () => {
+    await run(revertMechanicsPathRoute, editor)
+    expect(revertMechanicsPathMock).toHaveBeenCalledWith(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', 'name', 'acct-1')
+  })
+
+  it('404s when the entity does not exist (entityType cannot be resolved)', async () => {
+    getWorkspaceEntityDetailMock.mockResolvedValueOnce(null)
+    await expect(run(revertMechanicsPathRoute, editor)).rejects.toMatchObject({ statusCode: 404 })
+    expect(revertMechanicsPathMock).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an invalid-path outcome as 400', async () => {
+    revertMechanicsPathMock.mockResolvedValueOnce({ ok: false, stage: 'invalid-path', path: 'reqAttune' })
+    await expect(run(revertMechanicsPathRoute, editor)).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('503s distinctly when the atomic persistence layer is unavailable', async () => {
+    revertMechanicsPathMock.mockResolvedValueOnce({ ok: false, stage: 'persistence-unavailable', message: 'unreachable' })
+    await expect(run(revertMechanicsPathRoute, editor)).rejects.toMatchObject({ statusCode: 503, data: { code: 'content-workspace-persistence-unavailable' } })
   })
 })
 

@@ -7,6 +7,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearWorkspaceSourceCache, loadWorkspaceAsSource } from '../../../server/utils/world-content-sources'
+import { resolveContentActions } from '../../../app/lib/content-actions'
+import { resolveItemMechanics } from '../../../app/lib/item-mechanics'
 
 const { directusServiceRequestMock, getContentWorkspaceMock, listAllWorkspaceEntityDetailsMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
@@ -122,6 +124,51 @@ describe('loadWorkspaceAsSource', () => {
 
     expect(listAllWorkspaceEntityDetailsMock).toHaveBeenCalledTimes(2)
     if (second.ok) expect(second.entries[0]!.title).toBe('Fine Shortsword')
+  })
+
+  // Items Mechanics Editing, release one -- the end-to-end guarantee: once
+  // a mechanics override exists, every consumer reading `entry.data`
+  // (resolveItemMechanics, resolveContentActions/resolveWeaponAction) sees
+  // the EDITED value, not the base value, with zero changes to those
+  // resolvers themselves. This is the mechanism character-assembly.ts's
+  // own resolveInventory relies on for "an existing equipped weapon's
+  // action uses the edited damage dice after refresh" -- it joins a fresh
+  // catalogue resolution (which reads this same `data`) on every request.
+  it('a mechanics override on the entity is merged into `data`, and the real weapon action resolver reflects it', async () => {
+    const SHORTSWORD_RAW = {
+      name: 'Shortsword', source: 'XPHB', type: 'M|XPHB', weaponCategory: 'martial',
+      property: ['F|XPHB', 'L|XPHB'], mastery: ['Vex|XPHB'], dmg1: '1d6', dmgType: 'P', weapon: true
+    }
+    getContentWorkspaceMock.mockResolvedValue(workspace())
+    listAllWorkspaceEntityDetailsMock.mockResolvedValue([
+      entityDetail({
+        baseData: { systemKey: 'dnd5e', entityType: 'item', title: 'Shortsword', slug: 'shortsword-xphb', externalId: 'x', provider: '5etools', data: SHORTSWORD_RAW },
+        authoredMechanics: [{ channel: 'mechanics', path: 'damage', value: { dice: '3d8', damageType: 'S' }, authoredBy: 'acct-1', authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+      })
+    ])
+
+    const result = await loadWorkspaceAsSource(WORKSPACE_ID, WORLD_ID)
+    if (!result.ok) throw new Error('expected ok')
+    const data = result.entries[0]!.data as Record<string, unknown>
+
+    expect(data.dmg1).toBe('3d8')
+    expect(data.dmgType).toBe('S')
+    expect(data.weaponCategory).toBe('martial') // untouched field preserved
+
+    // The real resolvers, unchanged, both see the edit through `data`.
+    expect(resolveItemMechanics('dnd5e', data)).toMatchObject({ kind: 'weapon', weaponCategory: 'martial' })
+    const [action] = resolveContentActions('dnd5e', 'item', data)
+    expect(action?.damageRoll).toEqual({ count: 3, faces: 8 })
+    expect(action?.damage).toContain('3d8')
+  })
+
+  it('an entity with no mechanics overrides resolves `data` byte-identical to its base payload', async () => {
+    getContentWorkspaceMock.mockResolvedValue(workspace())
+    listAllWorkspaceEntityDetailsMock.mockResolvedValue([entityDetail()])
+
+    const result = await loadWorkspaceAsSource(WORKSPACE_ID, WORLD_ID)
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.entries[0]!.data).toEqual({ name: 'Shortsword' })
   })
 
   it('does NOT share a cache entry across two different Worlds for the same workspace', async () => {

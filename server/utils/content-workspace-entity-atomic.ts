@@ -44,9 +44,14 @@
 // ---------------------------------------------------------------------------
 // BEGIN;
 //   UPDATE content_workspace_entities
-//     SET <column> = $overrides::json, revision = revision + 1, updated_at = now()
-//     WHERE workspace_id = $1 AND content_entity_id = $2 AND revision = $3
+//     SET <column1> = $1::json [, <column2> = $2::json], revision = revision + 1, updated_at = now()
+//     WHERE workspace_id = $n+1 AND content_entity_id = $n+2 AND revision = $n+3
 //     RETURNING *;
+//   -- `columns` names ONE OR BOTH override columns in a single statement
+//   -- (Items Mechanics Editing, release one: a combined presentation +
+//   -- mechanics save touches both together) -- the entity's `revision`
+//   -- still advances by exactly +1 regardless of how many columns are
+//   -- written, since it is one row-level UPDATE either way.
 //   -- zero rows: ROLLBACK, then (on a fresh connection) distinguish
 //   -- not-found from conflict with a plain SELECT, purely for an honest
 //   -- error -- never to decide whether to retry the mutation itself.
@@ -82,10 +87,13 @@
 // the exact grant set.
 //
 // SQL INJECTION -- every value this module receives is a bound parameter
-// ($1, $2, ...); the only thing that varies the SQL TEXT itself is which of
+// ($1, $2, ...); the only thing that varies the SQL TEXT itself is WHICH of
 // the two closed, internally-controlled column names
-// ('authored_presentation' | 'authored_mechanics') to target -- never user
-// input, never interpolated from a request body.
+// ('authored_presentation' | 'authored_mechanics') to target, and how many
+// of them (one or both) -- never user input, never interpolated from a
+// request body. `input.columns`' keys are constrained by TypeScript to
+// WorkspaceOverrideColumn; no caller constructs this object from a request
+// field name.
 
 import { Pool, type PoolConfig } from 'pg'
 import { randomUUID } from 'node:crypto'
@@ -192,26 +200,42 @@ export async function writeWorkspaceEntityOverrideAtomic(input: {
   workspaceId: string
   contentEntityId: string
   expectedRevision: number
-  column: WorkspaceOverrideColumn
-  newValue: unknown
+  // One or both of the two internally-controlled columns -- generalized
+  // from a single `column`/`newValue` pair (Items Mechanics Editing,
+  // release one: a combined presentation+mechanics save needs both
+  // columns updated in the SAME statement, so "one revision increment,
+  // one history row" holds for a mixed-channel save exactly as it already
+  // does for a single-channel one). Still never request input: the object
+  // KEYS are constrained to WorkspaceOverrideColumn by the type system,
+  // and every caller builds this object from hardcoded literal keys, never
+  // from a request body field name.
+  columns: Partial<Record<WorkspaceOverrideColumn, unknown>>
   revision: WorkspaceRevisionInsert
 }): Promise<AtomicWorkspaceWriteResult> {
   const result = await withPersistenceFailureHandling(async () => {
+    const columnEntries = Object.entries(input.columns) as [WorkspaceOverrideColumn, unknown][]
+    if (columnEntries.length === 0) {
+      throw new Error('writeWorkspaceEntityOverrideAtomic requires at least one column to write')
+    }
+
     const client = await getPool().connect()
     try {
       await client.query('BEGIN')
 
-      // Column name is one of two internally-controlled literals, never
-      // request input -- safe to splice into the SQL text (Postgres has
-      // no way to bind a column name as a parameter).
+      // Column names are drawn only from the two internally-controlled
+      // literals above, never request input -- safe to splice into the SQL
+      // text (Postgres has no way to bind a column name as a parameter).
+      const setClauses = columnEntries.map(([column], index) => `${column} = $${index + 1}::json`)
+      const columnValues = columnEntries.map(([, value]) => JSON.stringify(value))
+      const whereBase = columnEntries.length
       const updateSql = `
         UPDATE content_workspace_entities
-        SET ${input.column} = $1::json, revision = revision + 1, updated_at = now()
-        WHERE workspace_id = $2 AND content_entity_id = $3 AND revision = $4
+        SET ${setClauses.join(', ')}, revision = revision + 1, updated_at = now()
+        WHERE workspace_id = $${whereBase + 1} AND content_entity_id = $${whereBase + 2} AND revision = $${whereBase + 3}
         RETURNING ${ENTITY_ROW_FIELDS}
       `
       const updateResult = await client.query(updateSql, [
-        JSON.stringify(input.newValue),
+        ...columnValues,
         input.workspaceId,
         input.contentEntityId,
         input.expectedRevision

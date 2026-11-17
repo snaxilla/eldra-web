@@ -41,6 +41,15 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 import type { PresentationEntry } from '~/lib/content-presentation'
+import {
+  ITEM_RARITY_OPTIONS,
+  WEAPON_DAMAGE_TYPE_OPTIONS,
+  buildPropertyOverrideArray,
+  propertyRows,
+  type ItemAttunementOverrideValue,
+  type ItemDamageOverrideValue,
+  type PropertyRow
+} from '~/lib/item-mechanics'
 
 const props = defineProps<{
   workspaceId: string
@@ -131,6 +140,16 @@ type EntityDetail = {
   revision: number
   baseSourceRef: { packageId?: string; sourceBook?: string } | null
   authoredPresentation: { path: string }[]
+  authoredMechanics: { path: string }[]
+}
+
+type ItemMechanicsEditingPreview = {
+  rarity: string | null
+  weight: number | null
+  attunement: ItemAttunementOverrideValue
+  damage: ItemDamageOverrideValue | null
+  property: unknown[]
+  isWeapon: boolean
 }
 
 type Preview = {
@@ -138,6 +157,7 @@ type Preview = {
   effectivePresentation: PresentationEntry | null
   imageUnavailable: boolean
   metaLines?: string[]
+  itemMechanicsEditing?: ItemMechanicsEditingPreview | null
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -168,6 +188,91 @@ const baseline = reactive<Draft>(emptyDraft())
 
 const customizedPaths = computed(() => new Set((entity.value?.authoredPresentation ?? []).map((o) => o.path)))
 
+// ---------------------------------------------------------------------------
+// Mechanics editing -- Items Mechanics Editing, release one. Full editor
+// only (isQuickField gates the whole section out in the template), Item
+// entities only (isItemEntity below). Five approved fields: rarity,
+// weight, attunement (+ optional restriction text), primary weapon damage
+// dice + type, weapon properties -- see app/lib/item-mechanics/dnd5e-editing.ts
+// for the exact merge/validation this mirrors.
+// ---------------------------------------------------------------------------
+
+const isItemEntity = computed(() => entity.value?.entityType === 'item')
+const isWeapon = computed(() => preview.value?.itemMechanicsEditing?.isWeapon === true)
+
+// propertyRows/buildPropertyOverrideArray -- the lossless weapon-property
+// round-trip -- live in app/lib/item-mechanics/dnd5e-editing.ts (pure,
+// unit-tested there) rather than here, per this project's own
+// business-logic-in-lib/composables convention.
+
+type MechanicsDraft = {
+  rarity: string // '' = untouched (inherit)
+  weight: string // '' = untouched (inherit); otherwise a numeric string
+  attunement: 'inherit' | 'required' | 'not-required'
+  attunementText: string
+  damageDice: string // '' = untouched (inherit)
+  damageType: string // '' = none
+  property: Record<string, boolean> // editable rows only, keyed by WeaponProperty name
+}
+
+function emptyMechanicsDraft(): MechanicsDraft {
+  return { rarity: '', weight: '', attunement: 'inherit', attunementText: '', damageDice: '', damageType: '', property: {} }
+}
+
+const mechanicsDraft = reactive<MechanicsDraft>(emptyMechanicsDraft())
+const mechanicsBaseline = reactive<MechanicsDraft>(emptyMechanicsDraft())
+const propertyRowsForDisplay = ref<PropertyRow[]>([])
+
+const mechanicsCustomizedPaths = computed(() => new Set((entity.value?.authoredMechanics ?? []).map((o) => o.path)))
+
+function mechanicsDraftFromPreview(editing: ItemMechanicsEditingPreview | null | undefined, customized: Set<string>): MechanicsDraft {
+  const rawProperty = editing?.property ?? []
+  const rows = propertyRows(rawProperty)
+  propertyRowsForDisplay.value = rows
+  const property: Record<string, boolean> = {}
+  for (const row of rows) if (row.state !== 'locked') property[row.property] = row.state === 'on'
+
+  return {
+    rarity: customized.has('rarity') ? (editing?.rarity ?? '') : '',
+    weight: customized.has('weight') ? String(editing?.weight ?? '') : '',
+    attunement: customized.has('attunement') ? (editing?.attunement.required ? 'required' : 'not-required') : 'inherit',
+    attunementText: customized.has('attunement') ? (editing?.attunement.text ?? '') : '',
+    damageDice: customized.has('damage') ? (editing?.damage?.dice ?? '') : '',
+    damageType: customized.has('damage') ? (editing?.damage?.damageType ?? '') : '',
+    // Property rows are always seeded from the EFFECTIVE raw array
+    // (already reflects any saved override) regardless of whether
+    // 'property' itself is a currently-authored path.
+    property
+  }
+}
+
+function applyMechanicsDraft(target: MechanicsDraft, source: MechanicsDraft) {
+  target.rarity = source.rarity
+  target.weight = source.weight
+  target.attunement = source.attunement
+  target.attunementText = source.attunementText
+  target.damageDice = source.damageDice
+  target.damageType = source.damageType
+  target.property = { ...source.property }
+}
+
+const mechanicsDirtyPaths = computed(() => {
+  const dirty = new Set<string>()
+  if (mechanicsDraft.rarity.trim() && mechanicsDraft.rarity !== mechanicsBaseline.rarity) dirty.add('rarity')
+  if (mechanicsDraft.weight.trim() && mechanicsDraft.weight !== mechanicsBaseline.weight) dirty.add('weight')
+  if (
+    mechanicsDraft.attunement !== 'inherit'
+    && (mechanicsDraft.attunement !== mechanicsBaseline.attunement || mechanicsDraft.attunementText !== mechanicsBaseline.attunementText)
+  ) dirty.add('attunement')
+  if (mechanicsDraft.damageDice.trim() && (mechanicsDraft.damageDice !== mechanicsBaseline.damageDice || mechanicsDraft.damageType !== mechanicsBaseline.damageType)) {
+    dirty.add('damage')
+  }
+  if (JSON.stringify(mechanicsDraft.property) !== JSON.stringify(mechanicsBaseline.property)) dirty.add('property')
+  return dirty
+})
+
+const isMechanicsDirty = computed(() => mechanicsDirtyPaths.value.size > 0)
+
 const dirtyPaths = computed(() => {
   const dirty = new Set<string>()
   if (draft.name !== baseline.name) dirty.add('name')
@@ -181,7 +286,7 @@ const dirtyPaths = computed(() => {
   return dirty
 })
 
-const isDirty = computed(() => dirtyPaths.value.size > 0)
+const isDirty = computed(() => dirtyPaths.value.size > 0 || isMechanicsDirty.value)
 
 function linesToArray(text: string): string[] {
   return text.split('\n').map((line) => line.trim()).filter(Boolean)
@@ -235,6 +340,10 @@ async function load() {
     applyDraft(draft, next)
     applyDraft(baseline, next)
 
+    const nextMechanics = mechanicsDraftFromPreview(response.preview.itemMechanicsEditing, new Set((response.entity.authoredMechanics ?? []).map((o) => o.path)))
+    applyMechanicsDraft(mechanicsDraft, nextMechanics)
+    applyMechanicsDraft(mechanicsBaseline, nextMechanics)
+
     if (props.seedDraft && !hasAppliedSeedDraft) {
       hasAppliedSeedDraft = true
       if (props.seedDraft.nameDirty) draft.name = props.seedDraft.name ?? ''
@@ -283,6 +392,7 @@ function requestClose() {
 function cancelDraft() {
   if (isDirty.value && !window.confirm('Discard unsaved changes?')) return
   applyDraft(draft, baseline)
+  applyMechanicsDraft(mechanicsDraft, mechanicsBaseline)
 }
 
 // Quick Edit's "Open full editor" -- no confirm() here. Switching
@@ -306,16 +416,38 @@ async function save() {
   saveState.value = 'saving'
   errorMessage.value = ''
 
-  const edits: { path: string; value: unknown }[] = []
-  if (dirtyPaths.value.has('name')) edits.push({ path: 'name', value: draft.name || null })
-  if (dirtyPaths.value.has('description')) edits.push({ path: 'description', value: linesToArray(draft.description) })
-  if (dirtyPaths.value.has('notes')) edits.push({ path: 'notes', value: linesToArray(draft.notes) })
+  const edits: { channel: 'presentation' | 'mechanics'; path: string; value: unknown }[] = []
+  if (dirtyPaths.value.has('name')) edits.push({ channel: 'presentation', path: 'name', value: draft.name || null })
+  if (dirtyPaths.value.has('description')) edits.push({ channel: 'presentation', path: 'description', value: linesToArray(draft.description) })
+  if (dirtyPaths.value.has('notes')) edits.push({ channel: 'presentation', path: 'notes', value: linesToArray(draft.notes) })
   if (dirtyPaths.value.has('sourceBook')) {
-    edits.push({ path: 'sourceBook', value: draft.sourceBook || null })
-    edits.push({ path: 'sourcePage', value: draft.sourcePage || null })
+    edits.push({ channel: 'presentation', path: 'sourceBook', value: draft.sourceBook || null })
+    edits.push({ channel: 'presentation', path: 'sourcePage', value: draft.sourcePage || null })
   }
   if (dirtyPaths.value.has('image')) {
-    edits.push({ path: 'image', value: draft.image === null ? null : draft.image === undefined ? undefined : { kind: 'media', fileId: draft.image.fileId } })
+    edits.push({ channel: 'presentation', path: 'image', value: draft.image === null ? null : draft.image === undefined ? undefined : { kind: 'media', fileId: draft.image.fileId } })
+  }
+
+  // Mechanics edits -- same request, same expectedRevision, one combined
+  // atomic save (content-workspace-entities.ts's applyEntityEdits). Every
+  // value here is JSON-explicit (never `undefined`) -- see
+  // dnd5e-editing.ts's own header on why attunement specifically must
+  // never rely on `undefined` surviving serialization.
+  if (mechanicsDirtyPaths.value.has('rarity')) edits.push({ channel: 'mechanics', path: 'rarity', value: mechanicsDraft.rarity })
+  if (mechanicsDirtyPaths.value.has('weight')) edits.push({ channel: 'mechanics', path: 'weight', value: Number(mechanicsDraft.weight) })
+  if (mechanicsDirtyPaths.value.has('attunement')) {
+    const value: ItemAttunementOverrideValue = {
+      required: mechanicsDraft.attunement === 'required',
+      text: mechanicsDraft.attunement === 'required' && mechanicsDraft.attunementText.trim() ? mechanicsDraft.attunementText.trim() : null
+    }
+    edits.push({ channel: 'mechanics', path: 'attunement', value })
+  }
+  if (mechanicsDirtyPaths.value.has('damage')) {
+    const value: ItemDamageOverrideValue = { dice: mechanicsDraft.damageDice.trim(), damageType: mechanicsDraft.damageType || null }
+    edits.push({ channel: 'mechanics', path: 'damage', value })
+  }
+  if (mechanicsDirtyPaths.value.has('property')) {
+    edits.push({ channel: 'mechanics', path: 'property', value: buildPropertyOverrideArray(preview.value?.itemMechanicsEditing?.property ?? [], mechanicsDraft.property) })
   }
 
   try {
@@ -373,6 +505,45 @@ async function revertAll() {
   saveState.value = 'saving'
   try {
     await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/presentation`, {
+      method: 'DELETE',
+      body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
+    })
+    saveState.value = 'idle'
+    await load()
+  } catch (error) {
+    saveState.value = 'error'
+    errorMessage.value = describeError(error) || 'The revert failed.'
+  }
+}
+
+// Mechanics revert -- direct siblings of revertPath/revertAll above,
+// targeting the mechanics-channel DELETE routes
+// (overrides/mechanics/:path, overrides/mechanics). "Reset to inherited"
+// removes the WHOLE logical override (e.g. attunement's required+text
+// together), restoring the original base behavior/text exactly.
+async function revertMechanicsPath(path: string) {
+  if (!entity.value) return
+  if (isDirty.value && !window.confirm(`Revert ${path} to its inherited value? Your other unsaved changes are kept.`)) return
+  saveState.value = 'saving'
+  try {
+    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/mechanics/${path}`, {
+      method: 'DELETE',
+      body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
+    })
+    saveState.value = 'idle'
+    await load()
+  } catch (error) {
+    saveState.value = 'error'
+    errorMessage.value = describeError(error) || 'The revert failed.'
+  }
+}
+
+async function revertMechanicsAll() {
+  if (!entity.value) return
+  if (!window.confirm('Revert ALL customized mechanics fields on this entity to their inherited values?')) return
+  saveState.value = 'saving'
+  try {
+    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/mechanics`, {
       method: 'DELETE',
       body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
     })
@@ -658,6 +829,212 @@ async function createCheckpoint() {
           </p>
         </div>
 
+        <!-- Mechanics -- Items Mechanics Editing, release one. Full editor
+             only (this whole block sits inside the `v-if="!isQuickField"`
+             template above), Item entities only. Changing a value here
+             never rewrites description/notes/source prose -- mechanics and
+             presentation are separate authored channels, saved together
+             only because they share one Save button below. -->
+        <template v-if="!isQuickField && isItemEntity">
+        <div class="border-t border-eldra-accent/24 pt-4">
+          <div class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">
+            Mechanics
+          </div>
+          <p class="mt-1 text-xs text-eldra-text-faint">
+            Changing these values does not rewrite the description above -- update both if the prose should match.
+          </p>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Rarity</label>
+                <button
+                  v-if="mechanicsCustomizedPaths.has('rarity')"
+                  type="button"
+                  class="text-xs text-eldra-accent-text underline underline-offset-4"
+                  :disabled="saveState === 'saving'"
+                  @click="revertMechanicsPath('rarity')"
+                >
+                  Revert
+                </button>
+              </div>
+              <select
+                v-model="mechanicsDraft.rarity"
+                class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+              >
+                <option value="">
+                  Inherit ({{ preview?.itemMechanicsEditing?.rarity || 'none' }})
+                </option>
+                <option
+                  v-for="option in ITEM_RARITY_OPTIONS"
+                  :key="option"
+                  :value="option"
+                >
+                  {{ option }}
+                </option>
+                <option
+                  v-if="preview?.itemMechanicsEditing?.rarity && !ITEM_RARITY_OPTIONS.includes(preview.itemMechanicsEditing.rarity as typeof ITEM_RARITY_OPTIONS[number])"
+                  :value="preview.itemMechanicsEditing.rarity"
+                >
+                  {{ preview.itemMechanicsEditing.rarity }} (current, unrecognized)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Weight</label>
+                <button
+                  v-if="mechanicsCustomizedPaths.has('weight')"
+                  type="button"
+                  class="text-xs text-eldra-accent-text underline underline-offset-4"
+                  :disabled="saveState === 'saving'"
+                  @click="revertMechanicsPath('weight')"
+                >
+                  Revert
+                </button>
+              </div>
+              <input
+                v-model="mechanicsDraft.weight"
+                type="number"
+                min="0"
+                step="any"
+                :placeholder="`Inherit (${preview?.itemMechanicsEditing?.weight ?? 0})`"
+                class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+              >
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <div class="flex items-center justify-between gap-2">
+              <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Attunement</label>
+              <button
+                v-if="mechanicsCustomizedPaths.has('attunement')"
+                type="button"
+                class="text-xs text-eldra-accent-text underline underline-offset-4"
+                :disabled="saveState === 'saving'"
+                @click="revertMechanicsPath('attunement')"
+              >
+                Revert
+              </button>
+            </div>
+            <select
+              v-model="mechanicsDraft.attunement"
+              class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+            >
+              <option value="inherit">
+                Inherit ({{ preview?.itemMechanicsEditing?.attunement?.required ? 'requires attunement' : 'no attunement' }})
+              </option>
+              <option value="required">
+                Requires attunement
+              </option>
+              <option value="not-required">
+                Does not require attunement
+              </option>
+            </select>
+            <input
+              v-if="mechanicsDraft.attunement === 'required'"
+              v-model="mechanicsDraft.attunementText"
+              type="text"
+              placeholder="Restriction text (optional), e.g. &quot;by a Spellcaster&quot;"
+              class="mt-2 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+            >
+            <p class="mt-1 text-xs text-eldra-text-faint">
+              This only records a restriction -- Eldra does not enforce attunement limits automatically.
+            </p>
+          </div>
+
+          <template v-if="isWeapon">
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Damage dice</label>
+                  <button
+                    v-if="mechanicsCustomizedPaths.has('damage')"
+                    type="button"
+                    class="text-xs text-eldra-accent-text underline underline-offset-4"
+                    :disabled="saveState === 'saving'"
+                    @click="revertMechanicsPath('damage')"
+                  >
+                    Revert
+                  </button>
+                </div>
+                <input
+                  v-model="mechanicsDraft.damageDice"
+                  type="text"
+                  :placeholder="`Inherit (${preview?.itemMechanicsEditing?.damage?.dice || 'none'})`"
+                  class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+                >
+                <p class="mt-1 text-xs text-eldra-text-faint">
+                  Whole dice only, e.g. "1d8" -- no modifiers.
+                </p>
+              </div>
+              <div>
+                <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Damage type</label>
+                <select
+                  v-model="mechanicsDraft.damageType"
+                  class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+                >
+                  <option value="">
+                    None
+                  </option>
+                  <option
+                    v-for="option in WEAPON_DAMAGE_TYPE_OPTIONS"
+                    :key="option.code"
+                    :value="option.code"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Weapon properties</label>
+                <button
+                  v-if="mechanicsCustomizedPaths.has('property')"
+                  type="button"
+                  class="text-xs text-eldra-accent-text underline underline-offset-4"
+                  :disabled="saveState === 'saving'"
+                  @click="revertMechanicsPath('property')"
+                >
+                  Revert
+                </button>
+              </div>
+              <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                <label
+                  v-for="row in propertyRowsForDisplay"
+                  :key="row.property"
+                  class="flex items-center gap-1.5 text-sm text-eldra-text-soft"
+                  :class="row.state === 'locked' ? 'opacity-60' : ''"
+                  :title="row.state === 'locked' ? `Not editable here -- carries a condition (${row.note}) that would be lost` : undefined"
+                >
+                  <input
+                    v-if="row.state !== 'locked'"
+                    v-model="mechanicsDraft.property[row.property]"
+                    type="checkbox"
+                  >
+                  <input
+                    v-else
+                    type="checkbox"
+                    checked
+                    disabled
+                  >
+                  {{ row.label }}<span v-if="row.state === 'locked'"> ({{ row.note }})</span>
+                </label>
+              </div>
+            </div>
+          </template>
+          <p
+            v-else
+            class="mt-3 text-xs text-eldra-text-faint"
+          >
+            Damage and weapon properties are only editable for items the system already resolves as a weapon.
+          </p>
+        </div>
+        </template>
+
         <div class="flex items-center gap-3 border-t border-eldra-accent/24 pt-4">
           <button
             type="button"
@@ -686,6 +1063,20 @@ async function createCheckpoint() {
             @click="revertAll"
           >
             Revert all presentation overrides
+          </button>
+        </div>
+
+        <div
+          v-if="isItemEntity && mechanicsCustomizedPaths.size"
+          class="border-t border-eldra-accent/24 pt-4"
+        >
+          <button
+            type="button"
+            class="min-h-9 rounded-none border border-red-400/30 px-3 text-xs text-red-200 hover:bg-red-500/10"
+            :disabled="saveState === 'saving'"
+            @click="revertMechanicsAll"
+          >
+            Revert all mechanics overrides
           </button>
         </div>
 
@@ -724,8 +1115,11 @@ async function createCheckpoint() {
         class="min-w-0"
       >
         <div class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">
-          Preview — what this will look like
+          Last saved state
         </div>
+        <p class="mt-1 text-xs text-eldra-text-faint">
+          Reflects what was last saved, not your unsaved edits above -- Save, then this refreshes.
+        </p>
         <div class="mt-2">
           <ContentPresentationPanel
             :entry="preview?.effectivePresentation ?? null"
@@ -737,13 +1131,15 @@ async function createCheckpoint() {
         <!-- Direct-edit consolidation pass, section 7: the SAME mechanics
              meta-lines the category rail already shows (established
              helpers, never invented) -- so this preview never disagrees
-             with what the admin sees once they close this editor. -->
+             with what the admin sees once they close this editor. Reads
+             the EFFECTIVE (merged) data, so it reflects a saved mechanics
+             override above too, once Save completes and this reloads. -->
         <div
           v-if="preview?.metaLines?.length"
           class="mt-3 eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
         >
           <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">
-            Mechanics (not editable here)
+            {{ isItemEntity ? 'Other mechanics (read-only here)' : 'Mechanics (not editable here)' }}
           </div>
           <div
             v-for="line in preview.metaLines"

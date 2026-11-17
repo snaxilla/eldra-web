@@ -21,12 +21,13 @@
 
 import type { FieldOverride, OverrideChannel } from '../../app/lib/content-authoring/overrides'
 import { diffOverrides, emptyChannel, isValidOverridePath, removeOverridePath, upsertOverride } from '../../app/lib/content-authoring/overrides'
+import { isItemMechanicsOverridePath } from '../../app/lib/item-mechanics'
 import type { BaseSourceRef, LegacyBaseRef } from '../../app/lib/content-identity'
 import type { WorkspaceEntityOrigin, WorkspaceEntityState } from '../../app/lib/content-workspaces/types'
 import { directusServiceRequest } from './directus'
 import { CONTENT_WORKSPACE_ENTITIES_COLLECTION } from './content-workspaces'
 import { withWorkspaceSchema } from './content-workspace-schema'
-import { writeWorkspaceEntityOverrideAtomic } from './content-workspace-entity-atomic'
+import { writeWorkspaceEntityOverrideAtomic, type WorkspaceOverrideColumn } from './content-workspace-entity-atomic'
 
 type DirectusRow = Record<string, unknown>
 type DirectusResponse = { data?: unknown }
@@ -165,6 +166,16 @@ export type EditOutcome =
   | { ok: false; stage: 'invalid-path'; path: string }
   | { ok: false; stage: 'persistence-unavailable'; message: string }
 
+// Mechanics overrides are scoped to `item` entities only this release
+// (Items Mechanics Editing -- "Non-Item mechanics editing" is explicitly
+// out of scope). Entity-type-aware, unlike isValidOverridePath('presentation', ...)
+// above, which is universal across entity types -- so this lives here,
+// where `entityType` is already in hand, rather than in the generic,
+// entity-type-unaware content-authoring/overrides.ts.
+function isValidMechanicsOverridePath(entityType: string, path: string): boolean {
+  return entityType === 'item' && isItemMechanicsOverridePath(path)
+}
+
 // Applies a conditional write to one channel's override list -- shared by
 // edit/revert/revert-all, since all three are "read current, compute a
 // new override list, write it atomically conditioned on expectedRevision,
@@ -196,8 +207,7 @@ async function writeOverrides(
       workspaceId,
       contentEntityId,
       expectedRevision,
-      column: columnName,
-      newValue: afterList,
+      columns: { [columnName]: afterList },
       revision: { kind: recordKind, label, actorAccountId, diff }
     })
 
@@ -283,6 +293,166 @@ export async function revertPresentationChannel(
     actorAccountId,
     'Reverted all presentation overrides'
   )
+}
+
+// ---------------------------------------------------------------------------
+// Mechanics overrides -- Items Mechanics Editing, release one. Direct
+// siblings of the presentation functions above, reusing the SAME
+// channel-generic writeOverrides primitive (it has always branched on
+// `channel`; mechanics was simply never exercised until now) -- not a
+// second write mechanism.
+// ---------------------------------------------------------------------------
+
+export type MechanicsEdit = { path: string; value: unknown }
+
+export async function applyMechanicsEdits(
+  workspaceId: string,
+  contentEntityId: string,
+  expectedRevision: number,
+  entityType: string,
+  edits: readonly MechanicsEdit[],
+  actorAccountId: string | null
+): Promise<EditOutcome> {
+  for (const edit of edits) {
+    if (!isValidMechanicsOverridePath(entityType, edit.path)) return { ok: false, stage: 'invalid-path', path: edit.path }
+  }
+
+  return await writeOverrides(
+    workspaceId,
+    contentEntityId,
+    expectedRevision,
+    'mechanics',
+    (currentList) => {
+      const now = new Date().toISOString()
+      let next = currentList
+      for (const edit of edits) {
+        next = upsertOverride(next, { channel: 'mechanics', path: edit.path, value: edit.value, authoredBy: actorAccountId, baseValueHash: null }, now)
+      }
+      return next
+    },
+    'autosave',
+    actorAccountId
+  )
+}
+
+export async function revertMechanicsPath(
+  workspaceId: string,
+  contentEntityId: string,
+  expectedRevision: number,
+  entityType: string,
+  path: string,
+  actorAccountId: string | null
+): Promise<EditOutcome> {
+  if (!isValidMechanicsOverridePath(entityType, path)) return { ok: false, stage: 'invalid-path', path }
+  return await writeOverrides(
+    workspaceId,
+    contentEntityId,
+    expectedRevision,
+    'mechanics',
+    (currentList) => removeOverridePath(currentList, 'mechanics', path),
+    'revert',
+    actorAccountId,
+    `Reverted mechanics.${path}`
+  )
+}
+
+export async function revertMechanicsChannel(
+  workspaceId: string,
+  contentEntityId: string,
+  expectedRevision: number,
+  actorAccountId: string | null
+): Promise<EditOutcome> {
+  return await writeOverrides(
+    workspaceId,
+    contentEntityId,
+    expectedRevision,
+    'mechanics',
+    (currentList) => emptyChannel(currentList, 'mechanics'),
+    'revert',
+    actorAccountId,
+    'Reverted all mechanics overrides'
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Combined save -- Items Mechanics Editing, release one (brief item 2:
+// "Support one request containing presentation and mechanics edits under
+// one expected revision... Both channels succeed or fail together. One
+// revision increment and one coherent history entry."). THE one save
+// pipeline the entity PATCH route calls, for any mix of channels
+// (presentation-only, mechanics-only, or both) -- never a second pipeline
+// alongside applyPresentationEdits/applyMechanicsEdits above, which remain
+// in place only as the shared primitives revert/split-to-local reuse.
+// ---------------------------------------------------------------------------
+
+export type EntityChannelEdit = { channel: OverrideChannel; path: string; value: unknown; baseValueHash: string | null }
+
+export async function applyEntityEdits(
+  workspaceId: string,
+  contentEntityId: string,
+  expectedRevision: number,
+  entityType: string,
+  edits: readonly EntityChannelEdit[],
+  actorAccountId: string | null
+): Promise<EditOutcome> {
+  for (const edit of edits) {
+    if (edit.channel === 'presentation') {
+      if (!isValidOverridePath('presentation', edit.path)) return { ok: false, stage: 'invalid-path', path: edit.path }
+    } else if (edit.channel === 'mechanics') {
+      if (!isValidMechanicsOverridePath(entityType, edit.path)) return { ok: false, stage: 'invalid-path', path: edit.path }
+    } else {
+      return { ok: false, stage: 'invalid-path', path: edit.path }
+    }
+  }
+
+  return await withWorkspaceSchema(CONTENT_WORKSPACE_ENTITIES_COLLECTION, async () => {
+    const current = await getWorkspaceEntityDetail(workspaceId, contentEntityId)
+    if (!current) return { ok: false, stage: 'not-found' }
+    if (current.revision !== expectedRevision) return { ok: false, stage: 'conflict', current }
+
+    const now = new Date().toISOString()
+    const beforePresentation = current.authoredPresentation
+    const beforeMechanics = current.authoredMechanics
+    let afterPresentation = beforePresentation
+    let afterMechanics = beforeMechanics
+
+    for (const edit of edits) {
+      const entry = { channel: edit.channel, path: edit.path, value: edit.value, authoredBy: actorAccountId, baseValueHash: edit.baseValueHash }
+      if (edit.channel === 'presentation') afterPresentation = upsertOverride(afterPresentation, entry, now)
+      else afterMechanics = upsertOverride(afterMechanics, entry, now)
+    }
+
+    // Only the columns an edit actually touched are included in the write
+    // -- a presentation-only (or mechanics-only) request through this same
+    // function still writes exactly one column, identical to what
+    // applyPresentationEdits/applyMechanicsEdits would have written alone.
+    const columns: Partial<Record<WorkspaceOverrideColumn, unknown>> = {}
+    if (afterPresentation !== beforePresentation) columns.authored_presentation = afterPresentation
+    if (afterMechanics !== beforeMechanics) columns.authored_mechanics = afterMechanics
+
+    const diff = [
+      ...diffOverrides(beforePresentation, afterPresentation),
+      ...diffOverrides(beforeMechanics, afterMechanics)
+    ]
+
+    const result = await writeWorkspaceEntityOverrideAtomic({
+      workspaceId,
+      contentEntityId,
+      expectedRevision,
+      columns,
+      revision: { kind: 'autosave', label: null, actorAccountId, diff }
+    })
+
+    if (!result.ok) {
+      if (result.reason === 'not-found') return { ok: false, stage: 'not-found' }
+      if (result.reason === 'conflict') {
+        return { ok: false, stage: 'conflict', current: result.current ? normalizeDetail(result.current as unknown as DirectusRow) : current }
+      }
+      return { ok: false, stage: 'persistence-unavailable', message: result.message }
+    }
+
+    return { ok: true, entity: normalizeDetail(result.entity as unknown as DirectusRow) }
+  })
 }
 
 export type CheckpointOutcome =

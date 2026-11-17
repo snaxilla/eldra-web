@@ -7,7 +7,7 @@ import {
   itemCodeLabel as collectionClientItemCodeLabel,
   serverMetaLines as resolveServerMetaLines
 } from '~/lib/world-entity-collection/server-meta-lines'
-import { presentationKindForEntityType } from '~/lib/content-presentation/kind-for-entity-type'
+import { canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
 
 const props = defineProps<{
@@ -138,13 +138,15 @@ const canShowSpellHomebrewActions = computed(() =>
 )
 
 // Same client-side convenience as canShowSpellHomebrewActions above --
-// mirrors world-workspace.vue's own `canBuild` (`capabilities.includes('world.entity.edit')`)
-// so the "switch to Build mode" hint below only shows to someone who could
-// actually use it. The server's own requireCapability('world.entity.edit')
-// on every direct-edit write route is the real, unaffected gate.
-const canEditEntities = computed(() =>
-  Array.isArray(world.value?.capabilities) && world.value.capabilities.includes('world.entity.edit')
-)
+// mirrors world-workspace.vue's own `canBuild`. Backed by
+// worldEntityDirectEditEligibility.ts (pure, unit-tested there) so Edit/
+// Delete visibility can never again be made to depend on the World Map's
+// Play/Build toggle -- see that module's own header for the regression
+// this corrects. The server's own requireCapability('world.entity.edit')/
+// ('world.entity.delete') on every write route remains the real,
+// unaffected, authoritative gate regardless of what these return.
+const canEditEntities = computed(() => canEditWorldEntities(world.value?.capabilities))
+const canDeleteEntities = computed(() => canDeleteWorldEntities(world.value?.capabilities))
 
 function openHomebrewSpellForge(templateId?: string) {
   router.push(buildHomebrewForgeRoute(worldId.value, templateId))
@@ -986,10 +988,18 @@ const selectedEntity = computed(() => {
 // presentationKindForEntityType already agree on). Unsupported
 // categories (location, character/npc, feat, enemy/monster, ...) simply
 // never show the button, reported explicitly rather than guessed at.
-const directEditSupported = computed(() => Boolean(presentationKindForEntityType(props.entityType)))
+const directEditSupported = computed(() => supportsDirectEdit(props.entityType))
 const directEditing = ref(false)
 
-function openDirectEdit() {
+// Opens the SAME shared direct-edit workflow for `entity`, selecting it
+// first via the existing, robust `openEntityContext` (the exact selection
+// path the card's own click/Details button already uses) -- so a card's
+// Edit action works correctly even when a DIFFERENT entity is currently
+// selected, without inventing a second, decoupled "edit target" concept.
+// The rail's own Edit button passes `selectedEntity` (already the target),
+// making the reselect a harmless no-op there.
+function openDirectEdit(entity: any) {
+  openEntityContext(entity)
   directEditing.value = true
 }
 
@@ -1364,6 +1374,25 @@ async function createLocationArticle() {
                     Details
                   </button>
 
+                  <!-- Product regression, corrected: Edit belongs directly
+                       on the card, not only in the context rail, and must
+                       never depend on the World Map's Play/Build toggle --
+                       capability-only, same eligibility the rail's own
+                       Edit button uses. `@click.stop` so this never also
+                       triggers the card's own click (which would merely
+                       select it) or collides with another action on the
+                       same card; `openDirectEdit` selects THIS entity
+                       itself first, so Edit works correctly even while a
+                       DIFFERENT entity is currently selected. -->
+                  <button
+                    v-if="directEditSupported && canEditEntities"
+                    type="button"
+                    class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]"
+                    @click.stop="openDirectEdit(entity)"
+                  >
+                    Edit
+                  </button>
+
                   <button
                     v-if="entity.__source !== 'catalogue'"
                     type="button"
@@ -1644,9 +1673,11 @@ async function createLocationArticle() {
             <!-- A catalogue-sourced entity (an imported, published Content Pack entry --
                  see catalogue-entity-bridge.ts's own header) has no backing `entities` row
                  to delete or link an article for; a legacy/homebrew entity keeps both,
-                 unchanged. -->
+                 unchanged. This published-content restriction is independent of the
+                 permission check below and is NOT a new Delete capability -- a catalogue
+                 entry simply has nothing here to delete, regardless of who's asking. -->
             <button
-              v-if="mode === 'build' && selectedEntity.__source !== 'catalogue'"
+              v-if="canDeleteEntities && selectedEntity.__source !== 'catalogue'"
               type="button"
               class="block w-full rounded-none border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
               :disabled="deletingEntity"
@@ -1691,30 +1722,21 @@ async function createLocationArticle() {
               </p>
             </template>
 
+            <!-- Product regression, corrected: Edit must never depend on
+                 the World Map's Play/Build toggle -- visibility is
+                 capability-only now (directEditSupported && canEditEntities,
+                 both backed by worldEntityDirectEditEligibility.ts). This
+                 context-rail Edit is an ADDITIONAL entry point to the SAME
+                 action each entity card below also offers; both call the
+                 identical openDirectEdit/eligibility logic. -->
             <button
-              v-if="mode === 'build' && directEditSupported"
+              v-if="directEditSupported && canEditEntities"
               type="button"
               class="eldra-button mt-2 block w-full rounded-none px-4 py-3 text-center text-sm font-medium"
-              @click="openDirectEdit"
+              @click="openDirectEdit(selectedEntity)"
             >
               Edit
             </button>
-
-            <!-- Production acceptance failure fix: an authorized editor
-                 viewing this entity in Play mode (the default on any
-                 fresh navigation -- see `mode`'s own declaration above)
-                 previously saw Edit simply not exist, with nothing
-                 explaining why or how to reach it. Shown ONLY to someone
-                 who could actually use Build mode (`canEditEntities`,
-                 client-side convenience mirroring world-workspace.vue's
-                 own `canBuild` -- the server's own capability checks on
-                 every write route remain the real gate regardless). -->
-            <p
-              v-else-if="directEditSupported && canEditEntities"
-              class="mt-2 text-center text-xs text-eldra-text-faint"
-            >
-              Switch to Build mode (sidebar) to edit this {{ entityType }}.
-            </p>
 
             <WorldEntityDirectEditDialog
               v-if="directEditing"

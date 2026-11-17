@@ -18,23 +18,21 @@ const props = defineProps<{
   // not re-derived here from the raw pathname, which previously also
   // matched `/worlds/:id/maps` (the map GALLERY/upload page: no pins, and
   // its own `mode` state is read nowhere, confirmed by tracing maps.vue).
-  // Still gates `showPins` below (genuinely map-only).
+  // Gates BOTH the Play/Build toggle AND `showPins` below -- both are
+  // Map-only controls.
   //
-  // PRODUCTION ACCEPTANCE FAILURE, root cause. This USED to also gate the
-  // Play/Build toggle itself, on the theory ("Play/Build itself still
-  // works exactly as before once the player reaches the World Map -- this
-  // only hides the REDUNDANT toggle elsewhere") that `mode` only mattered
-  // on the Map. That stopped being true once WorldEntityInteractivePage.vue
-  // gated its own Edit/Delete actions on `mode === 'build'` too (Items,
-  // Spells, Classes, every category page) -- `mode` is a single global
-  // useState that resets to 'play' on every FULL browser navigation
-  // (bookmark, direct link, refresh), and with the toggle hidden on every
-  // page but the Map, an owner who reached /worlds/:id/items WITHOUT
-  // passing through the Map page first in that same SPA session had no
-  // way to ever reach Build mode -- Edit simply never appeared, with no
-  // error and no indication why. The toggle below is therefore NO LONGER
-  // gated on `isMapPage` -- it is always shown, since `mode`/`canBuild`
-  // are already global, World-scoped state, not Map-specific.
+  // PRODUCT REGRESSION, corrected. A prior fix for a missing-Edit bug
+  // removed `isMapPage` from the Play/Build toggle entirely, reasoning
+  // that `mode` had grown beyond map-only pin editing once
+  // WorldEntityInteractivePage.vue started gating its own Edit/Delete
+  // actions on `mode === 'build'` too. The owner's product decision is
+  // that this was backwards: Play/Build belongs EXCLUSIVELY to the World
+  // Map (pin placement/editing), and entity editing must never depend on
+  // it at all. The correct fix (done in WorldEntityInteractivePage.vue,
+  // not here) is to gate entity Edit/Delete on the caller's actual
+  // capability instead of on this toggle -- which makes the toggle
+  // map-only again, correctly, with no loss of entity-editing reachability
+  // anywhere.
   isMapPage: boolean
 }>()
 
@@ -96,7 +94,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div class="flex flex-col items-center gap-2 px-2 pb-4">
+      <div v-if="isMapPage" class="flex flex-col items-center gap-2 px-2 pb-4">
         <button
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'play'
@@ -211,7 +209,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div class="px-4 pb-4">
+      <div v-if="isMapPage" class="px-4 pb-4">
         <div class="flex gap-2">
           <button
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"

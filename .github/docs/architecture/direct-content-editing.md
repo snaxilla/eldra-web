@@ -446,9 +446,10 @@ every time and never Pack B's.
 **Owner browser acceptance checklist** (superseded by the acceptance matrix above as the
 authoritative record, kept here as a quick manual re-check after a real deployment with
 `ELDRA_EFFECTIVE_CONTENT=true`):
-1. World workspace → Items → pick any imported item → confirm an **Edit** button appears in the
-   detail rail (requires Build mode, toggled from the World Map page's sidebar — the toggle itself
-   only renders there, not on category pages, but the mode carries over via client-side navigation).
+1. World workspace → Items → pick any imported item → confirm an **Edit** button appears directly
+   on its card AND in the detail rail. **Updated**: this no longer requires Build mode or any prior
+   World Map visit — see "Product regression: Edit must not require Build mode" below, which
+   corrects this checklist's own now-obsolete earlier wording.
 2. Click Edit, change the description, pick a new image, click **Save changes** — confirm the rail
    stays on the SAME entity afterward, not bounced back to an empty panel.
 3. Reopen the SAME item's Edit a second time — confirm the just-saved description/image are there,
@@ -503,6 +504,14 @@ deployment (`dc0cd60`), so there is no separate prior live behavior it changes.
 
 ## Production acceptance failure: Build-mode discoverability (post-deployment fix)
 
+**SUPERSEDED by the owner's product decision below ("Product regression: Edit must not require
+Build mode") — kept here, uncorrected, as the historical record of what this fix actually did and
+why, exactly like this document's own earlier "boundary review" corrections.** The fix described in
+this section made Edit reachable by making Build mode reachable from every page. The owner's
+subsequent product decision was that this was itself the wrong direction: Play/Build belongs
+EXCLUSIVELY on the World Map, and entity editing must never depend on it, reachable or not. Do not
+re-apply anything in this section — read the later section instead.
+
 **Reported**: on Solaris (`/worlds/4/items`), selecting Longbow opened its context rail (Details,
 Summary, image, metadata, "CUSTOMIZED FOR THIS WORLD" all rendered correctly) but showed **no Edit
 action anywhere** — for the owner's own established administrator account.
@@ -549,13 +558,112 @@ regression evidence.
 
 **Deployment requirements**: none — pure client-side visibility fix, no schema/env/credential change.
 
-**Follow-ups recorded, not fixed in this pass** (both deliberately out of this bounded fix's scope):
-1. The authorized Play-mode editing hint ("Switch to Build mode (sidebar) to edit this item")
-   currently only tells the caller where to look — it does not itself switch `mode` to `'build'`. A
-   direct "Switch to Build" action on the hint itself (calling `set-mode` the same way the sidebar
-   toggle does) would remove one extra step for the exact caller this whole fix was for.
+**Follow-ups recorded in this pass** (status updated below):
+1. ~~The authorized Play-mode editing hint ... a direct "Switch to Build" action on the hint itself
+   would remove one extra step.~~ **OBSOLETE.** The owner's subsequent product decision removed
+   Edit's dependency on `mode` entirely, so this hint (and `mode` itself, for entity actions) no
+   longer exists. See the next section.
 2. The narrow-viewport fix for the "Build mode, nothing selected" panel is `hidden md:block` — it
    makes the panel simply not render below `md`, rather than giving mobile a working equivalent.
    Page/background customization (`WorldPagePresentationPanel`) has no usable mobile entry point at
-   all today. Worth a real design pass (e.g., its own mobile-drawer-style affordance) rather than
-   continuing to just suppress it on narrow viewports.
+   all today. **Still open** — explicitly out of scope again in the product-regression fix below, per
+   the owner's own instruction not to expand that bounded task into a redesign.
+
+## Product regression: Edit must not require Build mode (owner correction)
+
+**Owner decision, reported as a product regression**: the fix above was itself wrong. Entity editing
+must not require Build mode at all. Authorized users should see Edit directly on entity cards.
+Play/Build belongs exclusively on the World Map, for pin interactions.
+
+**Corrected**:
+- `WorldWorkspaceSidebar.vue`'s Play/Build toggle is gated on `isMapPage` again (restored to
+  Map-only, in both the expanded and collapsed/mobile sidebar variants) — reverting the previous
+  fix's own change to this file. "Hide/Show Pins" was never touched either time; still Map-only.
+- `WorldEntityInteractivePage.vue`'s Edit and Delete actions no longer read `mode` AT ALL. Visibility
+  is now purely capability-based: `directEditSupported && canEditEntities` for Edit (both the
+  context-rail button AND a new button directly on every entity card, grid and list), and
+  `canDeleteEntities` for Delete (its separate, unchanged "catalogue entries have nothing to delete"
+  restriction is independent of this and was not a new Delete capability for immutable published
+  entries). The obsolete "Switch to Build mode (sidebar) to edit this item" hint is gone — there is
+  nothing left to hint about, Edit is just always there when the caller is authorized.
+- The authorization checks (`canEditWorldEntities`/`canDeleteWorldEntities`/`supportsDirectEdit`/
+  `shouldShowDirectEditAction`) were extracted into a new pure module,
+  `app/components/world/worldEntityDirectEditEligibility.ts`, following the SAME established
+  sibling-file pattern as `worldEntityHomebrewActions.ts` (this repo has no DOM/browser test
+  harness, so pure logic extracted out of a `.vue` file is how anything here gets real unit
+  coverage). `shouldShowDirectEditAction` takes no `mode`/build-state parameter at all, by
+  construction, making this exact regression (gating entity editing on the Map's Play/Build state)
+  structurally impossible to reintroduce through this gate again.
+- A card's Edit button opens the EXACT SAME shared direct-edit workflow as the rail's own Edit — no
+  second dialog system. `openDirectEdit(entity)` now selects `entity` first (via the existing,
+  already-robust `openEntityContext`, the same selection path the card's Details button already
+  uses) before opening the dialog, so clicking Edit on a card works correctly even while a DIFFERENT
+  entity is currently selected — selection simply follows the edit target. `@click.stop` on the
+  card's Edit button prevents it from also triggering the card's own click-to-select handler.
+- Shared-source vs. World-local editing boundaries are completely untouched by this fix — it only
+  changes WHEN the Edit button/dialog is offered, never what the dialog does once opened or what the
+  server allows once it saves.
+
+**Verified** against the real disposable Directus/Postgres instance + a real headless browser (not
+production), covering every item in the required checklist: a fresh session on `/worlds/:id/items`
+(owner) shows card Edit immediately, no Map visit, ever; a card opens the direct-edit workflow
+without first clicking Details; Save → immediate card-text refresh (no reload) → a real hard
+`page.reload()` (not SPA navigation) → edit persisted, card Edit still visible, no Map visit → a
+second edit reopens showing the just-saved value; card Edit is present in BOTH Grid and List
+layouts; a 390×844 narrow viewport shows card Edit immediately, no drawer/hamburger interaction
+needed at all (Edit no longer lives behind any sidebar control); an authorized World-only
+("worldbuilder" role, not owner/gm) account sees card Edit; an unauthorized "player" role account
+sees NO Edit anywhere and NO leftover hint text; a World-only editor on a workspace genuinely shared
+with a second World sees the "Customize for this World" / "Edit the shared collection" choice,
+`customizeLocally` succeeds, and a DIFFERENT World also bound to that same shared workspace (whose
+owner holds `world.content.bind_workspace` via `ALL_WORLD_CAPABILITIES` but not real platform
+authority) is correctly refused when actually attempting to SAVE through "Edit the shared
+collection" — re-confirming the earlier authorization-boundary fix is untouched by this change;
+entering Build mode on the World Map, then navigating to Items, shows entity behavior IDENTICAL to
+Play mode (capability-only, as designed); returning to the World Map afterward, the Play/Build
+toggle and the pin-visibility control both still work; and the toggle is confirmed absent on the
+Items page itself (Map-only, restored). **23/23 checks passed.**
+
+New focused regression tests, using this repo's existing pure-logic-extraction testing pattern (no
+component harness exists, so these prove the gating logic directly, not that the `<button>` v-if
+renders in a browser — that remains the real headless-browser run above):
+`tests/components/world/worldEntityDirectEditEligibility.test.ts` (14 new tests), including one
+that asserts `shouldShowDirectEditAction` takes exactly 2 parameters (never a third `mode` argument),
+making the regression structurally impossible to reintroduce through this function. Full suite:
+6298/6298 passing (309 files). Typecheck: pre-existing failures only, in files this pass never
+touched (confirmed identical baseline to the prior round). Lint: the new module and its test file
+are clean; `WorldWorkspaceSidebar.vue` and `WorldEntityInteractivePage.vue` carry only the SAME
+pre-existing `no-explicit-any`/unused-var debt already documented earlier in this file, unchanged by
+this pass's own additions. Production build: `pnpm build` exits 0.
+
+**Remaining non-map mode dependencies**: `collectionRailOpen` (layout) and the "Build mode, nothing
+selected" `WorldPagePresentationPanel` panel (`v-if="mode === 'build' && !selectedEntity"`) both
+still read `mode` — deliberately untouched, per the owner's own instruction not to expand this
+bounded fix into a page/background-customization redesign. This is the SAME follow-up #2 recorded
+above, now reconfirmed still open and still out of scope on purpose.
+
+**Follow-ups recorded, current as of this pass** (both deliberately out of scope, neither fixed
+here):
+1. **Remove unauthorized shared-edit choices from the UI.** `WorldEntityDirectEditDialog.vue`'s
+   shared-choice screen offers "Edit the shared collection (requires elevated permission)" to ANY
+   caller who reaches it (any World owner/gm with `world.entity.edit`), regardless of whether they
+   actually hold real platform `platform.contentworkspace.edit` authority — the dialog has no way to
+   know that client-side today. The server is the real, unaffected gate (confirmed again this pass:
+   a World-only owner's SAVE attempt through that choice is refused), so this is a discoverability/UX
+   gap, not a security one — but a caller who clicks it today reaches a live editor that then fails
+   on Save with no warning up front. Worth either plumbing the caller's platform capability down to
+   this dialog, or simply not offering a choice the caller can't act on.
+2. **Give page/background customization a usable entry point independent of the Map's Play/Build
+   state.** The "Build mode, nothing selected" `WorldPagePresentationPanel` panel has no reachable
+   entry point outside Build mode, no mobile-usable layout (previously fixed with `hidden md:block`,
+   which only suppresses it below `md` rather than giving mobile a working equivalent), and now, per
+   this pass's own correction, no connection to entity editing at all anymore. Worth a real design
+   pass once Play/Build's own future (Map-only, pins-only) is settled.
+
+**Deployment requirements**: none — pure client-side visibility/authorization-source change, no
+schema/env/credential change. The editor itself (`StudioEntityEditor.vue`) was not touched: no
+formatting/layout changes, no persistence-model changes, no field changes. Atomic save, conflict
+handling, canonical `contentEntityId` selection identity, automatic local-customization
+(`splitSharedEntityToLocalWorkspace`), and activation-last ordering are all unchanged and unaffected
+by this pass — none of this pass's files intersect with `content-entity-direct-edit.ts` or
+`content-workspace-http.ts` at all.

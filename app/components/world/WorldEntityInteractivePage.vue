@@ -137,6 +137,15 @@ const canShowSpellHomebrewActions = computed(() =>
   shouldShowSpellHomebrewActions(props.entityType, world.value?.capabilities)
 )
 
+// Same client-side convenience as canShowSpellHomebrewActions above --
+// mirrors world-workspace.vue's own `canBuild` (`capabilities.includes('world.entity.edit')`)
+// so the "switch to Build mode" hint below only shows to someone who could
+// actually use it. The server's own requireCapability('world.entity.edit')
+// on every direct-edit write route is the real, unaffected gate.
+const canEditEntities = computed(() =>
+  Array.isArray(world.value?.capabilities) && world.value.capabilities.includes('world.entity.edit')
+)
+
 function openHomebrewSpellForge(templateId?: string) {
   router.push(buildHomebrewForgeRoute(worldId.value, templateId))
 }
@@ -1383,7 +1392,7 @@ async function createLocationArticle() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEntity"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners hidden md:block fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="space-y-5 p-5">
             <div
@@ -1690,6 +1699,22 @@ async function createLocationArticle() {
             >
               Edit
             </button>
+
+            <!-- Production acceptance failure fix: an authorized editor
+                 viewing this entity in Play mode (the default on any
+                 fresh navigation -- see `mode`'s own declaration above)
+                 previously saw Edit simply not exist, with nothing
+                 explaining why or how to reach it. Shown ONLY to someone
+                 who could actually use Build mode (`canEditEntities`,
+                 client-side convenience mirroring world-workspace.vue's
+                 own `canBuild` -- the server's own capability checks on
+                 every write route remain the real gate regardless). -->
+            <p
+              v-else-if="directEditSupported && canEditEntities"
+              class="mt-2 text-center text-xs text-eldra-text-faint"
+            >
+              Switch to Build mode (sidebar) to edit this {{ entityType }}.
+            </p>
 
             <WorldEntityDirectEditDialog
               v-if="directEditing"

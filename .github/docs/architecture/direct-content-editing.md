@@ -1,8 +1,10 @@
 # Direct Content Editing — architecture, guarantees, and handoff
 
-**Status: implemented, verified against the disposable instance AND a real headless-browser pass,
-NOT committed/deployed.** This documents the ELDRA Direct Content Editing consolidation pass: "Items
-→ Shortsword → Edit → change picture/description → Save" with no manual workspace/import/binding
+**Status: implemented, committed (`dc0cd60`), and deployed to production (Solaris).** A production
+acceptance failure was reported and fixed after deployment — see "Production acceptance failure:
+Build-mode discoverability" near the end of this document. This documents the ELDRA Direct Content
+Editing consolidation pass: "Items → Shortsword → Edit → change picture/description → Save" with no
+manual workspace/import/binding
 ceremony, built on top of the Content Workspaces & Studio Pass A/B work
 (`content-workspaces-and-studio.md`, `content-workspaces-pass-b-handoff.md` — read both first;
 nothing here repeats their own content).
@@ -492,11 +494,68 @@ editing works for any World the moment this code deploys — no additional provi
 fix touches schema, environment variables, or credentials: the authorization correction only removes
 a capability check that was already wrong (no new capability, no new grant row shape); the selection
 fix is a pure client-side Vue change plus threading an already-returned `contentEntityId` through an
-existing event. Nothing in this whole feature has been committed, pushed, or deployed at any point,
-so there is no live behavior to migrate away from — but it is worth stating plainly for whenever this
-DOES ship: any World owner/gm who holds `world.content.bind_workspace` but not genuine platform
-`platform.contentworkspace.edit` authority will no longer be able to edit a SHARED workspace's
-content directly through either entry point (the Studio routes or the World-facing dialog's "Edit
-the shared collection" choice) — their correct path for a shared entity is "Customize for this
-World" instead. Since this was never live, this is a correction before first deployment, not a
-regression against deployed behavior.
+existing event. It is worth stating plainly: any World owner/gm who holds `world.content.bind_workspace`
+but not genuine platform `platform.contentworkspace.edit` authority will no longer be able to edit a
+SHARED workspace's content directly through either entry point (the Studio routes or the World-facing
+dialog's "Edit the shared collection" choice) — their correct path for a shared entity is "Customize
+for this World" instead. This correction landed in the same commit as the feature's own first
+deployment (`dc0cd60`), so there is no separate prior live behavior it changes.
+
+## Production acceptance failure: Build-mode discoverability (post-deployment fix)
+
+**Reported**: on Solaris (`/worlds/4/items`), selecting Longbow opened its context rail (Details,
+Summary, image, metadata, "CUSTOMIZED FOR THIS WORLD" all rendered correctly) but showed **no Edit
+action anywhere** — for the owner's own established administrator account.
+
+**Root cause**: the Edit button (`WorldEntityInteractivePage.vue`) is gated on `mode === 'build'`.
+`mode` is a single global `useState` that defaults to `'play'` and resets on every FULL browser
+navigation (a bookmark, a direct link, a refresh — anything that isn't client-side SPA routing). The
+ONLY control that can switch it to `'build'`, the Play/Build toggle in `WorldWorkspaceSidebar.vue`,
+was rendered exclusively on the World Map page (`v-if="isMapPage"`) — a restriction that predates
+`WorldEntityInteractivePage.vue` gating its OWN Edit/Delete actions on `mode` too. An owner who
+reached `/worlds/4/items` without having visited the Map page earlier in that browser session had
+**no way to ever reach Build mode**, and therefore no way to ever see Edit. Not a permissions bug,
+not a stale deployment, not an entity/provenance exclusion — every one of those conditions was
+confirmed fine; the toggle that controls the gate was simply unreachable from the page the owner was
+actually on.
+
+**Fixed**: `WorldWorkspaceSidebar.vue`'s Play/Build toggle is no longer gated on `isMapPage` — it now
+renders on every World workspace page (the "Hide/Show Pins" toggle, genuinely map-only, keeps its
+`isMapPage` gate unchanged). `WorldEntityInteractivePage.vue` additionally shows a "Switch to Build
+mode (sidebar) to edit this item" hint to an authorized editor viewing an entity in Play mode,
+instead of Edit silently not existing (client-side convenience, gated on `world.entity.edit` being
+present in `world.capabilities`; the server's own capability checks on every write route are the
+unaffected, real gate). A second, independently-surfaced mobile bug was found while verifying this
+fix on a narrow viewport: the "Build mode, nothing selected" page-presentation panel
+(`WorldPagePresentationPanel`, embedded) is `fixed`-positioned at near-full-viewport width with no
+responsive breakpoint, so on a narrow viewport it covered the ENTIRE screen with no way back to the
+item list once Build mode was active with nothing selected — unreachable before this fix (Build mode
+itself was unreachable from Items on mobile), newly exposed by it. Fixed with `hidden md:block`: it's
+a secondary background-customization panel, not needed to reach Edit, so hiding it below `md` loses
+no desktop functionality.
+
+**Verified** against the real disposable Directus/Postgres instance + a real headless browser (not
+production): three Worlds, one fresh never-touched published item, three real roles — owner
+(desktop), worldbuilder/authorized-World-only-editor (desktop), and owner again on a 390×844 narrow
+viewport (via the mobile drawer) — all three reach Build mode with ZERO Map-page visits in that
+session, see Edit, Save successfully, retain selection, and reopen a second edit correctly (the
+narrow-viewport run additionally re-confirmed the earlier `StudioEntityEditor` `compact`-prop layout
+fix still renders single-column and legible at that width). An unauthorized player-role account on a
+separate World correctly sees no Build toggle, no Edit button, and no hint text. Full suite:
+6284/6284 passing. No new automated regression test was added — this is a pure Vue-template
+visibility condition with no existing component-rendering harness in this repo (consistent with
+every other UI-only fix in this document); the real multi-scenario browser run above is the
+regression evidence.
+
+**Deployment requirements**: none — pure client-side visibility fix, no schema/env/credential change.
+
+**Follow-ups recorded, not fixed in this pass** (both deliberately out of this bounded fix's scope):
+1. The authorized Play-mode editing hint ("Switch to Build mode (sidebar) to edit this item")
+   currently only tells the caller where to look — it does not itself switch `mode` to `'build'`. A
+   direct "Switch to Build" action on the hint itself (calling `set-mode` the same way the sidebar
+   toggle does) would remove one extra step for the exact caller this whole fix was for.
+2. The narrow-viewport fix for the "Build mode, nothing selected" panel is `hidden md:block` — it
+   makes the panel simply not render below `md`, rather than giving mobile a working equivalent.
+   Page/background customization (`WorldPagePresentationPanel`) has no usable mobile entry point at
+   all today. Worth a real design pass (e.g., its own mobile-drawer-style affordance) rather than
+   continuing to just suppress it on narrow viewports.

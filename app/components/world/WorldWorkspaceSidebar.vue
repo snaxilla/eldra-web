@@ -11,18 +11,30 @@ const props = defineProps<{
   canBuild: boolean
   // Map-Only Navigation Controls fix: whether the CURRENT route is the
   // actual interactive World Map (app/pages/worlds/[id]/index.vue) -- the
-  // one surface that both places/edits pins (`mode === 'build'`) and
-  // renders them (`showPins`). Passed down from world-workspace.vue's own
+  // one surface that places/edits pins (`mode === 'build'`) and renders
+  // them (`showPins`). Passed down from world-workspace.vue's own
   // `isFullBleedMap` (`pageKey.value === 'world-map'`), the SAME route-type
   // abstraction the layout already uses for its full-bleed map styling --
   // not re-derived here from the raw pathname, which previously also
   // matched `/worlds/:id/maps` (the map GALLERY/upload page: no pins, and
-  // its own `mode` state is read nowhere, confirmed by tracing
-  // maps.vue), wrongly showing Play/Build and Hide/Show Pins there too.
-  // Every OTHER world page (Classes, Spells, Enemies, ...) is `false` here;
-  // Play/Build itself still works exactly as before once the player
-  // reaches the World Map -- this only hides the REDUNDANT toggle
-  // elsewhere, it never changes what `mode`/`canBuild` mean or do.
+  // its own `mode` state is read nowhere, confirmed by tracing maps.vue).
+  // Still gates `showPins` below (genuinely map-only).
+  //
+  // PRODUCTION ACCEPTANCE FAILURE, root cause. This USED to also gate the
+  // Play/Build toggle itself, on the theory ("Play/Build itself still
+  // works exactly as before once the player reaches the World Map -- this
+  // only hides the REDUNDANT toggle elsewhere") that `mode` only mattered
+  // on the Map. That stopped being true once WorldEntityInteractivePage.vue
+  // gated its own Edit/Delete actions on `mode === 'build'` too (Items,
+  // Spells, Classes, every category page) -- `mode` is a single global
+  // useState that resets to 'play' on every FULL browser navigation
+  // (bookmark, direct link, refresh), and with the toggle hidden on every
+  // page but the Map, an owner who reached /worlds/:id/items WITHOUT
+  // passing through the Map page first in that same SPA session had no
+  // way to ever reach Build mode -- Edit simply never appeared, with no
+  // error and no indication why. The toggle below is therefore NO LONGER
+  // gated on `isMapPage` -- it is always shown, since `mode`/`canBuild`
+  // are already global, World-scoped state, not Map-specific.
   isMapPage: boolean
 }>()
 
@@ -84,7 +96,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div v-if="isMapPage" class="flex flex-col items-center gap-2 px-2 pb-4">
+      <div class="flex flex-col items-center gap-2 px-2 pb-4">
         <button
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'play'
@@ -199,7 +211,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <div v-if="isMapPage" class="px-4 pb-4">
+      <div class="px-4 pb-4">
         <div class="flex gap-2">
           <button
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"

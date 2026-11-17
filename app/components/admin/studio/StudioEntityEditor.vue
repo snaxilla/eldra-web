@@ -56,13 +56,70 @@ const props = defineProps<{
   // forces the single-column fallback regardless of viewport width; it
   // defaults to false so both existing wide-canvas callers are unaffected.
   compact?: boolean
+  // Quick Edit Rail / Full-Page Editor split. 'full' (default) is this
+  // component's original, unchanged behavior -- every field, live
+  // preview, revert-all, checkpoint. 'quick' renders ONLY Title (labeled
+  // "Display name" here) and Image -- no description/notes/source/
+  // mechanics/live-preview/checkpoint, per the owner's own Quick Edit
+  // field list. This is a RENDERING toggle only: `draft`/`baseline`/
+  // `dirtyPaths`/`save()` below are completely unaware of it and still
+  // track every field exactly as before, so a 'quick' save can only ever
+  // send paths the user actually touched through fields that are
+  // actually visible (description/notes/etc. literally cannot become
+  // dirty if their inputs never render) -- one draft/save contract, not
+  // two competing ones.
+  fieldSet?: 'quick' | 'full'
+  // Direct image card action -- opens Quick Edit with the picker already
+  // showing, so a caller who clicked "Change image" on a card doesn't
+  // have to click "Choose image…" again themselves. One-shot: only
+  // applied on this component's FIRST successful load.
+  autoOpenImagePicker?: boolean
+  // Draft transfer (switching Quick Edit -> the full-page editor without
+  // losing work). Applied ONCE, on top of this component's own FRESH
+  // load -- onto `draft` only, NEVER `baseline`/`entity.value.revision`,
+  // so: (1) dirtyPaths recomputes correctly dirty for whichever of
+  // name/image the caller actually touched, (2) every OTHER field stays
+  // exactly whatever this fresh load produced (never clobbered), and (3)
+  // Save still sends THIS load's real, current revision -- a concurrent
+  // edit since the draft was created still produces a normal 409, never
+  // a silent rebase onto a stale expectedRevision.
+  seedDraft?: {
+    name?: string
+    nameDirty?: boolean
+    image?: { fileId: string; url: string } | null | undefined
+    imageDirty?: boolean
+  } | null
 }>()
+
+const isQuickField = computed(() => props.fieldSet === 'quick')
+const titleFieldLabel = computed(() => (isQuickField.value ? 'Display name' : 'Title'))
 
 const emit = defineEmits<{
   (e: 'close'): void
   // Enough for a caller to refresh a card/rail without a full reload --
   // the effective entity this save/revert just produced.
   (e: 'saved', entity: EntityDetail): void
+  // Quick Edit's own "Open full editor" -- carries the CURRENT draft's
+  // name/image values and whether each was actually touched (dirty), so
+  // the full-page editor can apply only what the caller actually
+  // changed, never silently clearing or freezing anything else. Never
+  // carries `entity.value.revision` as a value to TRUST -- the full
+  // editor does its own fresh load and keeps ITS OWN baseline/revision;
+  // this payload only seeds `draft`'s visible fields on top of that,
+  // exactly like the identity-transfer contract document below.
+  (e: 'open-full-editor', payload: {
+    name: string
+    nameDirty: boolean
+    image: { fileId: string; url: string } | null | undefined
+    imageDirty: boolean
+  }): void
+  // The full-page editor route has no dialog/rail "close" of its own to
+  // intercept router navigation (Back link, browser back, leaving the
+  // page) -- it needs its OWN signal to guard those with
+  // onBeforeRouteLeave, since this component's existing `beforeunload`
+  // listener only covers a hard refresh/tab close, never an in-app
+  // route change.
+  (e: 'dirty-change', dirty: boolean): void
 }>()
 
 type EntityDetail = {
@@ -155,6 +212,8 @@ function applyDraft(target: Draft, source: Draft) {
 }
 
 let loadGeneration = 0
+let hasAutoOpenedPicker = false
+let hasAppliedSeedDraft = false
 
 async function load() {
   const generation = ++loadGeneration
@@ -176,7 +235,17 @@ async function load() {
     applyDraft(draft, next)
     applyDraft(baseline, next)
 
+    if (props.seedDraft && !hasAppliedSeedDraft) {
+      hasAppliedSeedDraft = true
+      if (props.seedDraft.nameDirty) draft.name = props.seedDraft.name ?? ''
+      if (props.seedDraft.imageDirty) draft.image = props.seedDraft.image
+    }
+
     state.value = 'ready'
+    if (props.autoOpenImagePicker && !hasAutoOpenedPicker) {
+      hasAutoOpenedPicker = true
+      pickerOpen.value = true
+    }
   } catch (error) {
     if (generation !== loadGeneration) return
     state.value = 'error'
@@ -190,6 +259,7 @@ function describeError(error: unknown): string | undefined {
 }
 
 watch([() => props.workspaceId, () => props.contentEntityId], load, { immediate: true })
+watch(isDirty, (dirty) => emit('dirty-change', dirty))
 
 // Warn before an in-page navigation (not Vue Router -- this editor is
 // opened as a dialog/panel, never routed to directly) discards dirty
@@ -213,6 +283,19 @@ function requestClose() {
 function cancelDraft() {
   if (isDirty.value && !window.confirm('Discard unsaved changes?')) return
   applyDraft(draft, baseline)
+}
+
+// Quick Edit's "Open full editor" -- no confirm() here. Switching
+// surfaces is explicitly NOT a discard: the caller on the other end
+// (WorldEntityInteractivePage.vue) is responsible for transferring this
+// payload into the full page, never silently saving or discarding it.
+function openFullEditor() {
+  emit('open-full-editor', {
+    name: draft.name,
+    nameDirty: dirtyPaths.value.has('name'),
+    image: draft.image,
+    imageDirty: dirtyPaths.value.has('image')
+  })
 }
 
 let saveGeneration = 0
@@ -328,7 +411,7 @@ async function createCheckpoint() {
     >
       <div class="min-w-0">
         <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
-          Editing
+          {{ isQuickField ? 'Quick edit' : 'Editing' }}
         </div>
         <h3 class="mt-1 break-words text-lg font-semibold text-eldra-text-strong">
           {{ entity?.title || '…' }}
@@ -351,6 +434,14 @@ async function createCheckpoint() {
         >
           Saved
         </span>
+        <button
+          v-if="isQuickField"
+          type="button"
+          class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-sm text-eldra-text-soft hover:border-eldra-accent"
+          @click="openFullEditor"
+        >
+          Open full editor
+        </button>
         <button
           type="button"
           class="min-h-11 shrink-0 rounded-none border border-eldra-accent/24 px-3 text-sm text-eldra-text-soft hover:border-eldra-accent"
@@ -388,13 +479,13 @@ async function createCheckpoint() {
     <div
       v-if="state === 'ready' && entity"
       class="mt-5 grid gap-6"
-      :class="compact ? 'grid-cols-1' : 'lg:grid-cols-2'"
+      :class="compact || isQuickField ? 'grid-cols-1' : 'lg:grid-cols-2'"
     >
       <!-- Editable fields -->
       <div class="grid gap-5">
         <div>
           <div class="flex items-center justify-between gap-2">
-            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Title</label>
+            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">{{ titleFieldLabel }}</label>
             <button
               v-if="customizedPaths.has('name')"
               type="button"
@@ -411,8 +502,15 @@ async function createCheckpoint() {
             :placeholder="preview?.basePresentation?.name || 'Inherit'"
             class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
           >
+          <p
+            v-if="isQuickField"
+            class="mt-1 text-xs text-eldra-text-faint"
+          >
+            Changes how this entity's name displays. Does not rename its slug or canonical identity.
+          </p>
         </div>
 
+        <template v-if="!isQuickField">
         <div>
           <div class="flex items-center justify-between gap-2">
             <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Description (one paragraph per line)</label>
@@ -482,18 +580,24 @@ async function createCheckpoint() {
             >
           </div>
         </div>
+        </template>
 
         <div>
           <div class="flex items-center justify-between gap-2">
             <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Image</label>
+            <!-- Two DIFFERENT "go back" actions, deliberately not merged:
+                 this one reverts an ALREADY-SAVED customization via the
+                 dedicated revert-path call (immediate, not deferred to
+                 Save) -- shown only when there's a persisted override and
+                 no unsaved pending change already covers it. -->
             <button
-              v-if="customizedPaths.has('image')"
+              v-if="customizedPaths.has('image') && !dirtyPaths.has('image')"
               type="button"
               class="text-xs text-eldra-accent-text underline underline-offset-4"
               :disabled="saveState === 'saving'"
               @click="revertPath('image')"
             >
-              Revert
+              Restore inherited image
             </button>
           </div>
           <div class="mt-1 flex items-center gap-3">
@@ -515,14 +619,28 @@ async function createCheckpoint() {
                 class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
                 @click="pickerOpen = true"
               >
-                Choose image…
+                Choose/replace image…
               </button>
               <button
                 type="button"
                 class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
                 @click="clearImage"
               >
-                Suppress image
+                Remove image (show no art)
+              </button>
+              <!-- The DRAFT-level equivalent of the header's revert link
+                   above: undoes a PENDING, not-yet-saved image change
+                   back to whatever the inherited/effective value is,
+                   without a server round-trip -- resolved normally on
+                   the next Save (or discarded on Cancel), same as any
+                   other draft field. -->
+              <button
+                v-if="dirtyPaths.has('image') && draft.image !== undefined"
+                type="button"
+                class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
+                @click="draft.image = undefined"
+              >
+                Restore inherited image
               </button>
             </div>
           </div>
@@ -559,6 +677,7 @@ async function createCheckpoint() {
           </button>
         </div>
 
+        <template v-if="!isQuickField">
         <div class="border-t border-eldra-accent/24 pt-4">
           <button
             type="button"
@@ -595,10 +714,15 @@ async function createCheckpoint() {
             Checkpoint saved.
           </p>
         </div>
+        </template>
       </div>
 
-      <!-- Live preview -->
-      <div class="min-w-0">
+      <!-- Live preview -- omitted entirely in Quick edit, per the owner's
+           own field list (no mechanics previews there either). -->
+      <div
+        v-if="!isQuickField"
+        class="min-w-0"
+      >
         <div class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">
           Preview — what this will look like
         </div>

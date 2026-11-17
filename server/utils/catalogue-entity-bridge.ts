@@ -330,9 +330,24 @@ export async function getCatalogueBackedEntityRows(
       // implementation shared with the Homebrew Forge's template resolver.
       const blocks = catalogueEntryToBlocks(entityType, entry, useEffective ? (entry as EffectiveEntity) : undefined)
 
+      // Quick Edit's "Display name" field (StudioEntityEditor's own
+      // `name` presentation path, unchanged) authors
+      // `presentation.name`, deliberately kept separate from `entry.title`
+      // (a stable identity-ish label, never touched by this -- see
+      // identityOf() in world-effective-content.ts). Found via real
+      // browser verification: the card/rail previously always showed
+      // `entry.title` regardless, so an actual rename via Quick Edit (or
+      // the full editor's own Title field, which is the SAME path) saved
+      // correctly but was never VISIBLE anywhere outside the editor's own
+      // live-preview panel. The authored name, when present, is now what
+      // every OTHER surface shows too -- this is the one field read for
+      // display here, never `entry.slug`/`entry.packageId`/canonical
+      // identity, which this change does not touch at all.
+      const effectiveTitle = useEffective ? (entry as EffectiveEntity).presentation?.name : undefined
+
       rows.push({
         id: catalogueTemplateId(entry.packageId, entry.slug),
-        title: entry.title,
+        title: effectiveTitle || entry.title,
         slug: entry.slug,
         world_id: String(worldId),
         system_key: entry.systemKey,

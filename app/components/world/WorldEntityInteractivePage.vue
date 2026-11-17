@@ -8,6 +8,7 @@ import {
   serverMetaLines as resolveServerMetaLines
 } from '~/lib/world-entity-collection/server-meta-lines'
 import { canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
+import { isSafeCollectionReturnPath, writeDraftTransfer } from '~/lib/world-entity-collection/direct-edit-navigation'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
 
 const props = defineProps<{
@@ -981,6 +982,44 @@ const selectedEntity = computed(() => {
   return (entities.value || []).find((entity: any) => String(entity.id) === String(selectedEntityId.value)) || null
 })
 
+// Quick Edit + Full-Page Editor pass, section 6: restoring collection
+// state after a full navigation away (the full-page editor) and back.
+// Seeded ONCE from the URL this page actually loaded with -- `entities`
+// is already populated by this point (the useFetch above is awaited at
+// setup time), so an identity-safe reselect can run synchronously, no
+// watch/nextTick needed for the initial seed.
+//
+// `savedEntity` (canonical contentEntityId, set by the full-page editor
+// only after an actual save) takes priority over `selected` (the plain
+// row id, set whenever navigating away regardless of whether anything
+// was saved) -- the SAME two-tier identity preference `onDirectEditSaved`
+// below already uses, never title/slug/type alone.
+if (typeof route.query.q === 'string') search.value = route.query.q
+if (route.query.view === 'grid' || route.query.view === 'list') collectionView.value = route.query.view
+if (typeof route.query.facet === 'string' && route.query.facet) activeCollectionFacet.value = route.query.facet
+if (typeof route.query.savedEntity === 'string' && route.query.savedEntity) {
+  const match = (entities.value || []).find((entity: any) => String(entity.contentEntityId || '') === route.query.savedEntity)
+  if (match) selectedEntityId.value = String(match.id)
+} else if (typeof route.query.selected === 'string' && route.query.selected) {
+  selectedEntityId.value = route.query.selected
+}
+
+let collectionStateSyncTimer: ReturnType<typeof setTimeout> | null = null
+watch([search, collectionView, activeCollectionFacet, selectedEntityId], () => {
+  if (collectionStateSyncTimer) clearTimeout(collectionStateSyncTimer)
+  collectionStateSyncTimer = setTimeout(() => {
+    const query: Record<string, string> = {}
+    if (search.value.trim()) query.q = search.value.trim()
+    if (collectionView.value !== defaultCollectionViewForPage()) query.view = collectionView.value
+    if (activeCollectionFacet.value !== 'all') query.facet = activeCollectionFacet.value
+    if (selectedEntityId.value) query.selected = selectedEntityId.value
+    // Shallow -- updates the address bar without adding a new history
+    // entry or re-running this page's own data fetches (those depend on
+    // worldId/entitySummaryTypes, never route.query).
+    router.replace({ query })
+  }, 300)
+})
+
 // Direct Content Editing consolidation pass -- "Edit" is offered only
 // for the categories the shared presentation editor actually supports
 // (species/class/background/spell/item/featureOption -- the SAME closed
@@ -998,13 +1037,66 @@ const directEditing = ref(false)
 // selected, without inventing a second, decoupled "edit target" concept.
 // The rail's own Edit button passes `selectedEntity` (already the target),
 // making the reselect a harmless no-op there.
-function openDirectEdit(entity: any) {
+const quickEditFocusImage = ref(false)
+
+function openDirectEdit(entity: any, options: { focusImage?: boolean } = {}) {
   openEntityContext(entity)
+  quickEditFocusImage.value = Boolean(options.focusImage)
   directEditing.value = true
+}
+
+// Direct image card action -- opens the SAME Quick Edit workflow, just
+// with the Media Gallery picker already showing (StudioEntityEditor's
+// own `autoOpenImagePicker`/the first-save form's `focusImage`).
+function openDirectEditImage(entity: any) {
+  openDirectEdit(entity, { focusImage: true })
 }
 
 function closeDirectEdit() {
   directEditing.value = false
+  quickEditFocusImage.value = false
+}
+
+// Quick Edit's "Open full editor" -- transfers any unsaved name/image
+// draft via sessionStorage (direct-edit-navigation.ts; never a silent
+// save or discard), then navigates to the dedicated full-page route,
+// carrying THIS exact collection state as `return` so the full page's
+// own Back link can restore it (never used to pick an external host --
+// validated both here and, authoritatively, on the full page's own end).
+function onOpenFullEditor(payload: {
+  worldId: string | number
+  entityType: string
+  slug: string
+  name: string
+  nameDirty: boolean
+  image: { fileId: string; url: string } | null | undefined
+  imageDirty: boolean
+}) {
+  if (payload.nameDirty || payload.imageDirty) {
+    try {
+      writeDraftTransfer(sessionStorage, {
+        worldId: String(payload.worldId),
+        entityType: payload.entityType,
+        slug: payload.slug,
+        name: payload.name,
+        nameDirty: payload.nameDirty,
+        image: payload.image,
+        imageDirty: payload.imageDirty
+      })
+    } catch {
+      // sessionStorage can throw in some private-browsing modes -- the
+      // draft simply doesn't transfer; never block navigation over it.
+    }
+  }
+
+  directEditing.value = false
+  quickEditFocusImage.value = false
+
+  const returnPath = route.fullPath
+  router.push({
+    path: `/worlds/${worldId.value}/entities/${encodeURIComponent(payload.entityType)}/${encodeURIComponent(payload.slug)}/edit`,
+    query: isSafeCollectionReturnPath(returnPath, worldId.value) ? { return: returnPath } : {}
+  })
 }
 
 async function onDirectEditSaved(contentEntityId?: string) {
@@ -1282,12 +1374,8 @@ async function createLocationArticle() {
         >
           <div
               data-collection-entity-card
-              role="button"
-              tabindex="0"
               :data-selected="isSelectedEntity(entity) ? 'true' : 'false'"
               @click="openEntityContext(entity)"
-              @keydown.enter.prevent="openEntityContext(entity)"
-              @keydown.space.prevent="openEntityContext(entity)"
 
             v-for="entity in filteredEntities"
             :key="entity.id"
@@ -1297,7 +1385,7 @@ async function createLocationArticle() {
               : 'opacity-95'"
           >
             <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
-              <div class="eldra-card-image-well eldra-image-frame border-r border-eldra-accent/22 bg-black/20">
+              <div class="eldra-card-image-well eldra-image-frame relative border-r border-eldra-accent/22 bg-black/20">
                 <img
                   v-if="imageUrlForEntity(entity)"
                   :src="imageUrlForEntity(entity)"
@@ -1310,6 +1398,26 @@ async function createLocationArticle() {
                 >
                   {{ initialsFor(entity.title) }}
                 </div>
+
+                <!-- Direct image card action -- ALWAYS visible (never
+                     hover-only, per the owner's own requirement), works
+                     identically over a real image or the initials
+                     placeholder. `@click.stop` so this never also
+                     triggers the card's own click-to-select; a SIBLING
+                     of the img/placeholder above, not nested inside
+                     either, and not nested inside another interactive
+                     element. Targets THIS exact entity even while a
+                     different one is selected -- openDirectEditImage
+                     selects it first, same as card Edit. -->
+                <button
+                  v-if="directEditSupported && canEditEntities"
+                  type="button"
+                  :aria-label="`Change image for ${entity.title}`"
+                  class="absolute bottom-2 right-2 rounded-none border border-eldra-accent/42 bg-black/72 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-eldra-text-strong backdrop-blur-sm transition hover:border-eldra-accent hover:bg-black/88 focus-visible:outline-2 focus-visible:outline-eldra-accent-bright"
+                  @click.stop="openDirectEditImage(entity)"
+                >
+                  Change image
+                </button>
               </div>
 
               <div class="flex min-w-0 flex-col p-5">
@@ -1730,7 +1838,7 @@ async function createLocationArticle() {
                  action each entity card below also offers; both call the
                  identical openDirectEdit/eligibility logic. -->
             <button
-              v-if="directEditSupported && canEditEntities"
+              v-if="directEditSupported && canEditEntities && !directEditing"
               type="button"
               class="eldra-button mt-2 block w-full rounded-none px-4 py-3 text-center text-sm font-medium"
               @click="openDirectEdit(selectedEntity)"
@@ -1744,6 +1852,8 @@ async function createLocationArticle() {
               :entity-type="entityType"
               :slug="selectedEntity.slug"
               :title="selectedEntity.title"
+              :focus-image="quickEditFocusImage"
+              @open-full-editor="onOpenFullEditor"
               @close="closeDirectEdit"
               @saved="onDirectEditSaved"
             />

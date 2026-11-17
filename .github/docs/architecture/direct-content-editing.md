@@ -1,6 +1,8 @@
 # Direct Content Editing — architecture, guarantees, and handoff
 
-**Status: implemented, committed (`dc0cd60`), and deployed to production (Solaris).** A production
+**Status: implemented, committed (`dc0cd60`, `1032b3f`, `432dee5`), and deployed to production
+(Solaris) through the entity-Edit-is-permission-based pass. A further, NOT YET committed pass —
+Quick Edit Rail + Full-Page Editor — is documented near the very end of this file.** A production
 acceptance failure was reported and fixed after deployment — see "Production acceptance failure:
 Build-mode discoverability" near the end of this document. This documents the ELDRA Direct Content
 Editing consolidation pass: "Items → Shortsword → Edit → change picture/description → Save" with no
@@ -667,3 +669,213 @@ handling, canonical `contentEntityId` selection identity, automatic local-custom
 (`splitSharedEntityToLocalWorkspace`), and activation-last ordering are all unchanged and unaffected
 by this pass — none of this pass's files intersect with `content-entity-direct-edit.ts` or
 `content-workspace-http.ts` at all.
+
+## Quick Edit Rail + Full-Page Editor (NOT YET COMMITTED)
+
+**Before**: the only entity editor was `StudioEntityEditor.vue`'s full form (Title, Description,
+Notes, Source book/page, Image, live preview, Revert-all, checkpoint), rendered EITHER inside the
+narrow (~380px) collection context rail OR, for a never-yet-customized entity, a separate first-save
+ad-hoc form missing Notes/Source book/page entirely. Both surfaces had real layout problems in the
+rail specifically (nested ornamental panels, horizontal overflow on wide fields, long text squeezed
+into tiny boxes) — small edits and substantial edits had no distinct surfaces at all.
+
+**After**: two purpose-sized surfaces, one shared draft/save contract.
+- **Quick Edit Rail** — compact, rail-width, Display name + Image only. Reached by a card's own
+  "Edit" button (grid or list), the context rail's "Edit", or a card's dedicated "Change image"
+  action.
+- **Full-Page Editor** — a dedicated, comfortably-wide route (`/worlds/:id/entities/:entityType/:slug/edit`)
+  with every currently-supported field, the live preview alongside the form, and history/checkpoint
+  controls, all unchanged from the existing editor.
+
+### Files changed / created (not yet committed)
+
+- `app/components/admin/studio/StudioEntityEditor.vue` — new `fieldSet: 'quick' | 'full'` prop
+  (RENDERING toggle only: `draft`/`baseline`/`dirtyPaths`/`save()` are completely unaware of it, so a
+  'quick' save can only ever send paths the user actually touched through fields that are actually
+  visible — one draft/save contract, not two). New `autoOpenImagePicker`/`seedDraft` props (direct
+  image action, draft transfer). New `open-full-editor`/`dirty-change` emits. "Title" relabeled
+  "Display name" and a new "Restore inherited image" draft-level action added (distinct from "Remove
+  image (show no art)" and the existing persisted-revert link) in BOTH field sets.
+- `app/components/world/WorldEntityDirectEditDialog.vue` — new `surface: 'quick' | 'full'` prop
+  (threads straight into StudioEntityEditor's `compact`/`fieldSet`; also trims/expands the
+  never-customized first-save form's own fields the same way — it now ALSO exposes Notes/Source
+  book/page, previously missing entirely in 'full' mode). `focusImage`/`seedDraft` props,
+  `open-full-editor`/`dirty-change` emits (relayed from whichever internal surface is active).
+- `app/lib/world-entity-collection/direct-edit-navigation.ts` (new, pure, unit-tested) —
+  `writeDraftTransfer`/`consumeDraftTransfer` (sessionStorage-based draft transfer) and
+  `isSafeCollectionReturnPath` (return-path validation against open-redirect shapes).
+- `app/pages/worlds/[id]/entities/[entityType]/[slug]/edit.vue` (new) — the Full-Page Editor route.
+  Resolves identity ENTIRELY from route params; consumes a transferred draft once; guards router
+  navigation (`onBeforeRouteLeave`) and renders `WorldEntityDirectEditDialog` with `surface="full"`.
+- `app/components/world/WorldEntityInteractivePage.vue` — a "Change image" button directly on every
+  entity card (grid and list, over the image well, ALWAYS visible — never hover-only); collection
+  state (search/view/facet/selection) synced to the URL (debounced `router.replace`, shallow) so
+  "the current URL" is always a valid return target; `onOpenFullEditor` (draft transfer + navigate);
+  identity-safe reselection on return via `savedEntity` (canonical `contentEntityId`, preferred) or
+  `selected` (plain row id, fallback) query params — never title/slug/type alone.
+- `server/utils/catalogue-entity-bridge.ts` — **a real, pre-existing bug found and fixed by real
+  browser verification** (below).
+- Card root (`data-collection-entity-card`) lost its own `role="button"`/`tabindex`/keydown
+  handlers — it was a REAL `role="button"` wrapping REAL `<button>` children (Details/Edit/Open
+  Article/the new Change image), an invalid nested-interactive ARIA pattern that was ALREADY there.
+  It went from "theoretically wrong" to "practically breaking" the instant the new Change-image
+  button's own accessible name started colliding with the card's own computed accessible name.
+  Keyboard/screen-reader users lose nothing: "Details" performs the identical selection action and
+  was always the real, correctly-labeled control.
+
+### Defect found by real browser verification: rename was invisible everywhere but the editor itself
+
+Saving a "name" presentation override (Quick Edit's "Display name", or the full editor's own
+"Title" — the SAME pre-existing field, unchanged) persisted correctly (confirmed via the real
+workspace entity record) and rendered correctly in the editor's OWN live-preview panel — but the
+collection card, the context rail's "SUMMARY" header, and the full-page editor's OWN heading all
+kept showing the ORIGINAL, un-renamed title. Root cause: `catalogue-entity-bridge.ts`'s row-building
+used `entry.title` (an `EffectiveCandidate`'s stable, identity-ish label, set once at import time)
+unconditionally, never `entry.presentation?.name` (the SEPARATE, authored-override-aware field
+`world-content-sources.ts`/`world-effective-content.ts` already correctly maintain side-by-side on
+the exact same object) — a pre-existing architectural split between "identity" and "authored display
+name" that nothing had ever surfaced in the browser before, because nothing had ever actually
+verified a name-override save end-to-end outside the editor's own preview. **Fixed**: the bridge row
+now prefers `entry.presentation.name` when present, falling back to `entry.title` — reads one
+already-computed field, nothing else changes (not `slug`, not `packageId`, not any identity
+concept). `StudioEntityEditor.vue`'s own internal header still shows the stable `entity.title`
+rather than the live override, which may itself be worth revisiting but is a much smaller, purely
+cosmetic inconsistency than the one just fixed — left alone this pass.
+
+### One draft and save contract
+
+Quick Edit and the Full-Page Editor are the SAME component (`StudioEntityEditor.vue`) with different
+field visibility, or, for a never-yet-customized entity, the SAME ad-hoc first-save form with
+different field visibility (`WorldEntityDirectEditDialog.vue`'s `surface` prop) — never two
+competing implementations. Concretely, this means, for free, with no new logic written:
+- **Quick Edit can only ever touch name/image.** `dirtyPaths` is computed by comparing the REAL
+  `draft` against the REAL `baseline` for every field; a field whose input never renders can never
+  become dirty, so description/notes/citations/mechanics are structurally impossible for Quick Edit
+  to clear, freeze, or send an edit for — proven directly: saving a Notes change through the
+  full-page editor leaves the earlier Quick-Edit-saved name override completely untouched
+  (`authoredPresentation` carries both independently), and vice versa.
+- **Absent vs. explicit-null image semantics are unchanged** — `draft.image` is still `undefined`
+  (inherit) / `null` (explicit "no art") / `{fileId,url}` (explicit choice), exactly as before; the
+  new "Restore inherited image" button is the first UI path that ever sets it to `undefined` by user
+  action, exercising an edit-building branch (`save()` already sent `value: undefined` for this
+  case) that existed in code but had never been reachable from any button before.
+- **Opening, cancelling, or saving an unchanged draft writes nothing** — `isDirty`/`dirtyPaths` empty
+  means the Save button is disabled and `save()` returns immediately; Cancel with nothing touched
+  needs no confirm(). Proven directly in the browser (Cancel test below).
+- **Failed saves / conflicts / stale responses** — entirely `StudioEntityEditor.vue`'s existing
+  `saveGeneration`/`loadGeneration` machinery and 409-conflict handling, untouched by this pass.
+- **Activation-last ordering and retry guarantees** — untouched; this pass never touches
+  `content-entity-direct-edit.ts`.
+
+### Full-page route: identity, navigation, draft transfer
+
+- **Identity resolved entirely from route params** (`worldId`/`entityType`/`slug`), via the SAME
+  `edit-target` GET the rail already calls (through `WorldEntityDirectEditDialog`) — never from a
+  previously-selected rail row. A direct URL visit or a hard refresh therefore always loads the
+  correct entity, proven directly in the browser.
+- **Draft transfer** (Quick Edit → "Open full editor", carrying an unsaved name/image change) uses
+  `sessionStorage` (not the URL — no description text, no credentials, no draft payloads ever appear
+  in a URL), a single fixed key, read-and-cleared in one step so it can never be reapplied to a
+  later, unrelated visit. The transferred payload is validated against the EXACT worldId/entityType/
+  slug the full page actually loaded before being applied at all. It is applied to `draft` ONLY,
+  never to `baseline`/`entity.value.revision` — the full page's OWN fresh load is always the real
+  revision of record, so a concurrent edit since the Quick Edit draft was created still produces a
+  normal 409 conflict on Save, never a silent rebase onto a stale `expectedRevision`. Proven directly
+  in the browser: an unsaved rename survives opening the full editor, the sessionStorage key is
+  empty both before the click and after the full page consumes it, and the transferred text never
+  leaks into any other field.
+- **Dirty-navigation guards**: `StudioEntityEditor.vue`'s existing `beforeunload` listener covers a
+  hard refresh/tab close (unchanged). A NEW `onBeforeRouteLeave` guard (added because this component
+  had never been routed to directly before this pass) covers the Back link, browser back/forward,
+  and any other in-app navigation away — driven by a new `dirty-change` emit relayed up from whichever
+  surface is active. The dialog's own internal Close/Cancel already confirm discarding before ever
+  emitting `close`, so the page's own `onClose` clears its tracked dirty flag first, specifically so
+  the ensuing `router.push` doesn't trigger a SECOND confirm() for the same decision the user already
+  made.
+- **Hard-refresh draft recovery is explicitly NOT implemented.** A hard refresh of the full-page
+  editor itself, mid-edit, loses the in-progress draft exactly like `StudioEntityEditor.vue` always
+  has (the `beforeunload` warning is the mitigation, unchanged) — stated here plainly per this task's
+  own instruction to document the limitation accurately rather than silently leave it unhandled.
+
+### Collection return and immediate refresh
+
+Search/view/facet/selection are synced to the collection page's own URL (debounced, shallow
+`router.replace` — no extra history entries, no re-triggered data fetches, since those depend on
+`worldId`/`entitySummaryTypes`, never `route.query`). "Open full editor" captures `route.fullPath` AT
+THAT MOMENT as the `return` query param on the full-page URL; the full page validates it
+(`isSafeCollectionReturnPath` — same-World, relative, no `//`/`://`/backslash open-redirect shapes)
+before ever using it, falling back to the category page (or the World Map) when absent/unsafe (e.g. a
+bookmarked direct edit URL with no prior collection visit at all). After a successful Save, the
+full page auto-returns immediately (`savedEntity=<contentEntityId>` appended) — no separate manual
+"Back" click needed, and no hard refresh: the collection page's own `useFetch` for its entity list
+re-reads naturally on that fresh page load, and `savedEntity` drives an identity-safe reselect by
+canonical `contentEntityId` (never title/slug/type alone — the SAME two-tier preference
+`onDirectEditSaved` already used for in-place card edits, now shared with this return path too, with
+`selected` as the fallback for a close/cancel that saved nothing). Proven directly in the browser:
+search text and grid/list preference both survive the round trip, and the edited entity's own card
+reflects the save immediately.
+
+### Permissions and shared scope
+
+Unchanged from the prior two passes — this pass touches ZERO authorization code
+(`content-workspace-http.ts`, `content-entity-direct-edit.ts`). Quick Edit and the Full-Page Editor
+both resolve through the SAME `edit-target`/`customize`/`split-local` routes and the SAME
+`requireWorkspaceEntityAccess` boundary as before: local edits stay local, a shared-source write
+still requires real platform `platform.contentworkspace.edit` authority (never
+`world.content.bind_workspace` alone), a World-only editor can still "Customize for this World" but
+not write a shared source directly, and the shared-choice UI is still a distinct, explicit choice
+with truthful impact messaging. The ONE already-recorded follow-up this pass does not fix: the
+shared-choice UI still offers "Edit the shared collection" to a caller who may not actually hold
+platform authority, discovering that only on Save (see the follow-up list above).
+
+### Verification actually performed
+
+**Real disposable instance + real headless browser** (not production; fresh Worlds/items/species via
+`publishContentPack`/`createWorld`/`bindContentPackToWorld`, same disposable Directus/Postgres
+pattern as every other round in this document) — **36/36 checks passed** across two focused runs
+(30 covering Quick Edit/direct image action/full page/draft transfer/layout, 6 covering Cancel and
+the full-page Save-and-return round trip):
+
+- Quick Edit opens for the clicked card; shows ONLY Display name + Image (no description/notes/
+  source/mechanics); "Open full editor" present.
+- A rename saves, the card/rail update immediately (after the title-display fix above), and the
+  full-page URL keyed by the ORIGINAL slug still resolves afterward (identity/slug unchanged).
+- Direct "Change image" on a card: opens the Media Gallery picker directly, with NO prior Details
+  click, works while picking an image is still pending (Save stays disabled with nothing actually
+  chosen yet).
+- Full page: opens from a direct URL with a real heading and no prior rail selection; shows the full
+  field set (Description/Notes/Source book-page/live preview/checkpoint); a hard refresh still
+  resolves the correct entity.
+- Draft transfer: an unsaved rename survives "Open full editor"; the sessionStorage key is empty
+  before the click and cleared after; the transferred text never leaks into the wrong field.
+- Cancel (Quick Edit): a typed-but-cancelled change never appears anywhere afterward.
+- Full-page Save → auto-return: lands back on Items with the search term and grid view preserved,
+  the entity still correctly shown/customized.
+- Layout: Items AND Species, Grid AND List, desktop AND a 390×844 narrow viewport — card Edit/Change
+  image reachable in every combination, zero horizontal overflow on the narrow Quick Edit rail.
+
+Full regression suite: 6310/6310 passing (310 files). Typecheck: zero NEW errors in any file this
+pass touched or created (confirmed file-by-file against the current, pre-existing, unrelated
+baseline — this baseline is large and spans many files never touched across this whole document's
+work; this pass is the first to have actually enumerated it beyond spot-checks, and found nothing of
+its own in it). Lint: the two new files are clean; every modified file's errors are the SAME
+pre-existing `no-explicit-any`/unused-var patterns already documented earlier in this file, with no
+new categories introduced. Production build: `pnpm build` exits 0. `git diff --check`: clean.
+
+**Not exercised this pass, stated plainly**: a genuine concurrent-edit 409 conflict through the new
+surfaces specifically (the underlying mechanism is `StudioEntityEditor.vue`'s own, completely
+unmodified, and was proven correct in an earlier round's unit/disposable tests — not re-proven here
+for time, since nothing in this pass touches it); keyboard-only (no-mouse) operation of the new
+"Change image" card button (it is a real, focusable `<button>` with a real `aria-label`, satisfying
+the structural requirement, but an actual Tab-and-Enter walkthrough was not separately scripted);
+touch-specific (as opposed to narrow-viewport-but-mouse-driven headless) interaction.
+
+### Deployment requirements
+
+None — no schema, environment variable, or credential change. Entirely new client-side route +
+presentation-layer changes, plus the one `catalogue-entity-bridge.ts` display-name read fix (a pure
+read-path change, no write-path/schema implication).
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

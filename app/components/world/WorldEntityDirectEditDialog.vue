@@ -30,12 +30,34 @@ import { computed, ref, watch } from 'vue'
 import StudioEntityEditor from '~/components/admin/studio/StudioEntityEditor.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   worldId: string | number
   entityType: string
   slug: string
   title: string
-}>()
+  // Quick Edit Rail (default) vs. the dedicated Full-Page Editor route --
+  // see StudioEntityEditor.vue's own `fieldSet` for what this actually
+  // changes (field visibility only, same draft/save contract either
+  // way). 'full' also renders the first-save draft's notes/source-book/
+  // page/mechanics fields, which 'quick' hides.
+  surface?: 'quick' | 'full'
+  // Card "Change image" action -- opens straight into the image picker.
+  focusImage?: boolean
+  // Draft transfer FROM Quick Edit, received by the full-page editor.
+  // Passed straight through to StudioEntityEditor's own `seedDraft`;
+  // applied to the first-save draft here too, for the needs-preparation
+  // case StudioEntityEditor never reaches.
+  seedDraft?: {
+    name?: string
+    nameDirty?: boolean
+    image?: { fileId: string; url: string } | null | undefined
+    imageDirty?: boolean
+  } | null
+}>(), {
+  surface: 'quick',
+  focusImage: false,
+  seedDraft: null
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -49,6 +71,27 @@ const emit = defineEmits<{
   // this workflow already returns authoritatively, so the caller never
   // has to guess.
   (e: 'saved', contentEntityId: string): void
+  // Quick Edit's "Open full editor" -- re-emitted (with worldId/
+  // entityType/slug attached) from whichever internal surface raised it
+  // (the first-save draft form below, or StudioEntityEditor's own
+  // `open-full-editor`), so the parent never needs to know which one was
+  // actually active.
+  (e: 'open-full-editor', payload: {
+    worldId: string | number
+    entityType: string
+    slug: string
+    name: string
+    nameDirty: boolean
+    image: { fileId: string; url: string } | null | undefined
+    imageDirty: boolean
+  }): void
+  // Relayed from StudioEntityEditor's own `dirty-change` (once a
+  // workspace/entity exists), or from the first-save draft's own
+  // `isDraftDirty` otherwise -- the full-page editor route uses this to
+  // guard router navigation (Back link, browser back) the same way
+  // StudioEntityEditor's own beforeunload listener already guards a
+  // hard refresh/tab close.
+  (e: 'dirty-change', dirty: boolean): void
 }>()
 
 type EditTarget =
@@ -118,9 +161,23 @@ const saving = ref(false)
 const saveError = ref('')
 const editingSharedDirectly = ref(false)
 
+let hasAppliedSeedDraftToFirstSave = false
+
 watch(needsPreparation, (prep) => {
   if (!prep) return
   draft.value = { name: '', description: '', notes: '', sourceBook: '', sourcePage: '', image: undefined }
+
+  // Draft transfer from Quick Edit (see direct-edit-navigation.ts) --
+  // applied once, only to the two fields Quick Edit could have actually
+  // touched. `expectedRevision` for a needs-preparation first save is
+  // always `null` regardless (nothing exists yet to conflict with).
+  if (props.seedDraft && !hasAppliedSeedDraftToFirstSave) {
+    hasAppliedSeedDraftToFirstSave = true
+    if (props.seedDraft.nameDirty) draft.value.name = props.seedDraft.name ?? ''
+    if (props.seedDraft.imageDirty) draft.value.image = props.seedDraft.image
+  }
+
+  if (props.focusImage) pickerOpen.value = true
 })
 
 function linesToArray(text: string): string[] {
@@ -136,6 +193,14 @@ const isDraftDirty = computed(() =>
   Boolean(draft.value.name.trim() || draft.value.description.trim() || draft.value.notes.trim()
     || draft.value.sourceBook.trim() || draft.value.sourcePage.trim() || draft.value.image !== undefined)
 )
+
+watch(isDraftDirty, (dirty) => {
+  // Only while the first-save draft is actually the active surface --
+  // once resolvedWorkspaceId/ContentEntityId exist, StudioEntityEditor's
+  // OWN dirty-change (relayed by onEditorOpenFullEditor's sibling
+  // listener below) is the real signal.
+  if (!resolvedWorkspaceId.value) emit('dirty-change', dirty)
+})
 
 async function saveFirstEdit() {
   if (!isDraftDirty.value) return
@@ -188,6 +253,29 @@ async function saveFirstEdit() {
 
 function onEditorSaved(entity: { contentEntityId: string }) {
   emit('saved', entity.contentEntityId)
+}
+
+// Relays StudioEntityEditor's own `open-full-editor` upward, attaching
+// this dialog's own identity (worldId/entityType/slug) -- StudioEntityEditor
+// itself has no notion of "entityType/slug" at all, only workspaceId/
+// contentEntityId, so it can't build this payload alone.
+function onEditorOpenFullEditor(payload: { name: string; nameDirty: boolean; image: { fileId: string; url: string } | null | undefined; imageDirty: boolean }) {
+  emit('open-full-editor', { worldId: props.worldId, entityType: props.entityType, slug: props.slug, ...payload })
+}
+
+// The first-save draft form's own "Open full editor" -- same payload
+// shape, read directly from `draft` since there is no StudioEntityEditor
+// instance yet to relay from.
+function openFullEditorFromFirstSave() {
+  emit('open-full-editor', {
+    worldId: props.worldId,
+    entityType: props.entityType,
+    slug: props.slug,
+    name: draft.value.name,
+    nameDirty: Boolean(draft.value.name.trim()),
+    image: draft.value.image,
+    imageDirty: draft.value.image !== undefined
+  })
 }
 
 const splitting = ref(false)
@@ -281,9 +369,14 @@ const notYetLiveWarning = ref('')
       :workspace-id="resolvedWorkspaceId"
       :content-entity-id="resolvedContentEntityId"
       :world-id="worldId"
-      compact
+      :compact="surface === 'quick'"
+      :field-set="surface"
+      :auto-open-image-picker="focusImage"
+      :seed-draft="seedDraft"
       @close="requestClose"
       @saved="onEditorSaved"
+      @open-full-editor="onEditorOpenFullEditor"
+      @dirty-change="(dirty) => emit('dirty-change', dirty)"
     />
 
     <!-- Already customized, SHARED with other Worlds -- the choice. -->
@@ -335,21 +428,31 @@ const notYetLiveWarning = ref('')
 
     <!-- Never customized yet -- the first-save draft. -->
     <template v-else-if="needsPreparation">
-      <p class="rounded-none border border-sky-300/25 bg-sky-400/10 p-2 text-xs text-sky-100">
+      <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
+        {{ surface === 'quick' ? 'Quick edit' : 'Editing' }}
+      </div>
+      <p class="mt-2 rounded-none border border-sky-300/25 bg-sky-400/10 p-2 text-xs text-sky-100">
         Changes apply to this World.
       </p>
 
       <div class="mt-3 grid gap-4">
         <div>
-          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Title</label>
+          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">{{ surface === 'quick' ? 'Display name' : 'Title' }}</label>
           <input
             v-model="draft.name"
             type="text"
             :placeholder="title"
             class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
           >
+          <p
+            v-if="surface === 'quick'"
+            class="mt-1 text-xs text-eldra-text-faint"
+          >
+            Changes how this entity's name displays. Does not rename its slug or canonical identity.
+          </p>
         </div>
-        <div>
+
+        <div v-if="surface === 'full'">
           <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Description (one paragraph per line)</label>
           <textarea
             v-model="draft.description"
@@ -358,6 +461,38 @@ const notYetLiveWarning = ref('')
             class="mt-1 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 py-2 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
           />
         </div>
+
+        <div v-if="surface === 'full'">
+          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Notes (one per line)</label>
+          <textarea
+            v-model="draft.notes"
+            rows="3"
+            class="mt-1 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 py-2 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+          />
+        </div>
+
+        <div
+          v-if="surface === 'full'"
+          class="grid grid-cols-2 gap-3"
+        >
+          <div>
+            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Source book</label>
+            <input
+              v-model="draft.sourceBook"
+              type="text"
+              class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+            >
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Page</label>
+            <input
+              v-model="draft.sourcePage"
+              type="text"
+              class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
+            >
+          </div>
+        </div>
+
         <div>
           <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Image</label>
           <div class="mt-1 flex items-center gap-3">
@@ -385,21 +520,29 @@ const notYetLiveWarning = ref('')
                 class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
                 @click="pickerOpen = true"
               >
-                Choose image…
+                Choose/replace image…
               </button>
               <button
                 type="button"
                 class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
                 @click="draft.image = null"
               >
-                Suppress image
+                Remove image (show no art)
+              </button>
+              <button
+                v-if="draft.image !== undefined"
+                type="button"
+                class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
+                @click="draft.image = undefined"
+              >
+                Restore inherited image
               </button>
             </div>
           </div>
         </div>
 
         <div
-          v-if="needsPreparation.metaLines.length"
+          v-if="surface === 'full' && needsPreparation.metaLines.length"
           class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-3 text-sm leading-7 text-slate-200"
         >
           <div class="mb-1 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">
@@ -436,6 +579,15 @@ const notYetLiveWarning = ref('')
             @click="requestClose"
           >
             Cancel
+          </button>
+          <button
+            v-if="surface === 'quick'"
+            type="button"
+            class="min-h-10 rounded-none border border-eldra-accent/24 px-4 text-sm text-eldra-text-soft hover:border-eldra-accent"
+            :disabled="saving"
+            @click="openFullEditorFromFirstSave"
+          >
+            Open full editor
           </button>
         </div>
       </div>

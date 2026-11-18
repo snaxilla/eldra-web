@@ -50,7 +50,7 @@ vi.mock('../../../server/utils/world-content-catalogue', () => ({
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
-import { getDerivedCharacter, getDerivedCharacterAtLevel } from '../../../server/utils/character-derived'
+import { getDerivedCharacter, getDerivedCharacterAtLevel, deriveFromAssembledCharacter } from '../../../server/utils/character-derived'
 import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
 import { findRulesFacet } from '../../../app/lib/content-rules'
 
@@ -482,6 +482,49 @@ describe('getDerivedCharacterAtLevel -- simulates a level without persisting any
     expect(result.available).toBe(false)
     if (result.available) return
     expect(result.reason).toBe('character-not-found')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Published-Pack Load Reduction Pass -- deriveFromAssembledCharacter's new
+// `precomputedCatalogue` parameter. The roll-path production capture showed
+// effective content resolving TWICE per roll: once inside assembleCharacter
+// (building the blueprint), once again here, independently, whenever the
+// character has a pending content-choice (subclass/feat/item) -- this
+// Fighter-at-level-5 fixture is exactly that case (see this file's own
+// header: "Fighter... now declares a real progression:class.asi-extended").
+// character-actions.ts's getCharacterActionsWithDerived now passes its own
+// already-fetched catalogue through to close that gap; these tests pin the
+// parameter's own contract directly, independent of that one call site.
+// ---------------------------------------------------------------------------
+describe('deriveFromAssembledCharacter -- precomputedCatalogue (Published-Pack Load Reduction Pass)', () => {
+  it('omitted: still fetches its own catalogue for a pending content-choice, exactly as before', async () => {
+    const assembly = { available: true as const, blueprint: blueprint() }
+    const result = await deriveFromAssembledCharacter(assembly, '5', 5)
+
+    expect(result.available).toBe(true)
+    expect(getWorldContentCatalogueMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('supplied: resolves the pending content-choice WITHOUT fetching getWorldContentCatalogue a second time', async () => {
+    const assembly = { available: true as const, blueprint: blueprint() }
+    const precomputedCatalogue = await getWorldContentCatalogueMock('5')
+    getWorldContentCatalogueMock.mockClear()
+
+    const result = await deriveFromAssembledCharacter(assembly, '5', 5, undefined, precomputedCatalogue)
+
+    expect(result.available).toBe(true)
+    expect(getWorldContentCatalogueMock).not.toHaveBeenCalled()
+  })
+
+  it('produces the identical derived result whether the catalogue is fetched internally or supplied precomputed', async () => {
+    const assembly = { available: true as const, blueprint: blueprint() }
+    const precomputedCatalogue = await getWorldContentCatalogueMock('5')
+
+    const withOwnFetch = await deriveFromAssembledCharacter(assembly, '5', 5)
+    const withPrecomputed = await deriveFromAssembledCharacter(assembly, '5', 5, undefined, precomputedCatalogue)
+
+    expect(withPrecomputed).toEqual(withOwnFetch)
   })
 })
 

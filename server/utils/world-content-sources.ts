@@ -26,7 +26,7 @@
 // entities with an authored image.
 
 import { directusServiceRequest } from './directus'
-import { isRollPerfVerbose } from './roll-perf-flag'
+import { isRollPerfVerbose, opaqueId } from './roll-perf-flag'
 import { getContentWorkspace } from './content-workspaces'
 import { listAllWorkspaceEntityDetails, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { resolveBasePresentation } from './content-workspace-presentation'
@@ -186,7 +186,14 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
   if (cached && cached.revision === effectiveRevision) {
     if (verbose) {
       console.log(
-        `[roll-perf:workspace-source] workspaceId=${workspaceId} cacheHit=true`,
+        // Diagnostic Safety Review -- `opaqueId` (roll-perf-flag.ts), never
+        // the raw `workspaceId`: a workspace id is a persistent World
+        // configuration/entity identifier, not a correlation id, and a
+        // verbose capture should never need to reproduce it. The tag below
+        // is stable within one process lifetime, so two log lines about the
+        // SAME workspace still visibly correlate, without the real id ever
+        // reaching the log.
+        `[roll-perf:workspace-source] workspace=${opaqueId(workspaceId)} cacheHit=true`,
         `getWorkspace=${(tAfterWorkspace - tSourceStart).toFixed(1)}ms`,
         `revisionCheck=${(tAfterRevision - tAfterWorkspace).toFixed(1)}ms`,
         `revisionAuthoritative=${revisionIsAuthoritative}`,
@@ -260,7 +267,7 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
   if (verbose) {
     const tAfterPostProcess = performance.now()
     console.log(
-      `[roll-perf:workspace-source] workspaceId=${workspaceId} cacheHit=false`,
+      `[roll-perf:workspace-source] workspace=${opaqueId(workspaceId)} cacheHit=false`,
       `getWorkspace=${(tAfterWorkspace - tSourceStart).toFixed(1)}ms`,
       `revisionCheck=${(tAfterRevision - tAfterWorkspace).toFixed(1)}ms`,
       `revisionAuthoritative=${revisionIsAuthoritative}`,

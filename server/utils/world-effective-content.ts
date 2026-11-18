@@ -298,11 +298,18 @@ export async function resolveEffectiveContent(worldId: string | number): Promise
   const verbose = isRollPerfVerbose()
   const tEffectiveStart = verbose ? performance.now() : 0
 
-  const [catalogue, bindings, lineages] = await Promise.all([
-    resolveWorldContent(worldId),
+  // Published-Pack Load Reduction Pass -- bindings are listed ONCE here and
+  // handed to resolveWorldContent below, instead of each independently
+  // listing an identical set for the same (worldId) in parallel (the old
+  // code fetched content_pack_bindings twice per resolveEffectiveContent
+  // call: once here for binding metadata/precedence, once again inside
+  // resolveWorldContent purely to drive its own pack-loading loop).
+  const [bindings, lineages] = await Promise.all([
     listContentPackBindingsForWorld(worldId),
     loadLineageIndex()
   ])
+  const tAfterBindingsAndLineages = verbose ? performance.now() : 0
+  const catalogue = await resolveWorldContent(worldId, bindings)
   const tAfterParallelTrio = verbose ? performance.now() : 0
 
   const bindingByPackageId = new Map(bindings.map((b) => [b.packageId, b]))
@@ -345,7 +352,16 @@ export async function resolveEffectiveContent(worldId: string | number): Promise
   if (verbose) {
     const workspaceLoopTotal = workspaceLoopSamples.reduce((a, b) => a + b, 0)
     console.log(
-      `[roll-perf:effective-content] parallelTrio=${(tAfterParallelTrio - tEffectiveStart).toFixed(1)}ms`,
+      // Published-Pack Load Reduction Pass -- "parallelTrio" split into its
+      // two actual phases now that bindings/lineages and pack-loading are no
+      // longer three-way parallel (see resolveWorldContent's own
+      // precomputedBindings parameter): bindingsAndLineages is the small
+      // Promise.all above; packLoading is resolveWorldContent's own
+      // sequential per-binding loadPublishedContentPack loop, still the
+      // dominant cost this logs to measure.
+      `[roll-perf:effective-content] bindingsAndLineages=${(tAfterBindingsAndLineages - tEffectiveStart).toFixed(1)}ms`,
+      `packLoading=${(tAfterParallelTrio - tAfterBindingsAndLineages).toFixed(1)}ms`,
+      `bindingCount=${bindings.length}`,
       `workspaceLoop.count=${workspaceBindings.length}`,
       `workspaceLoop.total=${workspaceLoopTotal.toFixed(1)}ms`,
       `workspaceLoop.perIteration=[${workspaceLoopSamples.map((n) => n.toFixed(1)).join(',')}]ms`

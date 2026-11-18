@@ -62,7 +62,7 @@ import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
 import { clampExpendedToMaximum } from '../../app/lib/characters/resources'
 import { getWorldRuntime } from './world-runtime-service'
 import { isRollPerfVerbose } from './roll-perf-flag'
-import { getWorldContentCatalogue } from './world-content-catalogue'
+import { getWorldContentCatalogue, type WorldGameplayCatalogue } from './world-content-catalogue'
 import { serializeContentRef } from '../../app/lib/characters/progression-plan'
 import { featFilterVerdict } from '../../app/lib/feat-mechanics'
 import { itemFilterVerdict } from '../../app/lib/item-mechanics'
@@ -360,11 +360,37 @@ async function getDerivedCharacterInternal(
 // read-only. Sharing one `assembly.blueprint` reference between both
 // consumers is therefore exactly as safe as the two independently-fetched-
 // but-content-identical copies this replaces.
+// Published-Pack Load Reduction Pass -- `precomputedCatalogue` (optional,
+// additive, never required) lets a caller that ALREADY resolved this
+// World's gameplay catalogue while building `assembly` (today, the only
+// one: `character-actions.ts`'s own `getCharacterActionsWithDerived`, via
+// `assembleCharacterWithCatalogue` -- the exact pair the roll-path
+// production capture showed resolving effective content twice per roll)
+// hand it straight to the content-choices resolution below instead of this
+// function resolving an identical one a second time.
+// `getDerivedCharacterInternal` above is UNCHANGED -- it still calls plain
+// `assembleCharacter` and omits this parameter, so Cast/Recovery/Resource-
+// actions/Progression-preview keep their existing one-catalogue-per-call
+// behavior exactly; nothing in this capture showed a duplicate load on
+// those paths, so none of them were touched.
+// Safe to substitute unconditionally when supplied:
+// `assembleCharacterWithCatalogue` fetches
+// `getWorldGameplayCatalogueWithHomebrewSpells(worldId)`, which is
+// `getWorldContentCatalogue(worldId)` (exactly what this function would
+// otherwise fetch) with Homebrew entries appended to `.spells` ONLY --
+// see homebrew-spell-catalogue.ts's own header. The content-choices block
+// below reads only `.subclasses`/`.feats`/`.items`, never `.spells`, so the
+// two catalogues are interchangeable for every read this function performs
+// on one. Request-scoped only -- passed as a plain parameter, never cached
+// at module scope, so it can never leak across requests, characters, or
+// Worlds. Omitted (undefined), this function fetches its own, exactly as
+// before.
 export async function deriveFromAssembledCharacter(
   assembly: CharacterAssemblyResult,
   worldId: string | number,
   levelOverride?: number,
-  tentativeAnswers?: Record<string, string[]>
+  tentativeAnswers?: Record<string, string[]>,
+  precomputedCatalogue?: WorldGameplayCatalogue
 ): Promise<DerivedCharacterResult> {
   if (!assembly.available) {
     return assembly
@@ -504,7 +530,7 @@ export async function deriveFromAssembledCharacter(
   // `assembly.blueprint.feats`, else a tentative answer for this key, else
   // unanswered.
   if (bridged.contentChoices.length) {
-    const catalogue = await getWorldContentCatalogue(worldId)
+    const catalogue = precomputedCatalogue ?? await getWorldContentCatalogue(worldId)
     const parentClassSlug = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.slug : null
 
     const currentSubclassRef = assembly.blueprint.subclass?.status === 'resolved'

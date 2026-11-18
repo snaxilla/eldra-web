@@ -68,7 +68,7 @@
 
 import { directusServiceRequest } from './directus'
 import { isRollPerfVerbose } from './roll-perf-flag'
-import { type ContentCatalogueEntry } from './world-content-catalogue'
+import { type ContentCatalogueEntry, type WorldGameplayCatalogue } from './world-content-catalogue'
 import { legacyAliasKey } from './world-effective-content'
 import type { EffectiveLegacyAlias } from './world-effective-content'
 import { getWorldGameplayCatalogueWithHomebrewSpells } from './homebrew-spell-catalogue'
@@ -300,6 +300,24 @@ export type CharacterAssemblyResult =
   // risk that.
   | { available: false; reason: 'resource-persistence-unavailable'; message: string }
 
+// Published-Pack Load Reduction Pass -- `assembleCharacter`'s own
+// `available: true` branch, PLUS the `WorldGameplayCatalogue` it already
+// fetched via `getWorldGameplayCatalogueWithHomebrewSpells` to build the
+// blueprint. `assembleCharacterWithCatalogue` is the only place that
+// catalogue is returned -- `assembleCharacter` itself still returns plain
+// `CharacterAssemblyResult`, unchanged, because its result is serialized
+// verbatim over HTTP by GET /api/worlds/:id/characters/:characterId/assembly
+// (see that route); leaking a whole World's resolved catalogue into that
+// response would silently bloat/change a public API this task has no
+// reason to touch. A caller that ALSO needs `deriveFromAssembledCharacter`
+// right after (the one actual duplicate-load site the roll-path capture
+// identified) calls `assembleCharacterWithCatalogue` instead and threads
+// `catalogue` into that call, so the catalogue already in hand here is
+// reused instead of being fetched a second time.
+export type CharacterAssemblyWithCatalogueResult = CharacterAssemblyResult & {
+  catalogue?: WorldGameplayCatalogue
+}
+
 function extractRef(value: unknown): StoredChoiceRef | null {
   if (!value || typeof value !== 'object') return null
   return value as StoredChoiceRef
@@ -459,11 +477,15 @@ function resolveFeats(
   }))
 }
 
-// The canonical entry point for this module. Composes one entity read, one
-// block_instances read, and getWorldGameplayCatalogueWithHomebrewSpells
-// (itself getWorldContentCatalogue plus this World's Homebrew spells,
-// additively merged -- see homebrew-spell-catalogue.ts) -- no other I/O.
-export async function assembleCharacter(
+// The canonical entry point for this module's real work. Composes one
+// entity read, one block_instances read, and
+// getWorldGameplayCatalogueWithHomebrewSpells (itself getWorldContentCatalogue
+// plus this World's Homebrew spells, additively merged -- see
+// homebrew-spell-catalogue.ts) -- no other I/O. Returns the catalogue it
+// fetched alongside the blueprint -- see CharacterAssemblyWithCatalogueResult's
+// own header for why. `assembleCharacter` (below) is the thin public wrapper
+// every pre-existing caller keeps using unchanged.
+export async function assembleCharacterWithCatalogue(
   worldId: string | number,
   characterId: string | number,
   // Character Progression Phase 1C -- HYPOTHETICAL ASSEMBLY. `undefined`
@@ -494,7 +516,7 @@ export async function assembleCharacter(
   // did, the tentative one wins -- the same "preview reflects what you are
   // ABOUT to do" precedent `tentativeSubclassRef` already sets.
   tentativeFeatAcquisitions?: readonly { choiceKey: string; ref: { packageId: string; slug: string } }[]
-): Promise<CharacterAssemblyResult> {
+): Promise<CharacterAssemblyWithCatalogueResult> {
   // A non-existent entity id is reported by Directus as a 403 (its item-
   // level permission check runs before existence is known), not a 200 with
   // an empty `data` -- so a thrown request, not just an empty result, means
@@ -704,5 +726,25 @@ export async function assembleCharacter(
     packs: catalogue.packs
   }
 
-  return { available: true, blueprint }
+  return { available: true, blueprint, catalogue }
+}
+
+// Thin public wrapper -- every pre-existing caller of `assembleCharacter`
+// (including GET /api/worlds/:id/characters/:characterId/assembly, which
+// serializes this return value verbatim over HTTP) keeps getting exactly
+// `CharacterAssemblyResult`, byte-for-byte unchanged: `catalogue` is
+// destructured off and discarded here, never reaching any caller that
+// didn't explicitly ask for it via `assembleCharacterWithCatalogue` above.
+export async function assembleCharacter(
+  worldId: string | number,
+  characterId: string | number,
+  tentativeSubclassRef?: { packageId: string; slug: string } | null,
+  tentativeFeatAcquisitions?: readonly { choiceKey: string; ref: { packageId: string; slug: string } }[]
+): Promise<CharacterAssemblyResult> {
+  const result = await assembleCharacterWithCatalogue(
+    worldId, characterId, tentativeSubclassRef, tentativeFeatAcquisitions
+  )
+  if (!result.available) return result
+  const { catalogue: _catalogue, ...rest } = result
+  return rest
 }

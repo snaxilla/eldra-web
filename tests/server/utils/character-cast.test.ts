@@ -66,7 +66,12 @@ const {
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
-  assembleCharacter: assembleCharacterMock
+  assembleCharacter: assembleCharacterMock,
+  // Published-Pack Load Reduction Pass -- getCharacterActionsWithDerived now
+  // calls assembleCharacterWithCatalogue (not assembleCharacter); same mock
+  // function underneath so every existing call-count/resolved-value
+  // assertion on assembleCharacterMock still reflects reality.
+  assembleCharacterWithCatalogue: assembleCharacterMock
 }))
 
 vi.mock('../../../server/utils/world-runtime-service', () => ({

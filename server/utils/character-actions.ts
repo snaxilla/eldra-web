@@ -46,7 +46,7 @@
 // went missing) still gets a minimal action carrying its name alone, so a
 // player's homebrew spell is not silently absent from their own action list.
 
-import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
+import { assembleCharacterWithCatalogue, type CharacterAssemblyBlueprint } from './character-assembly'
 import { deriveFromAssembledCharacter, type DerivedCharacterResult } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
 import { isAttackCapableAction } from '../../app/lib/content-actions'
@@ -266,7 +266,7 @@ export async function getCharacterActionsWithDerived(
   worldId: string | number,
   characterId: string | number
 ): Promise<CharacterActionsWithDerivedResult> {
-  const assembly = await assembleCharacter(worldId, characterId)
+  const assembly = await assembleCharacterWithCatalogue(worldId, characterId)
   if (!assembly.available) {
     if (assembly.reason === 'character-not-found') {
       return { available: false, reason: 'character-not-found' }
@@ -288,7 +288,17 @@ export async function getCharacterActionsWithDerived(
   // independent, content-identical `assembleCharacter` a second time for
   // this exact character). See that function's own header in
   // character-derived.ts for the mutation/sharing-safety check.
-  const derived = await deriveFromAssembledCharacter(assembly, worldId)
+  //
+  // Published-Pack Load Reduction Pass -- ALSO passes `assembly.catalogue`
+  // (already fetched above, via `assembleCharacterWithCatalogue`) straight
+  // into `deriveFromAssembledCharacter`'s own `precomputedCatalogue`
+  // parameter, so a character with pending content-choices (subclass/feat/
+  // item) does not trigger a SECOND, independent effective-content
+  // resolution -- and the second-through-eighth `GET /items/content_packs`
+  // requests that second resolution produced -- for this exact roll. See
+  // that parameter's own header in character-derived.ts for why reusing it
+  // here is safe.
+  const derived = await deriveFromAssembledCharacter(assembly, worldId, undefined, undefined, assembly.catalogue)
   const byCategory = derived.available ? derived.derived.byCategory : {}
 
   const meleeBonus = findNumber(byCategory, MELEE_ATTACK_BONUS_ID)

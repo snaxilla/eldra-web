@@ -25,7 +25,13 @@ vi.mock('../../../server/utils/character-assembly', async () => {
   const actual = await vi.importActual<typeof import('../../../server/utils/character-assembly')>(
     '../../../server/utils/character-assembly'
   )
-  return { ...actual, assembleCharacter: assembleCharacterMock }
+  // Published-Pack Load Reduction Pass -- getCharacterActionsWithDerived now
+  // calls assembleCharacterWithCatalogue (not assembleCharacter); same mock
+  // function underneath so this file's assembleCharacterMock.mockResolvedValue
+  // setup still controls the blueprint getCharacterActionsWithDerived/
+  // resolveAttackAction resolve against, instead of silently falling through
+  // to the real (`...actual`) implementation.
+  return { ...actual, assembleCharacter: assembleCharacterMock, assembleCharacterWithCatalogue: assembleCharacterMock }
 })
 
 vi.mock('../../../server/utils/world-runtime-service', () => ({

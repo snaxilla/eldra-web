@@ -71,7 +71,7 @@
 //    way every other World-scoped read in this codebase already is.
 
 import { loadPublishedContentPack, type ContentPackLoadFailure } from './content-packs'
-import { listContentPackBindingsForWorld } from './world-content-packs'
+import { listContentPackBindingsForWorld, type WorldContentPackBindingRecord } from './world-content-packs'
 import type { ContentPublicationCandidate } from './content-pack-publishing'
 
 // ---------------------------------------------------------------------------
@@ -123,8 +123,22 @@ function groupByEntityType(entries: readonly WorldContentEntry[]): Record<string
 // resolves to an empty catalogue (empty `packs`/`entries`/`byEntityType`),
 // never an error -- "absence is legal" (world-content-packs.ts's own design
 // decision 5, generalized from one binding to the whole set).
-export async function resolveWorldContent(worldId: string | number): Promise<WorldContentCatalogue> {
-  const bindings = await listContentPackBindingsForWorld(worldId)
+//
+// Published-Pack Load Reduction Pass -- `precomputedBindings` (optional,
+// additive) lets a caller that has ALREADY listed this World's bindings
+// (today: `resolveEffectiveContent`, world-effective-content.ts, which
+// independently needs its own `listContentPackBindingsForWorld` call to
+// read `bindingMode`/`priority` per binding for precedence) hand that list
+// straight in, instead of this function re-listing an identical one a
+// second time for the same (worldId) within the same resolution. Every
+// pre-existing caller (the legacy, non-effective-content branch of
+// getWorldContentCatalogue; GET /api/worlds/:id/content; the Homebrew
+// bridge) omits this and keeps fetching its own, exactly as before.
+export async function resolveWorldContent(
+  worldId: string | number,
+  precomputedBindings?: readonly WorldContentPackBindingRecord[]
+): Promise<WorldContentCatalogue> {
+  const bindings = precomputedBindings ?? await listContentPackBindingsForWorld(worldId)
 
   const packs: WorldContentPackResolution[] = []
   const entries: WorldContentEntry[] = []

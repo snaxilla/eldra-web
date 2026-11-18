@@ -186,15 +186,37 @@ export async function refreshDirectusSession(event: H3Event): Promise<string | n
 let rollPerfVerboseSeq = 0
 
 // Every call site on the roll-resolution path that interpolates anything
-// into its own `path` argument interpolates only a numeric Directus row id
+// into its own `path` argument interpolates only a Directus row id
 // (`/items/entities/${characterId}`, `/items/${COLLECTION}/${existing.id}`)
 // -- confirmed by grepping every `directusServiceRequest(\`...\`` call site
 // reachable from a roll. Never a name, slug, email, or filter value (those
 // always travel in `options.query`/`options.body`, which this logger never
 // reads). Redacted anyway before logging, since an opaque row id is still
 // an identifier the owner's capture should not need to paste back verbatim.
-function sanitizePathForLogging(path: string): string {
-  return path.replace(/\/\d+(?=\/|$)/g, '/:id')
+//
+// Diagnostic Safety Review -- the original version of this function only
+// matched NUMERIC id segments. A real capture still showed a concrete
+// identifier verbatim: eldra-sessions.ts's own `last_used_at` touch-up PATCH
+// (`/items/eldra_sessions/${session.id}`), which fires as an ordinary side
+// effect of handling an authenticated request -- including a roll request
+// -- and so can appear interleaved in a roll-perf capture window even though
+// it is not part of the roll-resolution call graph itself. `eldra_sessions`
+// rows use a UUID primary key (scripts/directus/create-eldra-sessions-schema.mjs),
+// which `\d+` never matches. The UUID pattern below closes that gap; it is
+// deliberately as general as the numeric one -- ANY UUID-shaped path
+// segment is redacted, not just this one known case, since this logger has
+// no way to know every collection's primary key shape in advance.
+const UUID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi
+
+// Exported ONLY so it is directly unit-testable without standing up a
+// `$fetch`/network mock -- every other test of this module's behavior
+// mocks `./directus` wholesale rather than exercising its internals (see
+// this module's own header precedent), which has no way to assert on a
+// private string-transform helper. Not part of this module's intended
+// public API in any other sense -- no production code outside this file
+// calls it.
+export function sanitizePathForLogging(path: string): string {
+  return path.replace(/\/\d+(?=\/|$)/g, '/:id').replace(UUID_SEGMENT, '/:id')
 }
 
 export async function directusServiceRequest(path: string, options: any = {}) {

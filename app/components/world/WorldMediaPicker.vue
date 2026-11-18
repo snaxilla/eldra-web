@@ -36,6 +36,29 @@ const uploading = ref(false)
 const error = ref('')
 const selectedFile = ref<MediaFile | null>(null)
 
+// Media Gallery Thumbnail Performance pass -- same contract as
+// app/pages/worlds/[id]/media.vue's own identical helpers: the grid
+// requests the `card` preset, `selectedFile.url` itself (used by the side
+// preview panel and the `select` emit) stays the plain original.
+const failedThumbnails = ref<Set<string>>(new Set())
+const retryTokens = ref<Record<string, number>>({})
+
+function thumbnailUrl(file: MediaFile) {
+  const token = retryTokens.value[file.id]
+  return `${file.url}?preset=card${token ? `&retry=${token}` : ''}`
+}
+
+function onThumbnailError(file: MediaFile) {
+  failedThumbnails.value = new Set(failedThumbnails.value).add(file.id)
+}
+
+function retryThumbnail(file: MediaFile) {
+  const next = new Set(failedThumbnails.value)
+  next.delete(file.id)
+  failedThumbnails.value = next
+  retryTokens.value = { ...retryTokens.value, [file.id]: Date.now() }
+}
+
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const isOpen = computed({
@@ -273,11 +296,23 @@ onBeforeUnmount(() => {
                   @click="pickFile(file)"
                   @dblclick="selectFile(file)"
                 >
+                  <div v-if="failedThumbnails.has(file.id)" class="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 bg-black/30 px-3 text-center">
+                    <span class="text-[11px] uppercase tracking-wide text-[#9f9278]">Preview unavailable</span>
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-2 py-1 text-[11px]"
+                      @click.stop="retryThumbnail(file)"
+                    >
+                      Retry
+                    </button>
+                  </div>
                   <img
-                    :src="file.url"
+                    v-else
+                    :src="thumbnailUrl(file)"
                     :alt="file.title || file.filename"
                     loading="lazy"
                     class="aspect-[4/3] w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                    @error="onThumbnailError(file)"
                   >
 
                   <div class="border-t border-[rgba(201,164,90,0.18)] p-3">

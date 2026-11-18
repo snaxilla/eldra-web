@@ -1,5 +1,14 @@
+// Explicit h3 imports (rather than relying on Nitro's auto-imports) --
+// Media Gallery Thumbnail Performance pass's own new regression test for
+// this route needs that, matching the established convention this
+// codebase already uses elsewhere for exactly this reason (e.g.
+// server/api/worlds/[id]/media.get.ts's own header). h3's exports are the
+// exact functions Nitro auto-imports at runtime, so this changes nothing
+// about production behavior.
+import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { directusServiceRequest } from '../../../../../utils/directus'
 import { requireCapability } from '../../../../../utils/authorization'
+import { clearCachedThumbnail } from '../../../../../utils/media-thumbnails'
 
 function cleanText(value: any) {
   return String(value || '').trim()
@@ -33,7 +42,7 @@ function findFileReferencesDeep(value: any, fileId: string, path = 'data'): stri
 
 async function safeList(path: string, query: any) {
   try {
-    const res = await directusServiceRequest(path, {
+    const res: any = await directusServiceRequest(path, {
       method: 'GET',
       query
     })
@@ -140,6 +149,13 @@ export default defineEventHandler(async (event) => {
   await directusServiceRequest(`/files/${encodeURIComponent(fileId)}`, {
     method: 'DELETE'
   })
+
+  // Media Gallery Thumbnail Performance pass -- this id is never reused
+  // (Directus assigns a fresh UUID per upload), so there is no real
+  // staleness risk here; this is strictly hygiene, so a deleted large
+  // image's cached thumbnail buffer does not linger in process memory
+  // (server/utils/media-thumbnails.ts) indefinitely.
+  clearCachedThumbnail(fileId)
 
   return {
     success: true,

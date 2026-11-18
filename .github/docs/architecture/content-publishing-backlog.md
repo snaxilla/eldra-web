@@ -68,3 +68,150 @@ the original by file id and must keep getting the full-resolution asset.
   asset belongs to.
 
 Not implemented in Pass A — recorded only.
+
+**Implemented (2026-11-18, Media Gallery Thumbnail Performance pass).** Root cause verified, not
+inferred: cards request `file.url` = `/api/assets/:id` with **no** transform query parameters at
+all (confirmed by reading `server/api/worlds/[id]/media.get.ts`'s `assetUrl()`, the only place
+that URL is built), and the shared proxy route (`server/api/assets/[id].get.ts`) **dropped every
+incoming query parameter and always fetched Directus's bare `/assets/:id`** — so even a caller
+that *did* add `?width=` would have gotten the full original anyway, which is the deeper reason
+"appears to request originals" was correct. Directus's own on-the-fly transform (confirmed
+*working* against a disposable 11.12.0 instance, `storage_asset_transform: "all"`) is also
+confirmed to **refuse** any source wider or taller than 6000px with `ILLEGAL_ASSET_TRANSFORMATION`
+— the Caldera images, at an 8K-class resolution, are exactly this case, so "just forward the query
+string" alone would convert "slow" into "broken" for them specifically.
+
+Fix: `/api/assets/[id].get.ts` now accepts one query param, `preset=card` (a small, fixed,
+named set — never arbitrary caller width/height). It first asks Directus's own transform (the
+preferred, zero-new-infrastructure path, used for every image ≤6000px — confirmed against the
+small fixture). When Directus refuses specifically with `ILLEGAL_ASSET_TRANSFORMATION`, it falls
+back to a new module, `server/utils/media-thumbnails.ts` — a bounded (max 2 concurrent
+generations, per-fileId request-coalesced, 20s-timeout), **in-memory-cached** `sharp` pass
+(already a project dependency; `map-tiles.ts` already uses it for an even heavier job). Any OTHER
+failure (file genuinely missing, auth failure) propagates unchanged — never silently falls back
+to serving the original. `app/pages/worlds/[id]/media.vue` and `WorldMediaPicker.vue`'s card grids
+now request `?preset=card`; both already had `loading="lazy"` and an `aspect-[4/3]` box (no
+layout-shift fix needed) and both gained an explicit "Preview unavailable" + manual Retry state on
+image load error. The full-screen preview modal, the picker's side panel, Copy URL, and every
+other `/api/assets/:id` caller across the app (~80 sites — portraits, items, map pins, etc.) are
+**unchanged**: omitting `preset` is byte-for-byte the same proxy behavior as before this pass.
+
+**Why in-memory, not a file-backed cache mirroring `map-tiles.ts`'s own `/opt/eldra/maps`
+convention**: this repo's own `Dockerfile` copies only `.output` into the runtime image — no
+`VOLUME`, no `/opt/eldra` reference anywhere in it — so whether that path is actually a
+persistent, deployment-provisioned volume in the real production container is **unconfirmed**
+from this pass (no production access). Rather than inherit that same unverified assumption for a
+new path, the cache is a small bounded, byte-budgeted `Map` (see the pre-commit review below for
+the exact limits), safe under this app's own
+already-documented single-process deployment. The only cost of this choice being imperfect is a
+~0.4-1s regeneration on the next cold request after a process restart — never a correctness bug.
+See `media-thumbnails.ts`'s own header for the full reasoning; this is a safe, incremental,
+non-redesign upgrade if `/opt/eldra`'s production persistence is ever confirmed.
+
+**Existing assets receive previews automatically — no backfill script needed.** Because
+generation is on-demand (triggered by the first request for a given file's thumbnail, not only at
+upload time), an already-uploaded large image gets its first thumbnail generated transparently on
+whoever's gallery card loads it next; nothing needs to run against production first. The tradeoff
+is the one measured below: the very first viewer after this deploys (or after any restart) pays
+the ~0.4-1s cold-generation cost for a large image; every viewer after that, until the next
+restart, gets the cached ~0.1s warm response.
+
+**Measured (391 real spell entries / real 100-140MB 8K-class PNG fixtures generated locally, and
+through the real running app against a disposable Directus 11.12.0 — see the full report for
+exact numbers and commands)**: a `preset=card` response for a 105MB/7680×4320 source dropped from
+would-be-105MB to **9.6KB** (cold: ~1.1s, generation-bound; warm: ~0.085s, cache-bound). A
+134MB/4320×7680 transparent portrait produced a correctly-oriented, alpha-preserving 147KB
+thumbnail. A small (800×600) image's `preset=card` response used Directus's own transform
+directly (confirmed via its own distinct `cache-control` header) and dropped from 1.5MB to 175KB.
+
+**Deployment**: no schema change, no `bootstrap.mjs` run. A plain code deploy. No action required
+for existing large images — see "automatically" above. `ASSETS_TRANSFORM_IMAGE_MAX_DIMENSION`
+(Directus's own config) was **not** changed and should not be, per this pass's own instruction not
+to raise global limits speculatively — if the owner wants to confirm production's own transform
+settings, `GET /settings` (as an existing Directus admin) returns `storage_asset_transform`, which
+should read `"all"` or list `"card"`-shaped presets, not `"none"`. **Production's own
+`storage_asset_transform` setting is not claimed to match the disposable instance this pass
+measured against** — it was only confirmed there; the read above is how the owner confirms it in
+production, not an assumption that it already does.
+
+**Bounded pre-commit resource review (2026-11-18) — four real gaps found and fixed, before
+commit:**
+
+1. **Cache was entry-count-bounded (200), not byte-bounded** — a real worst case (maximum-entropy
+   640×640 WebP with an alpha channel, measured directly) is ~667KB/entry, so 200 entries had no
+   real memory ceiling. Fixed: the cache now tracks actual bytes and evicts least-recently-used
+   entries once a 50MB budget (generous relative to the real ordinary-content numbers measured
+   above: 9.6KB–175KB) is exceeded, with a secondary 500-entry backstop and an 8MB single-entry
+   cutoff — a thumbnail larger than that is still generated and served correctly, just never
+   retained.
+2. **A generation timeout rejected the caller's promise but did not stop the underlying work** —
+   reproduced directly: destroying only the source stream left the `sharp`/libvips pipeline running
+   in the background indefinitely (confirmed: its `destroyed` flag stayed `false`, no `end`/`error`
+   fired). Fixed: a timeout now destroys both the source stream and the `sharp` transform stream,
+   and the concurrency slot is released only after that destruction, in the same `finally` —
+   "released" and "actually stopped" are now the same moment.
+3. **The wait queue for a concurrency slot had no bound** — a burst of requests for many different
+   uncached large files could each queue indefinitely with no signal anything was wrong. Fixed: a
+   bounded queue (8) now rejects immediately with an explicit `ThumbnailGenerationOverloadedError`
+   (surfaced as HTTP 503) once both the 2 active slots and the queue are full, rather than hanging.
+4. **A generation already in flight when its file was deleted could still repopulate the cache
+   after the fact** — `clearCachedThumbnail` only cleared an already-cached entry; it could not
+   reach into an in-flight generation about to resolve. Fixed, then revised once more on a second
+   review pass: the first fix tombstoned every deleted file id **permanently** — safe (Directus ids
+   are never reused) but unbounded (a `Set` that only ever grows for the life of the process, one
+   entry per delete ever performed). Replaced with bounded lifecycle tracking: an id is tracked
+   *only* while a generation for that exact id is genuinely in flight — a subset of the in-flight
+   map's own keys, so it is bounded by the same concurrency cap (at most 10 entries at any instant,
+   never one per deletion ever performed) — and the tracking entry is removed the moment that
+   generation settles, success or failure. A delete with nothing in flight tracks nothing at all;
+   the per-request Directus existence check (point 2.3 below) is what actually protects that case,
+   unchanged.
+
+All four have focused regression tests (`tests/server/utils/media-thumbnails.test.ts`), using
+controlled, test-only deferred/short-timeout overrides rather than giant fixtures or long waits —
+including a 25-cycle delete-during-generation loop proving the tracking never accumulates, and an
+explicit cleanup assertion showing it returns to zero once the guarded generation settles. Also
+added: explicit tests proving a cache hit never skips the per-request Directus existence/status
+check (the route always asks Directus first, cache or not), that extra caller-supplied query
+parameters are never forwarded to Directus as an unrestricted transform, and that concurrent
+requests for different files never cross-contaminate results.
+
+**Second review pass (2026-11-18) — two further checks, both resolved before commit:**
+
+1. **Bounded deletion tracking** (above) replaces the permanent tombstone from the first review
+   pass — same correctness guarantee (an in-flight generation can never repopulate the cache for a
+   file deleted mid-flight), now with no permanent-growth cost.
+2. **The oversized-source fallback was gated on the bare `ILLEGAL_ASSET_TRANSFORMATION` code
+   alone.** Verified against Directus 11.12.0's own source
+   (`@directus/api/dist/services/assets.js`, `AssetsService.getAsset`): that error has exactly ONE
+   throw site in the whole file, always with the literal `{ invalidTransformations: ['width',
+   'height'] }`, guarding exactly "missing or over-the-limit width/height." Confirmed empirically
+   too — `storage_asset_transform: 'none'`, `'presets'` with no match, and invalid
+   `fit`/`format`/`quality`/`width` values all respond with a *different* code
+   (`INVALID_QUERY`), never this one — so today, this code is genuinely never shared with another
+   transformation-policy failure. Tightened anyway, per instruction, to require verified evidence
+   through the response itself rather than the bare code: `isIllegalAssetTransformation` now also
+   requires `invalidTransformations` to actually name `width` or `height`, so a hypothetical future
+   Directus version reusing this same code for an unrelated field (e.g. an invalid `fit`) would be
+   correctly rejected rather than silently routed into app-level processing. Two new negative tests
+   pin this: the same code with a different `invalidTransformations` field, and the same code with
+   no `invalidTransformations` field at all — both must propagate as an ordinary error, never
+   trigger the fallback.
+
+**Accurate acceptance record:**
+- Card output: a 640×640 bounding box (`fit: inside`, `withoutEnlargement: true` — aspect ratio
+  always preserved, never stretched, never upscaled past the source's own size), WebP, quality 78.
+  Measured exact outputs: the 7680×4320 landscape fixture produced a 640×360 thumbnail; the
+  4320×7680 portrait fixture produced 360×640. Alpha is preserved when the source has it (confirmed
+  via `sharp().metadata().hasAlpha === true` on the generated output from a transparent source).
+- **Cold large-image generation performs exactly one download+decode of the original** — Directus's
+  own rejection of the transform attempt (`ILLEGAL_ASSET_TRANSFORMATION`) happens before any file
+  bytes are read (Directus already knows the stored `width`/`height` from its own metadata
+  columns), so only the fallback's own subsequent request actually transfers the original, once,
+  streamed directly into `sharp` rather than buffered whole into memory first.
+- **Browser layout/Retry behavior is NOT VERIFIED.** No browser automation tool was available in
+  this session; every claim above was confirmed at the HTTP layer (`curl`, real disposable Directus,
+  real uploads) through the real running app, not by rendering the page. The "Preview unavailable" +
+  Retry UI, the `aspect-[4/3]` layout-shift prevention, and `loading="lazy"` behavior as actually
+  rendered in a browser remain unverified — flagged here explicitly rather than implied by the
+  server-side verification above.

@@ -133,6 +133,7 @@
 import { Pool, type PoolConfig } from 'pg'
 import { randomUUID } from 'node:crypto'
 import { ContentWorkspacePersistenceUnavailableError } from './content-workspace-schema'
+import { isRollPerfVerbose } from './roll-perf-flag'
 
 export type WorkspaceOverrideColumn = 'authored_presentation' | 'authored_mechanics'
 
@@ -379,10 +380,19 @@ export async function readWorkspaceEntityRowAtomic(workspaceId: string, contentE
 // reads, never the editor's own revision-conditioned write) catch this
 // specific error and fall back, rather than letting it break reading.
 export async function readWorkspaceRevisionAtomic(workspaceId: string): Promise<number | null> {
+  const verbose = isRollPerfVerbose()
+  const tStart = verbose ? performance.now() : 0
   const result = await withPersistenceFailureHandling(async () => {
     const client = await getPool().connect()
+    const tAfterAcquire = verbose ? performance.now() : 0
     try {
       const res = await client.query('SELECT revision FROM content_workspaces WHERE id = $1', [workspaceId])
+      if (verbose) {
+        console.log(
+          `[roll-perf:pg] readWorkspaceRevisionAtomic poolAcquire=${(tAfterAcquire - tStart).toFixed(1)}ms`,
+          `query=${(performance.now() - tAfterAcquire).toFixed(1)}ms`
+        )
+      }
       return { ok: true as const, revision: res.rows[0] ? Number(res.rows[0].revision) : null }
     } finally {
       client.release()
@@ -404,13 +414,23 @@ export async function readWorkspaceRevisionAtomic(workspaceId: string): Promise<
 // never a silent empty page that would look like "this workspace has no
 // more entities."
 export async function readWorkspaceEntityRowsPageAtomic(workspaceId: string, limit: number, offset: number): Promise<WorkspaceEntityRow[]> {
+  const verbose = isRollPerfVerbose()
+  const tStart = verbose ? performance.now() : 0
   const result = await withPersistenceFailureHandling(async () => {
     const client = await getPool().connect()
+    const tAfterAcquire = verbose ? performance.now() : 0
     try {
       const res = await client.query(
         `SELECT ${ENTITY_ROW_FIELDS} FROM content_workspace_entities WHERE workspace_id = $1 ORDER BY id LIMIT $2 OFFSET $3`,
         [workspaceId, limit, offset]
       )
+      if (verbose) {
+        console.log(
+          `[roll-perf:pg] readWorkspaceEntityRowsPageAtomic(offset=${offset}) poolAcquire=${(tAfterAcquire - tStart).toFixed(1)}ms`,
+          `query=${(performance.now() - tAfterAcquire).toFixed(1)}ms`,
+          `rows=${res.rows.length}`
+        )
+      }
       return { ok: true as const, rows: res.rows as WorkspaceEntityRow[] }
     } finally {
       client.release()

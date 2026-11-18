@@ -526,6 +526,49 @@ describe('resolveAttackAction -- weapons', () => {
   })
 })
 
+// Roll System Phase 3C/3D/3E (Roll Performance Audit) -- permanent
+// regression coverage for the redundant-assembly fix. getCharacterActions
+// (via getCharacterActionsWithDerived) already needs one assembleCharacter
+// + one getWorldRuntime to build the actions list; resolveAttackAction
+// must reuse that SAME result rather than independently re-deriving this
+// exact character a second time. A future change that reintroduces either
+// redundancy (e.g. resolveAttackAction calling getDerivedCharacter directly
+// again, or getCharacterActionsWithDerived losing its shared-assembly reuse)
+// would still produce CORRECT output -- only slower -- so no existing
+// output-correctness assertion in this file would catch it. This is the one
+// test that would.
+describe('resolveAttackAction / getCharacterActions -- no redundant assembly or runtime construction', () => {
+  it('resolveAttackAction runs exactly 1 assembleCharacter + 1 getWorldRuntime call, not 2+ (the pre-fix shape was 3 + 2)', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'weapon:item-1')
+
+    expect(result.ok).toBe(true)
+    expect(assembleCharacterMock.mock.calls.length).toBe(1)
+    expect(getWorldRuntimeMock.mock.calls.length).toBe(1)
+  })
+
+  it('getCharacterActions on its own runs exactly 1 assembleCharacter + 1 getWorldRuntime call, not 2 (the pre-fix shape)', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await getCharacterActions('5', '42')
+
+    expect(result.available).toBe(true)
+    expect(assembleCharacterMock.mock.calls.length).toBe(1)
+    expect(getWorldRuntimeMock.mock.calls.length).toBe(1)
+  })
+})
+
 describe('resolveAttackAction -- spells are out of Phase 1A scope', () => {
   it('rejects a spell attack roll as not-attack-capable, even though it shares the attack-roll mechanism', async () => {
     assembleCharacterMock.mockResolvedValue({

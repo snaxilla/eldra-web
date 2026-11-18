@@ -33,6 +33,7 @@ import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResol
 import { listContentPackBindingsForWorld, type WorldContentPackBindingRecord } from './world-content-packs'
 import { listPackageLineages } from './content-package-lineages'
 import { loadWorkspaceAsSource } from './world-content-sources'
+import { isRollPerfVerbose } from './roll-perf-flag'
 import type { RulesFacet } from '../../app/lib/content-rules'
 
 export function isEffectiveContentEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -294,11 +295,15 @@ function groupByEntityType(entries: readonly EffectiveEntity[]): Record<string, 
 }
 
 export async function resolveEffectiveContent(worldId: string | number): Promise<EffectiveCatalogue> {
+  const verbose = isRollPerfVerbose()
+  const tEffectiveStart = verbose ? performance.now() : 0
+
   const [catalogue, bindings, lineages] = await Promise.all([
     resolveWorldContent(worldId),
     listContentPackBindingsForWorld(worldId),
     loadLineageIndex()
   ])
+  const tAfterParallelTrio = verbose ? performance.now() : 0
 
   const bindingByPackageId = new Map(bindings.map((b) => [b.packageId, b]))
 
@@ -316,8 +321,11 @@ export async function resolveEffectiveContent(worldId: string | number): Promise
   const workspaceCandidates: EffectiveCandidate[] = []
 
   const workspaceBindings = bindings.filter((b) => b.bindingMode === 'workspace' && b.workspaceId)
+  const workspaceLoopSamples: number[] = []
   for (const binding of workspaceBindings) {
+    const tIterationStart = verbose ? performance.now() : 0
     const result = await loadWorkspaceAsSource(binding.workspaceId as string, String(worldId))
+    if (verbose) workspaceLoopSamples.push(performance.now() - tIterationStart)
     if (!result.ok) {
       // Reuses ContentPackLoadFailure's existing 'not-found' stage -- see
       // WorkspaceSourceResolution's own header for why this is not a
@@ -332,6 +340,16 @@ export async function resolveEffectiveContent(worldId: string | number): Promise
         binding: bindingMetaFor(binding)
       })
     }
+  }
+
+  if (verbose) {
+    const workspaceLoopTotal = workspaceLoopSamples.reduce((a, b) => a + b, 0)
+    console.log(
+      `[roll-perf:effective-content] parallelTrio=${(tAfterParallelTrio - tEffectiveStart).toFixed(1)}ms`,
+      `workspaceLoop.count=${workspaceBindings.length}`,
+      `workspaceLoop.total=${workspaceLoopTotal.toFixed(1)}ms`,
+      `workspaceLoop.perIteration=[${workspaceLoopSamples.map((n) => n.toFixed(1)).join(',')}]ms`
+    )
   }
 
   const candidates = [...pinnedCandidates, ...workspaceCandidates]

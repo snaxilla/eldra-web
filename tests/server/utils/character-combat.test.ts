@@ -222,6 +222,21 @@ describe('resolveCombatAction -- attack roll, weapon', () => {
     expect(result.targetHealth.temporaryHp).toBe(0)
     expect(result.targetHealth.currentHp).toBe(15) // 20 - (9 - 4 absorbed)
   })
+
+  // Roll System Phase 3C/3D/3E (Roll Performance Audit) -- permanent
+  // regression coverage. The attacker's own actions-list + derived numbers
+  // must come from ONE shared assembleCharacter + getWorldRuntime pass
+  // (getCharacterActionsWithDerived), never attacker-side redundancy
+  // re-introduced; the target is a genuinely different character and
+  // legitimately needs its own separate pass. Pre-fix shape was attacker
+  // 2 assembleCharacter + 1 getWorldRuntime, target 1 + 1 (3 + 2 total).
+  it('runs exactly 1 assembleCharacter + 1 getWorldRuntime for the attacker, plus 1 + 1 for the target (2 + 2 total, not 3 + 2)', async () => {
+    mockRolls([15, 5])
+    const result = await resolveCombatAction('5', '42', '99', 'weapon:item-1')
+    expect(result.ok).toBe(true)
+    expect(assembleCharacterMock.mock.calls.length).toBe(2)
+    expect(getWorldRuntimeMock.mock.calls.length).toBe(2)
+  })
 })
 
 describe('resolveCombatAction -- Unarmed Strike', () => {

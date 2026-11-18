@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { isRollPerfVerbose } from './roll-perf-flag'
 
 function getRuntimeDirectusConfig() {
   const config = useRuntimeConfig()
@@ -172,6 +173,30 @@ export async function refreshDirectusSession(event: H3Event): Promise<string | n
   }
 }
 
+// Roll System Phase 3C/3D/3E/3F (Roll Performance Audit) -- OPT-IN, verbose
+// per-call stage diagnostics. Default OFF (see click-to-dice-latency-trace.md
+// §13's own capture instructions). Logs only `path`/`method`/duration -- NEVER
+// `options.body`/`query`/response data, so this is safe to enable in
+// production for a short, deliberate capture window without risking a
+// credential or full-payload leak into logs. A per-process monotonic
+// sequence number (never a request/roll id -- none exists at this layer) is
+// the only correlation mechanism: the owner capture procedure already
+// requires performing rolls strictly one-at-a-time, so sequence order alone
+// is enough to attribute a run of lines to one roll.
+let rollPerfVerboseSeq = 0
+
+// Every call site on the roll-resolution path that interpolates anything
+// into its own `path` argument interpolates only a numeric Directus row id
+// (`/items/entities/${characterId}`, `/items/${COLLECTION}/${existing.id}`)
+// -- confirmed by grepping every `directusServiceRequest(\`...\`` call site
+// reachable from a roll. Never a name, slug, email, or filter value (those
+// always travel in `options.query`/`options.body`, which this logger never
+// reads). Redacted anyway before logging, since an opaque row id is still
+// an identifier the owner's capture should not need to paste back verbatim.
+function sanitizePathForLogging(path: string): string {
+  return path.replace(/\/\d+(?=\/|$)/g, '/:id')
+}
+
 export async function directusServiceRequest(path: string, options: any = {}) {
   const { baseUrl, serviceToken } = getRuntimeDirectusConfig()
 
@@ -183,10 +208,24 @@ export async function directusServiceRequest(path: string, options: any = {}) {
     headers.Authorization = `Bearer ${serviceToken}`
   }
 
-  return await $fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers
-  })
+  if (!isRollPerfVerbose()) {
+    return await $fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers
+    })
+  }
+
+  const seq = ++rollPerfVerboseSeq
+  const start = performance.now()
+  try {
+    return await $fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers
+    })
+  } finally {
+    const elapsed = performance.now() - start
+    console.log(`[roll-perf:directus#${seq}] ${options.method ?? 'GET'} ${sanitizePathForLogging(path)} ${elapsed.toFixed(1)}ms`)
+  }
 }
 
 // The USER-SCOPED Directus client: it sends the caller's own session token

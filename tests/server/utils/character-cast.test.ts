@@ -80,6 +80,21 @@ vi.mock('../../../server/utils/character-derived', async (importOriginal) => {
     getDerivedCharacter: async (...args: Parameters<typeof actual.getDerivedCharacter>) => {
       const override = await getDerivedCharacterOverrideMock(...args)
       return override ?? actual.getDerivedCharacter(...args)
+    },
+    // Roll System Phase 3C/3D/3E (Roll Performance Audit) -- character-
+    // actions.ts's own getCharacterActionsWithDerived now calls THIS
+    // function directly (reusing its own already-fetched assembly) instead
+    // of going through the mockable getDerivedCharacter above, so a scenario
+    // that fakes a specific derived state (character level, Archfey/Warrior-
+    // of-Shadow resource funding) must also reach it here, or the Actions
+    // list `resolveCastableSpell` reads from would silently fall back to the
+    // REAL (un-faked) derived state instead of the scenario's intended one.
+    // Routed through the SAME `getDerivedCharacterOverrideMock` so both
+    // paths a Cast flow can reach stay consistent within one scenario.
+    deriveFromAssembledCharacter: async (...args: Parameters<typeof actual.deriveFromAssembledCharacter>) => {
+      const [, worldId] = args
+      const override = await getDerivedCharacterOverrideMock(worldId, undefined)
+      return override ?? actual.deriveFromAssembledCharacter(...args)
     }
   }
 })

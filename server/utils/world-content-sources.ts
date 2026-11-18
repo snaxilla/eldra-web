@@ -26,6 +26,7 @@
 // entities with an authored image.
 
 import { directusServiceRequest } from './directus'
+import { isRollPerfVerbose } from './roll-perf-flag'
 import { getContentWorkspace } from './content-workspaces'
 import { listAllWorkspaceEntityDetails, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { resolveBasePresentation } from './content-workspace-presentation'
@@ -166,7 +167,11 @@ function resolveWorkspaceImage(
 }
 
 export async function loadWorkspaceAsSource(workspaceId: string, worldId: string): Promise<LoadWorkspaceAsSourceResult> {
+  const verbose = isRollPerfVerbose()
+  const tSourceStart = verbose ? performance.now() : 0
+
   const workspace = await getContentWorkspace(workspaceId)
+  const tAfterWorkspace = verbose ? performance.now() : 0
   if (!workspace) {
     return {
       ok: false,
@@ -175,13 +180,24 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
   }
 
   const { revision: effectiveRevision, authoritative: revisionIsAuthoritative } = await readEffectiveWorkspaceRevision(workspaceId, workspace.revision)
+  const tAfterRevision = verbose ? performance.now() : 0
 
   const cached = sourceCache.get(cacheKey(workspaceId, worldId))
   if (cached && cached.revision === effectiveRevision) {
+    if (verbose) {
+      console.log(
+        `[roll-perf:workspace-source] workspaceId=${workspaceId} cacheHit=true`,
+        `getWorkspace=${(tAfterWorkspace - tSourceStart).toFixed(1)}ms`,
+        `revisionCheck=${(tAfterRevision - tAfterWorkspace).toFixed(1)}ms`,
+        `revisionAuthoritative=${revisionIsAuthoritative}`,
+        `total=${(performance.now() - tSourceStart).toFixed(1)}ms`
+      )
+    }
     return { ok: true, workspaceTitle: cached.workspaceTitle, entries: cached.entries }
   }
 
   const { entities, source: entityListSource } = await listAllWorkspaceEntityDetails(workspaceId)
+  const tAfterEntityList = verbose ? performance.now() : 0
 
   const sparseByEntity = entities.map((entity) => buildSparseObject(entity.authoredPresentation, 'presentation') as AuthoredPresentation)
   const mediaFileIds = sparseByEntity
@@ -240,6 +256,20 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
   // trustworthiness is protected.
   if (revisionIsAuthoritative && entityListSource === 'postgres') {
     sourceCache.set(cacheKey(workspaceId, worldId), { revision: effectiveRevision, workspaceTitle: workspace.title, entries })
+  }
+  if (verbose) {
+    const tAfterPostProcess = performance.now()
+    console.log(
+      `[roll-perf:workspace-source] workspaceId=${workspaceId} cacheHit=false`,
+      `getWorkspace=${(tAfterWorkspace - tSourceStart).toFixed(1)}ms`,
+      `revisionCheck=${(tAfterRevision - tAfterWorkspace).toFixed(1)}ms`,
+      `revisionAuthoritative=${revisionIsAuthoritative}`,
+      `entityList=${(tAfterEntityList - tAfterRevision).toFixed(1)}ms`,
+      `entityListSource=${entityListSource}`,
+      `entityCount=${entities.length}`,
+      `presentationAndMediaResolve=${(tAfterPostProcess - tAfterEntityList).toFixed(1)}ms`,
+      `total=${(tAfterPostProcess - tSourceStart).toFixed(1)}ms`
+    )
   }
   return { ok: true, workspaceTitle: workspace.title, entries }
 }

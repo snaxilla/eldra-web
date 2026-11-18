@@ -56,11 +56,12 @@ import type {
   TableKeyDeclaration,
   TableRow
 } from '../../app/lib/rules/types'
-import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
+import { assembleCharacter, type CharacterAssemblyBlueprint, type CharacterAssemblyResult } from './character-assembly'
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
 import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
 import { clampExpendedToMaximum } from '../../app/lib/characters/resources'
 import { getWorldRuntime } from './world-runtime-service'
+import { isRollPerfVerbose } from './roll-perf-flag'
 import { getWorldContentCatalogue } from './world-content-catalogue'
 import { serializeContentRef } from '../../app/lib/characters/progression-plan'
 import { featFilterVerdict } from '../../app/lib/feat-mechanics'
@@ -333,11 +334,47 @@ async function getDerivedCharacterInternal(
   tentativeFeatAcquisitions?: readonly { choiceKey: string; ref: { packageId: string; slug: string } }[]
 ): Promise<DerivedCharacterResult> {
   const assembly = await assembleCharacter(worldId, characterId, tentativeSubclassRef, tentativeFeatAcquisitions)
+  return deriveFromAssembledCharacter(assembly, worldId, levelOverride, tentativeAnswers)
+}
+
+// Roll System Phase 3C/3D/3E (Roll Performance Audit) -- the back half of
+// `getDerivedCharacterInternal` above, extracted so a caller that has
+// ALREADY run its own `assembleCharacter` for this exact (worldId,
+// characterId) this same request (today: only
+// `character-actions.ts`'s own `getCharacterActionsWithDerived`) can supply
+// that result directly instead of this module re-fetching an identical one
+// a second time. `characterId` is deliberately NOT a parameter here -- every
+// line below reads only `assembly`/`worldId`/`levelOverride`/
+// `tentativeAnswers`, never `characterId` itself (verified by grep before
+// this split), so there is nothing for a caller to get wrong by supplying a
+// mismatched assembly for a different character: there is no second id for
+// it to mismatch against.
+//
+// MUTATION/NORMALIZATION CHECK (done before this split, not assumed): this
+// function never writes to `assembly.blueprint` or anything nested in it --
+// `buildActorState` (character-actor-bridge.ts) only READS blueprint fields
+// to build a NEW `ActorBridgeResult`, confirmed by grepping its body for
+// any `blueprint.x =`/`.push`/in-place `.sort()` (none exist). The ONLY
+// other reader of the same blueprint object in-process today
+// (`character-actions.ts`'s own actions-list construction) is equally
+// read-only. Sharing one `assembly.blueprint` reference between both
+// consumers is therefore exactly as safe as the two independently-fetched-
+// but-content-identical copies this replaces.
+export async function deriveFromAssembledCharacter(
+  assembly: CharacterAssemblyResult,
+  worldId: string | number,
+  levelOverride?: number,
+  tentativeAnswers?: Record<string, string[]>
+): Promise<DerivedCharacterResult> {
   if (!assembly.available) {
     return assembly
   }
 
+  const verbose = isRollPerfVerbose()
+  const tDeriveStart = verbose ? performance.now() : 0
+
   const runtime = await getWorldRuntime(worldId)
+  const tAfterRuntime = verbose ? performance.now() : 0
 
   if (!runtime.configured) {
     return {
@@ -688,6 +725,15 @@ async function getDerivedCharacterInternal(
     const group = byCategory[category]
     if (group) group.push(entry)
     else byCategory[category] = [entry]
+  }
+
+  if (verbose) {
+    const tAfterEvaluate = performance.now()
+    console.log(
+      `[roll-perf:derived] getWorldRuntime=${(tAfterRuntime - tDeriveStart).toFixed(1)}ms`,
+      `buildActorStateAndEvaluate=${(tAfterEvaluate - tAfterRuntime).toFixed(1)}ms`,
+      `total=${(tAfterEvaluate - tDeriveStart).toFixed(1)}ms`
+    )
   }
 
   return {

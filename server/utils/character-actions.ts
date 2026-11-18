@@ -47,7 +47,7 @@
 // player's homebrew spell is not silently absent from their own action list.
 
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
-import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
+import { deriveFromAssembledCharacter, type DerivedCharacterResult } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
 import { isAttackCapableAction } from '../../app/lib/content-actions'
 import type { CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
@@ -281,7 +281,14 @@ export async function getCharacterActionsWithDerived(
   // name, range, and damage expression still comes from content), so a
   // missing Rules runtime degrades individual rows' attack bonus/save DC
   // rather than failing the whole request.
-  const derived = await getDerivedCharacter(worldId, characterId)
+  //
+  // Roll System Phase 3C/3D/3E -- reuses the SAME `assembly` this function
+  // just fetched above, via `deriveFromAssembledCharacter`, instead of
+  // calling the public `getDerivedCharacter` (which would run its own,
+  // independent, content-identical `assembleCharacter` a second time for
+  // this exact character). See that function's own header in
+  // character-derived.ts for the mutation/sharing-safety check.
+  const derived = await deriveFromAssembledCharacter(assembly, worldId)
   const byCategory = derived.available ? derived.derived.byCategory : {}
 
   const meleeBonus = findNumber(byCategory, MELEE_ATTACK_BONUS_ID)

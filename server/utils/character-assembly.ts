@@ -67,6 +67,7 @@
 //    gated the way writing it is.
 
 import { directusServiceRequest } from './directus'
+import { isRollPerfVerbose } from './roll-perf-flag'
 import { type ContentCatalogueEntry } from './world-content-catalogue'
 import { legacyAliasKey } from './world-effective-content'
 import type { EffectiveLegacyAlias } from './world-effective-content'
@@ -500,6 +501,9 @@ export async function assembleCharacter(
   // "not found" here. Caught broadly (network errors included) for the
   // same reason: this module's whole contract is "never throws," and a
   // failed lookup is exactly as much "not found" as an empty one.
+  const verbose = isRollPerfVerbose()
+  const tAssembleStart = verbose ? performance.now() : 0
+
   let entity: any = null
   try {
     const entityRes: any = await directusServiceRequest(`/items/entities/${characterId}`, {
@@ -510,6 +514,7 @@ export async function assembleCharacter(
   } catch {
     entity = null
   }
+  const tAfterEntity = verbose ? performance.now() : 0
 
   if (!entity || String(entity.world_id) !== String(worldId)) {
     return { available: false, reason: 'character-not-found' }
@@ -566,6 +571,7 @@ export async function assembleCharacter(
   const resourcesReadPromise = readCharacterResourcesAtomic({ worldId, characterId })
 
   const [blockRes, resourcesRead] = await Promise.all([blocksPromise, resourcesReadPromise])
+  const tAfterBlocksAndResources = verbose ? performance.now() : 0
 
   const blocks: any[] = Array.isArray(blockRes?.data) ? blockRes.data : []
   const findBlock = (key: string) => blocks.find((row) => row?.block_key === key) ?? null
@@ -619,6 +625,15 @@ export async function assembleCharacter(
   // added, since resolveSpells below matches purely against this array.
   // See homebrew-spell-catalogue.ts's own header.
   const catalogue = await getWorldGameplayCatalogueWithHomebrewSpells(worldId)
+  if (verbose) {
+    const tAfterCatalogue = performance.now()
+    console.log(
+      `[roll-perf:assembly] entity=${(tAfterEntity - tAssembleStart).toFixed(1)}ms`,
+      `blocksAndResources=${(tAfterBlocksAndResources - tAfterEntity).toFixed(1)}ms`,
+      `catalogue=${(tAfterCatalogue - tAfterBlocksAndResources).toFixed(1)}ms`,
+      `total=${(tAfterCatalogue - tAssembleStart).toFixed(1)}ms`
+    )
+  }
   const classRef = extractRef(selection.class)
   const classPackageId = typeof classRef?.packageId === 'string' ? classRef.packageId : ''
   const classSlug = typeof classRef?.slug === 'string' ? classRef.slug : ''

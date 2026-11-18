@@ -41,6 +41,24 @@ function directusListResponse(rows: any[]) {
   return { data: rows }
 }
 
+// Published-Release Load Reduction Pass -- loadPublishedContentPack now
+// issues up to TWO Directus calls per logical load on a cache miss: a
+// lightweight metadata-only read (status/integrity_hash/manifest), then,
+// only if nothing is already cached for the resulting (packageId, version,
+// integrity_hash), a second content-only read. This queues the SAME row
+// for both -- the mock does not enforce server-side `fields` selection, so
+// returning the full row to both calls is faithful: each call only reads
+// the specific columns it asked for. Use this for any COLD (first-time,
+// not-yet-cached) logical load; a call that returns early after STEP 1
+// (not-found/not-published/malformed-manifest) or that hits the cache
+// needs only ONE queued response -- see the tests that assert that
+// directly below.
+function queueColdLoad(row: Record<string, unknown>) {
+  directusServiceRequestMock
+    .mockResolvedValueOnce(directusListResponse([row]))
+    .mockResolvedValueOnce(directusListResponse([row]))
+}
+
 // Builds a Directus content_packs row consistent with a given manifest and
 // content list (integrity_hash computed to actually match, by default),
 // then applies any explicit row-level overrides on top -- e.g. to simulate
@@ -331,7 +349,7 @@ describe('loadContentPackManifest -- manifest loading', () => {
 describe('loadPublishedContentPack -- successful load', () => {
   it('loads a published pack whose integrity matches', async () => {
     const row = buildRow()
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+    queueColdLoad(row)
 
     const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -346,7 +364,7 @@ describe('loadPublishedContentPack -- successful load', () => {
 
   it('queries Directus filtered by package_id and version, service-token style', async () => {
     const row = buildRow()
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+    queueColdLoad(row)
 
     await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -366,6 +384,17 @@ describe('loadPublishedContentPack -- successful load', () => {
     )
   })
 
+  it('splits a cold load into a lightweight metadata read, then a content-only read -- never one fields:* read', async () => {
+    const row = buildRow()
+    queueColdLoad(row)
+
+    await loadPublishedContentPack('eldra.test.content', '1.0.0')
+
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(2)
+    const fieldsRequested = directusServiceRequestMock.mock.calls.map((call) => String(call[1]?.query?.fields))
+    expect(fieldsRequested).toEqual(['status,integrity_hash,manifest', 'content'])
+  })
+
   it('deserializes manifest/content when Directus returns them as JSON-encoded strings', async () => {
     const row = buildRow()
     const stringEncodedRow = {
@@ -373,7 +402,7 @@ describe('loadPublishedContentPack -- successful load', () => {
       manifest: JSON.stringify(row.manifest),
       content: JSON.stringify(row.content)
     }
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([stringEncodedRow]))
+    queueColdLoad(stringEncodedRow)
 
     const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -435,7 +464,7 @@ describe('loadPublishedContentPack -- fails closed on an invalid version/package
 })
 
 describe('loadPublishedContentPack -- unpublished pack rejection', () => {
-  it('fails with stage "not-published" for a draft row', async () => {
+  it('fails with stage "not-published" for a draft row, without ever requesting the content column', async () => {
     const row = buildRow({ rowOverrides: { status: 'draft' } })
     directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
 
@@ -445,6 +474,10 @@ describe('loadPublishedContentPack -- unpublished pack rejection', () => {
     if (result.ok) return
     expect(result.stage).toBe('not-published')
     expect((result as any).status).toBe('draft')
+    // Published-Release Load Reduction Pass -- the metadata-only STEP 1
+    // read already has enough to fail here; STEP 2's content-only read must
+    // never be issued for a row that isn't published.
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -455,7 +488,7 @@ describe('loadPublishedContentPack -- integrity mismatch', () => {
         integrity_hash: 'sha256-0000000000000000000000000000000000000000000000000000000000000000'
       }
     })
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+    queueColdLoad(row)
 
     const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -472,7 +505,7 @@ describe('loadPublishedContentPack -- integrity mismatch', () => {
       content: tamperedContent,
       rowOverrides: { integrity_hash: computeContentIntegrityHash(originalContent) }
     })
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+    queueColdLoad(row)
 
     const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -480,12 +513,26 @@ describe('loadPublishedContentPack -- integrity mismatch', () => {
     if (result.ok) return
     expect(result.stage).toBe('integrity-mismatch')
   })
+
+  it('fails with stage "deserialize" for an unparseable manifest, without ever requesting the content column (metadata-only STEP 1 already has enough to fail)', async () => {
+    const row = buildRow({ rowOverrides: { manifest: '{not valid json' } })
+    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+
+    const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('deserialize')
+    if (result.stage !== 'deserialize') return
+    expect(result.field).toBe('manifest')
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('loadPublishedContentPack -- malformed JSON rejection', () => {
   it('fails with stage "deserialize" for an unparseable content string, without throwing', async () => {
     const row = buildRow({ rowOverrides: { content: '{not valid json' } })
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+    queueColdLoad(row)
 
     const result = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
@@ -497,18 +544,32 @@ describe('loadPublishedContentPack -- malformed JSON rejection', () => {
 })
 
 describe('loadPublishedContentPack -- cache behavior', () => {
-  it('cache miss on the first load, then a cache hit returns the same object instance', async () => {
+  it('cache miss on the first load (2 Directus calls), then a cache hit (1 call) reuses the SAME content array', async () => {
     const row = buildRow()
+    // Published-Release Load Reduction Pass -- the whole-package `toBe`
+    // (referential identity) this test used to assert no longer holds by
+    // design: `manifest`/`status` are re-read fresh on every call (so a
+    // legitimate manifest-only edit is still picked up immediately -- see
+    // the cache Map's own header), so the OUTER package object is rebuilt
+    // every time even on a cache hit. What a cache hit actually guarantees
+    // -- and what this test now asserts instead -- is that the heavy
+    // `content` array is the SAME reference (never re-fetched/re-parsed)
+    // and that the second call issues only the lightweight metadata read.
     directusServiceRequestMock.mockResolvedValue(directusListResponse([row]))
 
     const first = await loadPublishedContentPack('eldra.test.content', '1.0.0')
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(2)
+
+    directusServiceRequestMock.mockClear()
     const second = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
     expect(first.ok).toBe(true)
     expect(second.ok).toBe(true)
     if (!first.ok || !second.ok) return
 
-    expect(second.package).toBe(first.package)
+    expect(second.package.content).toBe(first.package.content)
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+    expect(String(directusServiceRequestMock.mock.calls[0][1]?.query?.fields)).toBe('status,integrity_hash,manifest')
   })
 
   it('a failed load (integrity mismatch) is never cached', async () => {
@@ -517,13 +578,13 @@ describe('loadPublishedContentPack -- cache behavior', () => {
         integrity_hash: 'sha256-bad0000000000000000000000000000000000000000000000000000000000'
       }
     })
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([badRow]))
+    queueColdLoad(badRow)
 
     const failed = await loadPublishedContentPack('eldra.test.content', '1.0.0')
     expect(failed.ok).toBe(false)
 
     const goodRow = buildRow()
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([goodRow]))
+    queueColdLoad(goodRow)
 
     const succeeded = await loadPublishedContentPack('eldra.test.content', '1.0.0')
     expect(succeeded.ok).toBe(true)
@@ -533,10 +594,10 @@ describe('loadPublishedContentPack -- cache behavior', () => {
     const rowV1 = buildRow()
     const rowV2 = buildRow({ manifest: manifest({ version: '2.0.0' }) })
 
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([rowV1]))
+    queueColdLoad(rowV1)
     const v1 = await loadPublishedContentPack('eldra.test.content', '1.0.0')
 
-    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([rowV2]))
+    queueColdLoad(rowV2)
     const v2 = await loadPublishedContentPack('eldra.test.content', '2.0.0')
 
     expect(v1.ok).toBe(true)
@@ -546,6 +607,29 @@ describe('loadPublishedContentPack -- cache behavior', () => {
     expect(v1.package).not.toBe(v2.package)
     expect(v1.package.version).toBe('1.0.0')
     expect(v2.package.version).toBe('2.0.0')
+  })
+
+  it('a row whose integrity_hash changes between calls is treated as a cache miss, not silently served stale', async () => {
+    // Establishes and tests the ACTUAL contract per instruction, rather
+    // than assuming (packageId, version) content can never change once
+    // published: this module's own write path (publishContentPackRelease)
+    // refuses to overwrite an existing row, but nothing in
+    // loadPublishedContentPack itself assumes that -- it re-reads
+    // integrity_hash fresh on every call and keys the cache by it, so if
+    // the stored hash ever legitimately differs from what is cached, the
+    // heavier content read runs again rather than reusing a stale entry.
+    const firstContent: ContentPackEntry[] = [{ id: 'item:torch' }]
+    const secondContent: ContentPackEntry[] = [{ id: 'item:torch' }, { id: 'item:lantern' }]
+    const firstRow = buildRow({ content: firstContent })
+    const secondRow = buildRow({ content: secondContent, rowOverrides: { integrity_hash: computeContentIntegrityHash(secondContent) } })
+
+    queueColdLoad(firstRow)
+    const first = await loadPublishedContentPack('eldra.test.content', '1.0.0')
+    expect(first.ok && first.package.content).toHaveLength(1)
+
+    queueColdLoad(secondRow)
+    const second = await loadPublishedContentPack('eldra.test.content', '1.0.0')
+    expect(second.ok && second.package.content).toHaveLength(2)
   })
 })
 
@@ -627,14 +711,19 @@ describe('publishContentPackRelease -- new pack', () => {
     expect(published.ok).toBe(true)
     if (!published.ok) return
 
-    // Referential identity (`toBe`, not `toEqual`) is the real assertion
-    // here: the fake store's GET would also succeed on a real fetch (the
-    // POST body it recorded is a complete row), so only object identity
-    // distinguishes "served from cache" from "fetched again".
+    // Published-Release Load Reduction Pass -- the cache now holds only
+    // `content`, not the full package (manifest/status are always re-read
+    // fresh -- see the cache Map's own header), so the outer object is no
+    // longer the same instance even on a cache hit. The real assertion is
+    // that the heavy `content` array IS the same instance (never re-
+    // fetched/re-parsed) and that the load issues only ONE Directus call
+    // -- the lightweight metadata read -- never the content-only one.
+    const callsBeforePublish = directusServiceRequestMock.mock.calls.length
     const loaded = await loadPublishedContentPack('eldra.srd-5.1', '1.0.0')
     expect(loaded.ok).toBe(true)
     if (!loaded.ok) return
-    expect(loaded.package).toBe(published.package)
+    expect(loaded.package.content).toBe(published.package.content)
+    expect(directusServiceRequestMock.mock.calls.length).toBe(callsBeforePublish + 1)
   })
 })
 

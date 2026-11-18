@@ -281,13 +281,40 @@ export type ContentPackPublishResult =
   | ({ ok: false } & ContentPackPublishFailure)
 
 // ---------------------------------------------------------------------------
-// Cache -- exactly one Map, holding parsed FULL package documents. Manifest-
-// only and metadata loads are never cached (they are already cheap: a
-// metadata load is one shallow-column query, and a manifest load skips the
-// heavy `content` column entirely -- see design decision 6).
-// ---------------------------------------------------------------------------
-
-const contentPackCache = new Map<string, LoadedContentPack>()
+// Cache -- exactly one Map. Manifest-only and metadata loads are never
+// cached (they are already cheap: a metadata load is one shallow-column
+// query, and a manifest load skips the heavy `content` column entirely --
+// see design decision 6).
+//
+// Published-Release Read Reduction Pass -- this now caches ONLY the
+// `content` entries array, never the full `LoadedContentPack` (manifest
+// included). Design decision 5's own promise ("a key including the
+// integrity hash can never be stale... published rows are immutable") was
+// already correct in INTENT, but `loadPublishedContentPack` never actually
+// delivered it: the cache lookup happened AFTER an unconditional full-row
+// fetch (`fields: '*'`) + JSON-parse + SHA-256 hash, every single call --
+// so a "cache hit" only ever saved one object allocation, never the
+// network/parse/hash cost a production capture showed dominating
+// `actionResolution` (packLoading: 603-2023ms across three captured rolls,
+// still four `GET /items/content_packs` requests per roll even with the
+// prior pass's effective-content dedup already landed).
+//
+// The fix below is a repair of this cache's own documented contract, not a
+// new layer: `loadPublishedContentPack` now reads a LIGHTWEIGHT
+// `status,integrity_hash,manifest` row first (mutable/identity metadata,
+// never skipped, so status transitions -- unpublish/removal -- and a
+// changed `integrity_hash` are still detected on EVERY call, exactly as
+// before), and only fetches the heavy `content` column when that freshly-
+// read `integrity_hash` does not already match a `content` array this
+// process has previously fetched and integrity-verified. `content` itself
+// never changes meaning once verified under a given hash -- it is the one
+// genuinely immutable, reusable payload here, which is exactly why it is
+// the only thing kept in this Map; manifest/status are always re-read
+// fresh and are deliberately NOT reused across calls, so a legitimate
+// manifest-only edit (e.g. fixing a title, which `computeContentIntegrityHash`
+// never covers -- see design decision 2) is still picked up immediately
+// rather than silently served stale forever.
+const contentPackCache = new Map<string, ContentPackEntry[]>()
 
 function cacheKey(packageId: string, version: string, integrityHash: string): string {
   return `${packageId}@${version}#${integrityHash}`
@@ -450,6 +477,21 @@ export async function loadContentPackManifest(
 // found" (this function's own existing, already-handled failure shape) and
 // returns BEFORE any Directus request is ever constructed -- never a
 // request with a half-empty filter.
+// Minimal shape for the two split reads below -- avoids re-declaring
+// another `: any` (this file already has several; no need for one more)
+// while still typechecking `.data` access without pulling in Directus's
+// real response typing, which this module has never imported.
+type DirectusRowsResponse = { data?: Array<Record<string, unknown>> }
+
+function filterByPackageIdAndVersion(packageId: string, version: string) {
+  return {
+    _and: [
+      { package_id: { _eq: packageId } },
+      { version: { _eq: version } }
+    ]
+  }
+}
+
 export async function loadPublishedContentPack(
   packageId: string,
   version: string
@@ -458,67 +500,102 @@ export async function loadPublishedContentPack(
     return { ok: false, stage: 'not-found', packageId: packageId ?? '', version: version ?? '' }
   }
 
-  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
+  // STEP 1 -- lightweight metadata read. Never `content`. Issued on EVERY
+  // call, cache hit or miss: this is what keeps status transitions
+  // (unpublish/removal) and a changed `integrity_hash` detected immediately,
+  // exactly as the old single-query version did.
+  const metaRes = await directusServiceRequest(`/items/${COLLECTION}`, {
     method: 'GET',
     query: {
-      filter: {
-        _and: [
-          { package_id: { _eq: packageId } },
-          { version: { _eq: version } }
-        ]
-      },
+      filter: filterByPackageIdAndVersion(packageId, version),
       limit: 1,
-      fields: '*'
+      fields: 'status,integrity_hash,manifest'
     }
-  })
+  }) as DirectusRowsResponse
 
-  const row = Array.isArray(res?.data) ? res.data[0] : null
+  const metaRow = Array.isArray(metaRes?.data) ? metaRes.data[0] : null
 
-  if (!row) {
+  if (!metaRow) {
     return { ok: false, stage: 'not-found', packageId, version }
   }
 
-  const status = String(row.status ?? '')
+  const status = String(metaRow.status ?? '')
   if (status !== 'published') {
     return { ok: false, stage: 'not-published', status }
   }
 
-  const contentResult = parseJsonField<ContentPackEntry[]>(row.content, 'content')
-  if (!contentResult.ok) {
-    return { ok: false, stage: 'deserialize', field: 'content', error: contentResult.error }
-  }
-
-  const manifestResult = parseJsonField<ContentPackManifest>(row.manifest, 'manifest')
+  const manifestResult = parseJsonField<ContentPackManifest>(metaRow.manifest, 'manifest')
   if (!manifestResult.ok) {
     return { ok: false, stage: 'deserialize', field: 'manifest', error: manifestResult.error }
   }
 
   const manifest = manifestResult.value
-  const content = contentResult.value
+  const storedIntegrity = String(metaRow.integrity_hash ?? '')
+  const key = cacheKey(manifest.packageId, manifest.version, storedIntegrity)
+  const cachedContent = contentPackCache.get(key)
 
+  if (cachedContent) {
+    // Cache HIT -- the row's CURRENT integrity_hash (just read fresh above)
+    // matches a `content` payload this process already fetched and
+    // integrity-verified. Reuse it. The heavy `content` column is never
+    // requested at all on this path.
+    return {
+      ok: true,
+      package: {
+        packageId: manifest.packageId,
+        version: manifest.version,
+        manifest,
+        content: cachedContent,
+        integrityHash: storedIntegrity
+      }
+    }
+  }
+
+  // STEP 2 -- cache MISS. Fetch ONLY the heavy `content` column now.
+  const contentRes = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: filterByPackageIdAndVersion(packageId, version),
+      limit: 1,
+      fields: 'content'
+    }
+  }) as DirectusRowsResponse
+
+  const contentRow = Array.isArray(contentRes?.data) ? contentRes.data[0] : null
+
+  if (!contentRow) {
+    // The row existed a moment ago (STEP 1 found it) but is gone now --
+    // treated exactly like "not found", the same posture every other
+    // lookup-cannot-complete case in this module already takes.
+    return { ok: false, stage: 'not-found', packageId, version }
+  }
+
+  const contentResult = parseJsonField<ContentPackEntry[]>(contentRow.content, 'content')
+  if (!contentResult.ok) {
+    return { ok: false, stage: 'deserialize', field: 'content', error: contentResult.error }
+  }
+
+  const content = contentResult.value
   const computedIntegrity = computeContentIntegrityHash(content)
-  const storedIntegrity = String(row.integrity_hash ?? '')
 
   if (computedIntegrity !== storedIntegrity) {
     return { ok: false, stage: 'integrity-mismatch', expected: storedIntegrity, computed: computedIntegrity }
   }
 
-  const key = cacheKey(manifest.packageId, manifest.version, computedIntegrity)
-  const cached = contentPackCache.get(key)
-  if (cached) {
-    return { ok: true, package: cached }
-  }
+  // Never cache a failure (unchanged from before this pass): only a row
+  // that passed BOTH the status check and the integrity check reaches here.
+  contentPackCache.set(key, content)
 
-  const loaded: LoadedContentPack = {
-    packageId: manifest.packageId,
-    version: manifest.version,
-    manifest,
-    content,
-    integrityHash: computedIntegrity
+  return {
+    ok: true,
+    package: {
+      packageId: manifest.packageId,
+      version: manifest.version,
+      manifest,
+      content,
+      integrityHash: computedIntegrity
+    }
   }
-
-  contentPackCache.set(key, loaded)
-  return { ok: true, package: loaded }
 }
 
 // Inserts one published content_packs row -- design decision 7. Refuses
@@ -611,12 +688,13 @@ export async function publishContentPackRelease(
     integrityHash
   }
 
-  // Pre-populate the load cache with the exact object just published --
-  // same referential-stability property loadPublishedContentPack's own
-  // cache-hit test already relies on, so a caller that publishes and then
-  // immediately loads never pays for a redundant round trip or a
-  // redundant integrity recomputation.
-  contentPackCache.set(cacheKey(input.packageId, input.version, integrityHash), loaded)
+  // Pre-populate the load cache with the exact `content` array just
+  // published -- so a caller that publishes and then immediately loads
+  // pays for only the lightweight metadata read (loadPublishedContentPack's
+  // own STEP 1), never a redundant `content` round trip or a redundant
+  // integrity recomputation. Cache holds `content` only now (Published-
+  // Release Load Reduction Pass) -- see that Map's own header.
+  contentPackCache.set(cacheKey(input.packageId, input.version, integrityHash), input.content)
 
   return { ok: true, package: loaded }
 }

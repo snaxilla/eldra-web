@@ -17,19 +17,25 @@ import {
   applyPresentationEdits,
   createEntityCheckpoint,
   getWorkspaceEntityDetail,
+  listAllWorkspaceEntityDetails,
   revertMechanicsChannel,
   revertMechanicsPath,
   revertPresentationChannel,
   revertPresentationPath
 } from '../../../server/utils/content-workspace-entities'
+import { ContentWorkspacePersistenceUnavailableError } from '../../../server/utils/content-workspace-schema'
 
-const { directusServiceRequestMock, writeOverrideAtomicMock } = vi.hoisted(() => ({
+const { directusServiceRequestMock, writeOverrideAtomicMock, readEntityRowMock, readEntityRowsPageMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
-  writeOverrideAtomicMock: vi.fn()
+  writeOverrideAtomicMock: vi.fn(),
+  readEntityRowMock: vi.fn(),
+  readEntityRowsPageMock: vi.fn()
 }))
 vi.mock('../../../server/utils/directus', () => ({ directusServiceRequest: directusServiceRequestMock }))
 vi.mock('../../../server/utils/content-workspace-entity-atomic', () => ({
-  writeWorkspaceEntityOverrideAtomic: writeOverrideAtomicMock
+  writeWorkspaceEntityOverrideAtomic: writeOverrideAtomicMock,
+  readWorkspaceEntityRowAtomic: readEntityRowMock,
+  readWorkspaceEntityRowsPageAtomic: readEntityRowsPageMock
 }))
 
 const WORKSPACE_ID = 'a1111111-1111-4111-8111-111111111111'
@@ -66,19 +72,99 @@ function entityRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
   writeOverrideAtomicMock.mockReset()
+  readEntityRowMock.mockReset()
+  readEntityRowsPageMock.mockReset()
 })
 
 describe('getWorkspaceEntityDetail', () => {
   it('normalizes a full row, including payload columns the listing deliberately omits', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow()] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow())
     const detail = await getWorkspaceEntityDetail(WORKSPACE_ID, CONTENT_ENTITY_ID)
     expect(detail).toMatchObject({ contentEntityId: CONTENT_ENTITY_ID, revision: 0, baseDataHash: 'sha256-base' })
     expect(detail?.authoredPresentation).toEqual([])
   })
 
+  // Production save-conflict regression (post Items Mechanics Editing
+  // deploy): this read used to go through directusServiceRequest, which
+  // Directus's own response cache (CACHE_ENABLED=true in production)
+  // could keep serving stale -- including a stale `revision` -- for as
+  // long as nothing else flushed it, since the atomic write this function
+  // feeds (writeWorkspaceEntityOverrideAtomic) bypasses Directus entirely
+  // and never triggers that cache's invalidation. A save conditioned on a
+  // revision read this way could report a false 409 that never cleared on
+  // retry, even though no other editor ever touched the entity. Pinned
+  // here as an architectural guarantee: this function must NEVER call
+  // directusServiceRequest at all, for ANY outcome.
+  it('reads exclusively through readWorkspaceEntityRowAtomic -- never directusServiceRequest, for any outcome', async () => {
+    readEntityRowMock.mockResolvedValueOnce(entityRow())
+    await getWorkspaceEntityDetail(WORKSPACE_ID, CONTENT_ENTITY_ID)
+    expect(readEntityRowMock).toHaveBeenCalledWith(WORKSPACE_ID, CONTENT_ENTITY_ID)
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+
+    readEntityRowMock.mockResolvedValueOnce(null)
+    await getWorkspaceEntityDetail(WORKSPACE_ID, CONTENT_ENTITY_ID)
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
   it('returns null when no such entity exists', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [] })
+    readEntityRowMock.mockResolvedValueOnce(null)
     expect(await getWorkspaceEntityDetail(WORKSPACE_ID, CONTENT_ENTITY_ID)).toBeNull()
+  })
+
+  // Production save-conflict regression follow-up: database unavailability
+  // must never masquerade as "not found". A persistence failure/
+  // misconfiguration propagates as a thrown ContentWorkspacePersistenceUnavailableError,
+  // never a quiet `null` a route's own `if (!entity) throw 404` would
+  // misreport.
+  it('propagates a persistence failure -- never returns null for it', async () => {
+    readEntityRowMock.mockRejectedValueOnce(new ContentWorkspacePersistenceUnavailableError('ELDRA_WORKSPACE_DB_URL is not configured'))
+    await expect(getWorkspaceEntityDetail(WORKSPACE_ID, CONTENT_ENTITY_ID)).rejects.toThrow(ContentWorkspacePersistenceUnavailableError)
+  })
+})
+
+// Catalogue freshness fix -- listAllWorkspaceEntityDetails feeds
+// world-content-sources.ts's gameplay-facing catalogue build, so unlike
+// getWorkspaceEntityDetail (editor-only) it must gracefully degrade to
+// Directus, never break reading outright, when the direct connection is
+// unavailable.
+describe('listAllWorkspaceEntityDetails', () => {
+  it('reads via readWorkspaceEntityRowsPageAtomic, paginating with the same page size until a short page -- never calling Directus', async () => {
+    const fullPage = Array.from({ length: 500 }, (_, i) => entityRow({ content_entity_id: `ce_${i}` }))
+    const shortPage = [entityRow({ content_entity_id: 'ce_last' })]
+    readEntityRowsPageMock.mockResolvedValueOnce(fullPage).mockResolvedValueOnce(shortPage)
+
+    const result = await listAllWorkspaceEntityDetails(WORKSPACE_ID)
+
+    expect(result.source).toBe('postgres')
+    expect(result.entities).toHaveLength(501)
+    expect(readEntityRowsPageMock).toHaveBeenCalledTimes(2)
+    expect(readEntityRowsPageMock).toHaveBeenNthCalledWith(1, WORKSPACE_ID, 500, 0)
+    expect(readEntityRowsPageMock).toHaveBeenNthCalledWith(2, WORKSPACE_ID, 500, 500)
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the EXISTING Directus-paginated read, with the same filter/sort/fields, when the direct connection is unavailable', async () => {
+    readEntityRowsPageMock.mockRejectedValueOnce(new ContentWorkspacePersistenceUnavailableError('ELDRA_WORKSPACE_DB_URL is not configured'))
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow()] })
+
+    const result = await listAllWorkspaceEntityDetails(WORKSPACE_ID)
+
+    expect(result.source).toBe('directus-fallback')
+    expect(result.entities).toHaveLength(1)
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+    const [, options] = directusServiceRequestMock.mock.calls[0]!
+    expect(options.query).toMatchObject({
+      filter: { workspace_id: { _eq: WORKSPACE_ID } },
+      sort: ['id'],
+      limit: 500,
+      offset: 0
+    })
+  })
+
+  it('an unexpected error (not persistence-unavailable) propagates, never silently falling back', async () => {
+    readEntityRowsPageMock.mockRejectedValueOnce(new Error('unexpected bug'))
+    await expect(listAllWorkspaceEntityDetails(WORKSPACE_ID)).rejects.toThrow('unexpected bug')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
   })
 })
 
@@ -91,14 +177,14 @@ describe('applyPresentationEdits', () => {
   })
 
   it('reports not-found when the entity does not exist -- never even attempts the atomic write', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [] })
+    readEntityRowMock.mockResolvedValueOnce(null)
     const outcome = await applyPresentationEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, [{ path: 'name', value: 'X', baseValueHash: null }], ACCOUNT_ID)
     expect(outcome).toEqual({ ok: false, stage: 'not-found' })
     expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
   })
 
   it('reports a conflict, with the current entity, when expectedRevision does not match the just-read value -- and never attempts the atomic write', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 3 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 3 }))
     const outcome = await applyPresentationEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, [{ path: 'name', value: 'X', baseValueHash: null }], ACCOUNT_ID)
     expect(outcome.ok).toBe(false)
     if (!outcome.ok && outcome.stage === 'conflict') expect(outcome.current.revision).toBe(3)
@@ -106,7 +192,7 @@ describe('applyPresentationEdits', () => {
   })
 
   it('on success: calls the atomic writer with the correct column, computed override list, and diff', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({
       ok: true,
       entity: entityRow({ revision: 1, authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }] })
@@ -133,7 +219,7 @@ describe('applyPresentationEdits', () => {
   })
 
   it('a conflict reported by the atomic writer itself (a race landed between our read and the write) is surfaced honestly, never a silent success', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({
       ok: false, reason: 'conflict', message: 'stale', current: entityRow({ revision: 1 })
     })
@@ -144,7 +230,7 @@ describe('applyPresentationEdits', () => {
   })
 
   it('a persistence-unconfigured/failure result from the atomic writer is reported distinctly, never as a conflict or a plain 404', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: false, reason: 'persistence-unconfigured', message: 'ELDRA_WORKSPACE_DB_URL is not configured' })
 
     const outcome = await applyPresentationEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, [{ path: 'name', value: 'X', baseValueHash: null }], ACCOUNT_ID)
@@ -156,7 +242,7 @@ describe('applyPresentationEdits', () => {
       revision: 0,
       authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Same', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
     })
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    readEntityRowMock.mockResolvedValueOnce(existing)
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, revision: 1 } })
 
     const outcome = await applyPresentationEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, [{ path: 'name', value: 'Same', baseValueHash: null }], ACCOUNT_ID)
@@ -180,7 +266,7 @@ describe('revertPresentationPath / revertPresentationChannel', () => {
         { channel: 'presentation', path: 'sourceBook', value: 'Homebrew', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }
       ]
     })
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    readEntityRowMock.mockResolvedValueOnce(existing)
     writeOverrideAtomicMock.mockResolvedValueOnce({
       ok: true,
       entity: { ...existing, authored_presentation: [existing.authored_presentation[1]], revision: 1 }
@@ -200,7 +286,7 @@ describe('revertPresentationPath / revertPresentationChannel', () => {
       revision: 0,
       authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
     })
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    readEntityRowMock.mockResolvedValueOnce(existing)
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, authored_presentation: [], revision: 1 } })
 
     const outcome = await revertPresentationChannel(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, ACCOUNT_ID)
@@ -212,7 +298,7 @@ describe('revertPresentationPath / revertPresentationChannel', () => {
 
 describe('applyMechanicsEdits / revertMechanicsPath / revertMechanicsChannel', () => {
   it('refuses a mechanics path on a non-item entity, without reading or writing anything', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ entity_type: 'spell' })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ entity_type: 'spell' }))
     const outcome = await applyMechanicsEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'spell', [{ path: 'rarity', value: 'rare' }], ACCOUNT_ID)
     expect(outcome).toEqual({ ok: false, stage: 'invalid-path', path: 'rarity' })
     expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
@@ -225,7 +311,7 @@ describe('applyMechanicsEdits / revertMechanicsPath / revertMechanicsChannel', (
   })
 
   it('on success: writes the authored_mechanics column, never authored_presentation', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({
       ok: true,
       entity: entityRow({ revision: 1, authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }] })
@@ -247,7 +333,7 @@ describe('applyMechanicsEdits / revertMechanicsPath / revertMechanicsChannel', (
         { channel: 'mechanics', path: 'weight', value: 5, authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }
       ]
     })
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    readEntityRowMock.mockResolvedValueOnce(existing)
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, authored_mechanics: [existing.authored_mechanics[1]], revision: 1 } })
 
     const outcome = await revertMechanicsPath(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', 'rarity', ACCOUNT_ID)
@@ -260,7 +346,7 @@ describe('applyMechanicsEdits / revertMechanicsPath / revertMechanicsChannel', (
       revision: 0,
       authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
     })
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [existing] })
+    readEntityRowMock.mockResolvedValueOnce(existing)
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: { ...existing, authored_mechanics: [], revision: 1 } })
 
     const outcome = await revertMechanicsChannel(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, ACCOUNT_ID)
@@ -281,7 +367,7 @@ describe('applyEntityEdits (combined presentation + mechanics save)', () => {
   })
 
   it('a mechanics edit is refused for a non-item entity even when bundled with a valid presentation edit', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ entity_type: 'spell' })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ entity_type: 'spell' }))
     const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'spell', [
       { channel: 'presentation', path: 'name', value: 'X', baseValueHash: null },
       { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
@@ -290,7 +376,7 @@ describe('applyEntityEdits (combined presentation + mechanics save)', () => {
   })
 
   it('on success: writes BOTH columns in ONE atomic call, with a diff covering both channels', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({
       ok: true,
       entity: entityRow({
@@ -318,7 +404,7 @@ describe('applyEntityEdits (combined presentation + mechanics save)', () => {
   })
 
   it('a mechanics-only edit set writes only authored_mechanics, never touching authored_presentation', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 0 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 0 }))
     writeOverrideAtomicMock.mockResolvedValueOnce({ ok: true, entity: entityRow({ revision: 1 }) })
 
     await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
@@ -330,7 +416,7 @@ describe('applyEntityEdits (combined presentation + mechanics save)', () => {
   })
 
   it('a conflict refuses the whole combined write -- the caller\'s draft is never partially applied', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [entityRow({ revision: 3 })] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 3 }))
     const outcome = await applyEntityEdits(WORKSPACE_ID, CONTENT_ENTITY_ID, 0, 'item', [
       { channel: 'presentation', path: 'name', value: 'X', baseValueHash: null },
       { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
@@ -343,16 +429,20 @@ describe('applyEntityEdits (combined presentation + mechanics save)', () => {
 
 describe('createEntityCheckpoint', () => {
   it('writes a checkpoint revision carrying a snapshot, and touches no entity payload (never calls the atomic writer)', async () => {
-    directusServiceRequestMock
-      .mockResolvedValueOnce({ data: [entityRow({ revision: 2 })] })
-      .mockResolvedValueOnce({ data: [{ id: 'rev-1' }] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({ revision: 2 }))
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [{ id: 'rev-1' }] })
 
     const outcome = await createEntityCheckpoint(WORKSPACE_ID, CONTENT_ENTITY_ID, 'Before the big revision', ACCOUNT_ID)
     expect(outcome).toEqual({ ok: true, revisionId: 'rev-1' })
 
-    expect(directusServiceRequestMock).toHaveBeenCalledTimes(2) // read + revision write only; never a PATCH to the entity
+    // The entity read now goes through readWorkspaceEntityRowAtomic (direct
+    // Postgres, never Directus -- see content-workspace-entity-atomic.ts's
+    // own "WHY THE READ ALSO LIVES HERE NOW" header), so directus is called
+    // exactly once here: the revision/checkpoint write itself, never a
+    // PATCH to the entity.
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
     expect(writeOverrideAtomicMock).not.toHaveBeenCalled()
-    const revisionCall = directusServiceRequestMock.mock.calls[1]
+    const revisionCall = directusServiceRequestMock.mock.calls[0]
     expect(revisionCall[1].body.kind).toBe('checkpoint')
     expect(revisionCall[1].body.label).toBe('Before the big revision')
     expect(revisionCall[1].body.snapshot).toMatchObject({ revision: 2 })
@@ -365,19 +455,16 @@ describe('createEntityCheckpoint', () => {
   // anywhere in this codebase to read a checkpoint's snapshot back --
   // that remains explicitly out of scope, not implemented by this check.
   it('the snapshot includes authoredMechanics alongside authoredPresentation when both are set', async () => {
-    directusServiceRequestMock
-      .mockResolvedValueOnce({
-        data: [entityRow({
-          revision: 2,
-          authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }],
-          authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
-        })]
-      })
-      .mockResolvedValueOnce({ data: [{ id: 'rev-2' }] })
+    readEntityRowMock.mockResolvedValueOnce(entityRow({
+      revision: 2,
+      authored_presentation: [{ channel: 'presentation', path: 'name', value: 'Fine Shortsword', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }],
+      authored_mechanics: [{ channel: 'mechanics', path: 'rarity', value: 'rare', authoredBy: ACCOUNT_ID, authoredAt: '2026-01-01T00:00:00Z', baseValueHash: null }]
+    }))
+    directusServiceRequestMock.mockResolvedValueOnce({ data: [{ id: 'rev-2' }] })
 
     await createEntityCheckpoint(WORKSPACE_ID, CONTENT_ENTITY_ID, 'Before the mechanics change', ACCOUNT_ID)
 
-    const revisionCall = directusServiceRequestMock.mock.calls[1]
+    const revisionCall = directusServiceRequestMock.mock.calls[0]
     expect(revisionCall[1].body.snapshot.authoredPresentation).toEqual([
       expect.objectContaining({ path: 'name', value: 'Fine Shortsword' })
     ])
@@ -387,7 +474,7 @@ describe('createEntityCheckpoint', () => {
   })
 
   it('reports not-found rather than writing a checkpoint for a nonexistent entity', async () => {
-    directusServiceRequestMock.mockResolvedValueOnce({ data: [] })
+    readEntityRowMock.mockResolvedValueOnce(null)
     expect(await createEntityCheckpoint(WORKSPACE_ID, CONTENT_ENTITY_ID, 'label', ACCOUNT_ID)).toEqual({ ok: false, stage: 'not-found' })
   })
 })

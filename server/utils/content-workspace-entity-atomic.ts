@@ -29,15 +29,50 @@
 // ---------------------------------------------------------------------------
 // WHAT THIS MODULE IS NOT
 // ---------------------------------------------------------------------------
-// Not a general-purpose database layer: one operation
-// (`writeWorkspaceEntityOverrideAtomic`), one fixed statement shape, no
-// query builder, no ORM. Every OTHER Content Workspace read/write
-// (workspace CRUD, entity listing, import, lineage adoption, snapshots,
-// checkpoints) keeps going through Directus's REST API, completely
-// untouched -- only the revision-gated override write (edit AND revert,
-// which share this module's one function) moves here. A checkpoint writes
-// no payload change and needs no revision gate, so it stays on the
-// Directus REST path.
+// Not a general-purpose database layer: two operations
+// (`writeWorkspaceEntityOverrideAtomic`, `readWorkspaceEntityRowAtomic`),
+// each one fixed statement shape, no query builder, no ORM. Every OTHER
+// Content Workspace read/write (workspace CRUD, entity LISTING [plural --
+// `listAllWorkspaceEntityDetails`'s own catalogue-building read], import,
+// lineage adoption, snapshots, checkpoints) keeps going through Directus's
+// REST API, completely untouched -- only the revision-gated override write
+// (edit AND revert, which share this module's one write function) and the
+// SINGLE-entity read that conditions/computes on top of it move here. A
+// checkpoint writes no payload change and needs no revision gate, so it
+// stays on the Directus REST path.
+//
+// ---------------------------------------------------------------------------
+// WHY THE READ ALSO LIVES HERE NOW -- PRODUCTION CACHE-COHERENCY HOTFIX
+// ---------------------------------------------------------------------------
+// `getWorkspaceEntityDetail` (content-workspace-entities.ts) used to read
+// this SAME row through Directus's REST API -- fine for DISPLAY, but every
+// write-path caller (`writeOverrides`/`applyEntityEdits`) also used it to
+// fetch "the current revision" to condition on, and "the current override
+// lists" to compute the new value from. Directus 11.12.0's own response
+// cache (CACHE_ENABLED=true, CACHE_STORE=redis, CACHE_AUTO_PURGE=true in
+// production) invalidates ONLY as a side effect of `ItemsService`
+// create/update/delete calls -- identical mechanism to
+// character-resource-atomic.ts's own documented production incident, see
+// that module's header. `writeWorkspaceEntityOverrideAtomic`'s writes go
+// straight to Postgres and never touch `ItemsService`, so they never
+// trigger that invalidation: a `GET /items/content_workspace_entities`
+// made through Directus's REST API could keep returning a cached,
+// PRE-write response (including a stale `revision` and stale override
+// lists) for as long as nothing else happens to flush Directus's cache --
+// in a quiet environment (e.g. right after a deploy, testing one entity in
+// isolation), that window can persist indefinitely. The visible symptom:
+// a save reports a 409 conflict that never clears on retry (every retry's
+// `expectedRevision` is ALSO read from the same stale cache, so it is
+// self-consistently wrong every time), and the "last saved state" preview
+// never updates after a successful save. `readWorkspaceEntityRowAtomic`
+// closes this the same way `readCharacterResourcesAtomic` already did for
+// `resources`: every reader that needs the row's TRUTH (not merely a
+// display convenience) reads through the SAME Directus-independent path
+// its own writes already use. `listAllWorkspaceEntityDetails` (the
+// catalogue-building LIST read) is NOT changed by this fix -- it is a
+// separate, paginated Directus query with its own revision-gated cache
+// (`world-content-sources.ts`'s `sourceCache`), out of scope for this
+// specific save-conflict bug; see this fix's own report for why.
 //
 // ---------------------------------------------------------------------------
 // THE TRANSACTION, EXACTLY
@@ -97,6 +132,7 @@
 
 import { Pool, type PoolConfig } from 'pg'
 import { randomUUID } from 'node:crypto'
+import { ContentWorkspacePersistenceUnavailableError } from './content-workspace-schema'
 
 export type WorkspaceOverrideColumn = 'authored_presentation' | 'authored_mechanics'
 
@@ -303,6 +339,87 @@ export async function writeWorkspaceEntityOverrideAtomic(input: {
   })
 
   return result
+}
+
+// Reads one entity row DIRECTLY, bypassing Directus entirely -- see this
+// module's own "WHY THE READ ALSO LIVES HERE NOW" header for the exact
+// cache-coherency bug this closes. `null` means "no such row" (a genuine,
+// expected outcome every caller already treats as not-found); a
+// persistence misconfiguration/failure THROWS rather than returning a
+// discriminated result -- a read failure here is an infrastructure error,
+// not a domain outcome a caller should branch on (the identical posture
+// `getPool()` itself already takes), and keeping this a plain `throw`
+// means every existing caller of `getWorkspaceEntityDetail` needs zero
+// changes to its own error handling.
+export async function readWorkspaceEntityRowAtomic(workspaceId: string, contentEntityId: string): Promise<WorkspaceEntityRow | null> {
+  const result = await withPersistenceFailureHandling(async () => {
+    const client = await getPool().connect()
+    try {
+      const res = await client.query(
+        `SELECT ${ENTITY_ROW_FIELDS} FROM content_workspace_entities WHERE workspace_id = $1 AND content_entity_id = $2`,
+        [workspaceId, contentEntityId]
+      )
+      return { ok: true as const, row: (res.rows[0] as WorkspaceEntityRow | undefined) ?? null }
+    } finally {
+      client.release()
+    }
+  })
+  if ('reason' in result) {
+    throw new ContentWorkspacePersistenceUnavailableError(`Content Workspace entity read failed (${result.reason}): ${result.message}`)
+  }
+  return result.row
+}
+
+// Reads JUST the workspace's own cache-witness counter directly, bypassing
+// Directus -- the authoritative value world-content-sources.ts's
+// `sourceCache` must key its own invalidation check on. `null` means no
+// such workspace row (a genuine, expected outcome); a persistence
+// misconfiguration/failure throws `ContentWorkspacePersistenceUnavailableError`
+// -- callers that can safely degrade to a less-fresh source (gameplay
+// reads, never the editor's own revision-conditioned write) catch this
+// specific error and fall back, rather than letting it break reading.
+export async function readWorkspaceRevisionAtomic(workspaceId: string): Promise<number | null> {
+  const result = await withPersistenceFailureHandling(async () => {
+    const client = await getPool().connect()
+    try {
+      const res = await client.query('SELECT revision FROM content_workspaces WHERE id = $1', [workspaceId])
+      return { ok: true as const, revision: res.rows[0] ? Number(res.rows[0].revision) : null }
+    } finally {
+      client.release()
+    }
+  })
+  if ('reason' in result) {
+    throw new ContentWorkspacePersistenceUnavailableError(`Content Workspace revision read failed (${result.reason}): ${result.message}`)
+  }
+  return result.revision
+}
+
+// One page of a workspace's entity rows, directly, bypassing Directus --
+// the SAME filter (workspace_id), ordering (by id), and pagination shape
+// listAllWorkspaceEntityDetails's own Directus loop already uses, so the
+// caller's paging logic does not need to change, only which single-page
+// primitive it calls. Throws `ContentWorkspacePersistenceUnavailableError`
+// on misconfiguration/failure -- the caller (listAllWorkspaceEntityDetails)
+// catches specifically that to fall back to the existing Directus read,
+// never a silent empty page that would look like "this workspace has no
+// more entities."
+export async function readWorkspaceEntityRowsPageAtomic(workspaceId: string, limit: number, offset: number): Promise<WorkspaceEntityRow[]> {
+  const result = await withPersistenceFailureHandling(async () => {
+    const client = await getPool().connect()
+    try {
+      const res = await client.query(
+        `SELECT ${ENTITY_ROW_FIELDS} FROM content_workspace_entities WHERE workspace_id = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+        [workspaceId, limit, offset]
+      )
+      return { ok: true as const, rows: res.rows as WorkspaceEntityRow[] }
+    } finally {
+      client.release()
+    }
+  })
+  if ('reason' in result) {
+    throw new ContentWorkspacePersistenceUnavailableError(`Content Workspace entity listing failed (${result.reason}): ${result.message}`)
+  }
+  return result.rows
 }
 
 // Bumps content_workspaces.revision ALONE, atomically -- used by the

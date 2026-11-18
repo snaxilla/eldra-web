@@ -35,6 +35,7 @@ import {
   __closeWorkspacePoolForTesting,
   __setWorkspacePoolForTesting
 } from '../../server/utils/content-workspace-entity-atomic'
+import { getWorkspaceEntityDetail } from '../../server/utils/content-workspace-entities'
 
 const DATABASE_URL = process.env.ELDRA_WORKSPACE_DB_URL
 const ADMIN_DATABASE_URL = process.env.ELDRA_WORKSPACE_TEST_ADMIN_DB_URL ?? DATABASE_URL
@@ -137,6 +138,61 @@ async function countRevisions(contentEntityId: string) {
 function overridesFor(name: string) {
   return [{ channel: 'presentation', path: 'name', value: name, authoredBy: 'acct-1', authoredAt: new Date().toISOString(), baseValueHash: null }]
 }
+
+// Production save-conflict regression: getWorkspaceEntityDetail
+// (content-workspace-entities.ts) used to read through Directus's REST
+// API. Directus's own response cache invalidates only as a side effect of
+// its OWN ItemsService writes, never as a side effect of
+// writeWorkspaceEntityOverrideAtomic's direct-Postgres writes -- so a GET
+// through Directus right after an atomic write could keep returning a
+// stale, pre-write snapshot (stale `revision` included) indefinitely,
+// producing a 409 on save that never cleared on retry even though no
+// other editor touched the entity. This proves the fix against a REAL
+// database, not a mock: a write via the atomic module is immediately
+// visible to getWorkspaceEntityDetail, with zero Directus dependency for
+// that read at all (this file never configures a Directus connection --
+// if getWorkspaceEntityDetail regressed to needing one, this would fail
+// outright, not merely assert something subtly wrong).
+describe('getWorkspaceEntityDetail -- reads the SAME row the atomic write just changed, with no Directus dependency', () => {
+  it('sees the fresh revision and override list immediately after an atomic write, never a stale snapshot', async () => {
+    const before = await getWorkspaceEntityDetail(workspaceId, 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    expect(before?.revision).toBe(0)
+    expect(before?.authoredPresentation).toEqual([])
+
+    const writeResult = await writeWorkspaceEntityOverrideAtomic({
+      workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: 0,
+      columns: { authored_presentation: overridesFor('Test Shortsword') },
+      revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'presentation', path: 'name', from: undefined, to: 'Test Shortsword' }] }
+    })
+    expect(writeResult.ok).toBe(true)
+
+    // The bug this regression test targets: this read must reflect the
+    // write that just landed, immediately, every time -- not "eventually,
+    // once some cache expires."
+    const after = await getWorkspaceEntityDetail(workspaceId, 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    expect(after?.revision).toBe(1)
+    expect(after?.authoredPresentation[0]?.value).toBe('Test Shortsword')
+
+    // A second, immediately-following save using the NOW-correct revision
+    // succeeds on the first attempt -- the exact "change title, change
+    // damage, click Save" flow from the bug report, proven end to end
+    // against a real database.
+    const secondWrite = await writeWorkspaceEntityOverrideAtomic({
+      workspaceId, contentEntityId: 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa', expectedRevision: after!.revision,
+      columns: { authored_mechanics: [{ channel: 'mechanics', path: 'damage', value: { dice: '2d12', damageType: null }, authoredBy: ACCOUNT_A, authoredAt: new Date().toISOString(), baseValueHash: null }] },
+      revision: { kind: 'autosave', label: null, actorAccountId: ACCOUNT_A, diff: [{ channel: 'mechanics', path: 'damage', from: undefined, to: { dice: '2d12', damageType: null } }] }
+    })
+    expect(secondWrite.ok).toBe(true)
+
+    const final = await getWorkspaceEntityDetail(workspaceId, 'ce_aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    expect(final?.revision).toBe(2)
+    expect(final?.authoredMechanics[0]?.value).toEqual({ dice: '2d12', damageType: null })
+  })
+
+  it('returns null for a nonexistent entity, with no Directus dependency', async () => {
+    expect(await getWorkspaceEntityDetail(workspaceId, 'ce_doesnotexist00000000000000')).toBeNull()
+  })
+})
 
 describe('writeWorkspaceEntityOverrideAtomic -- single write', () => {
   it('writes the override, bumps the entity revision, records history, and bumps the workspace revision -- all together', async () => {

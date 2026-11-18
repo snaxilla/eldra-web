@@ -15,7 +15,9 @@
 // different answers for the identical image field -- caching by
 // workspace alone would leak one World's resolved asset into another's
 // response. Invalidated by comparing the cached entry's `revision`
-// against `content_workspaces.revision`'s current value -- the
+// against the workspace's EFFECTIVE revision (`readEffectiveWorkspaceRevision`,
+// below -- the direct-Postgres value when available, Directus's own
+// `content_workspaces.revision` field as a fallback) -- the
 // collision-safe counter §10.1 asks for, not an updated_at timestamp.
 //
 // PERFORMANCE. One bounded, paginated entity fetch
@@ -27,12 +29,44 @@ import { directusServiceRequest } from './directus'
 import { getContentWorkspace } from './content-workspaces'
 import { listAllWorkspaceEntityDetails, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { resolveBasePresentation } from './content-workspace-presentation'
+import { ContentWorkspacePersistenceUnavailableError } from './content-workspace-schema'
+import { readWorkspaceRevisionAtomic } from './content-workspace-entity-atomic'
 import { buildSparseObject } from '../../app/lib/content-authoring/overrides'
 import { resolveEffectiveItemData } from '../../app/lib/item-mechanics'
 import { mergeAuthoredPresentation, type AuthoredPresentation, type PortableAssetRef, type ResolvedImage } from '../../app/lib/content-presentation/authored'
 import type { PresentationEntry } from '../../app/lib/content-presentation/types'
 import type { LegacyBaseRef } from '../../app/lib/content-identity'
 import type { RulesFacet } from '../../app/lib/content-rules'
+
+// CATALOGUE CACHE-COHERENCY. `workspace.revision` above is read via
+// getContentWorkspace, i.e. through Directus's REST API -- a GET that
+// could keep returning a stale, pre-write value for the SAME reason
+// content-workspace-entity-atomic.ts's own header documents for the
+// entity row itself (writeWorkspaceEntityOverrideAtomic's direct-Postgres
+// write never invalidates Directus's response cache). If `sourceCache`
+// below keyed its own invalidation check on that stale value, it could
+// never detect a save that just landed -- the exact gap this function
+// closes. Tries the authoritative, direct-Postgres revision FIRST and
+// falls back to Directus's own `workspace.revision` only when the direct
+// connection is unconfigured/unreachable (ELDRA_WORKSPACE_DB_URL is an
+// EDITING dependency; a deployment that has never configured it must keep
+// serving gameplay reads exactly as before, just without this freshness
+// guarantee -- never broken outright). Any OTHER kind of error (a real
+// bug) still propagates.
+//
+// `authoritative: false` (Directus's own field was used) is a signal the
+// CALLER needs, not just this function -- see loadWorkspaceAsSource's own
+// caching guard below for why a non-authoritative revision must never be
+// paired with a cached entry.
+async function readEffectiveWorkspaceRevision(workspaceId: string, directusRevision: number): Promise<{ revision: number; authoritative: boolean }> {
+  try {
+    const authoritative = await readWorkspaceRevisionAtomic(workspaceId)
+    return authoritative === null ? { revision: directusRevision, authoritative: false } : { revision: authoritative, authoritative: true }
+  } catch (error) {
+    if (error instanceof ContentWorkspacePersistenceUnavailableError) return { revision: directusRevision, authoritative: false }
+    throw error
+  }
+}
 
 // Deliberately NOT `WorldContentEntry` -- a workspace entity is not a
 // published ContentPublicationCandidate (no externalId guarantee, no
@@ -140,12 +174,14 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
     }
   }
 
+  const { revision: effectiveRevision, authoritative: revisionIsAuthoritative } = await readEffectiveWorkspaceRevision(workspaceId, workspace.revision)
+
   const cached = sourceCache.get(cacheKey(workspaceId, worldId))
-  if (cached && cached.revision === workspace.revision) {
+  if (cached && cached.revision === effectiveRevision) {
     return { ok: true, workspaceTitle: cached.workspaceTitle, entries: cached.entries }
   }
 
-  const entities = await listAllWorkspaceEntityDetails(workspaceId)
+  const { entities, source: entityListSource } = await listAllWorkspaceEntityDetails(workspaceId)
 
   const sparseByEntity = entities.map((entity) => buildSparseObject(entity.authoredPresentation, 'presentation') as AuthoredPresentation)
   const mediaFileIds = sparseByEntity
@@ -191,6 +227,19 @@ export async function loadWorkspaceAsSource(workspaceId: string, worldId: string
     }
   })
 
-  sourceCache.set(cacheKey(workspaceId, worldId), { revision: workspace.revision, workspaceTitle: workspace.title, entries })
+  // Revision + entity-list are ONE coordinated source choice: only cache
+  // when BOTH came from the authoritative direct-Postgres path. Caching a
+  // Directus-fallback entity list under a revision number that LOOKS
+  // authoritative would let a transient Postgres outage poison later,
+  // healthy reads -- a subsequent call at the SAME authoritative revision
+  // (Postgres having since recovered) would wrongly treat the stale
+  // fallback list as still valid and never refetch. Skipping the cache
+  // write here does not break reading: `entries` built above from
+  // whichever source actually answered is still returned to THIS caller,
+  // so legacy/fallback availability is unaffected -- only the CACHE's own
+  // trustworthiness is protected.
+  if (revisionIsAuthoritative && entityListSource === 'postgres') {
+    sourceCache.set(cacheKey(workspaceId, worldId), { revision: effectiveRevision, workspaceTitle: workspace.title, entries })
+  }
   return { ok: true, workspaceTitle: workspace.title, entries }
 }

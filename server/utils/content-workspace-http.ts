@@ -13,7 +13,7 @@ import { isWorkspaceId } from '../../app/lib/content-workspaces/validation'
 import { can, requireCapability, type Capability, type Principal } from './authorization'
 import { getContentWorkspace } from './content-workspaces'
 import { listWorldsBoundToWorkspace } from './world-content-packs'
-import { ContentWorkspaceSchemaError } from './content-workspace-schema'
+import { ContentWorkspacePersistenceUnavailableError, ContentWorkspaceSchemaError } from './content-workspace-schema'
 
 export function requirePrincipal(event: H3Event): Principal {
   const principal = event.context.principal ?? null
@@ -147,6 +147,17 @@ export function asHttpError(error: unknown): never {
       statusCode: 503,
       statusMessage: 'Content Workspaces are not available on this deployment',
       data: { code: 'content-workspace-schema-unavailable', message: error.message, collection: error.collection }
+    })
+  }
+  // Database unavailability must never surface as a 404 -- a route whose
+  // only check is `if (!entity) throw 404` would otherwise report an
+  // infrastructure outage as "this entity doesn't exist." See
+  // content-workspace-schema.ts's own header on this error class.
+  if (error instanceof ContentWorkspacePersistenceUnavailableError) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Content Workspace reading/editing is not available on this deployment',
+      data: { code: 'content-workspace-persistence-unavailable', message: error.message }
     })
   }
   throw error

@@ -18,6 +18,23 @@
 // workspace's cache-witness counter together -- see that module's own
 // header for the exact statement and the least-privilege
 // `eldra_workspace_writer` role it runs as.
+//
+// PRODUCTION CACHE-COHERENCY HOTFIX -- `getWorkspaceEntityDetail` below
+// reads the SAME row directly too now (`readWorkspaceEntityRowAtomic`),
+// never through Directus's REST API. It used to call `directusServiceRequest`
+// -- harmless for a page that only ever displays an entity, but every
+// write path here ALSO calls this function to fetch "the current
+// revision" to condition its own atomic write on, and "the current
+// override lists" to compute the new one from. Directus's own response
+// cache invalidates only as a side effect of its OWN ItemsService writes,
+// never as a side effect of the direct-Postgres write above -- so a GET
+// through Directus could keep returning a stale, pre-write snapshot
+// (stale revision included) for as long as nothing else flushed that
+// cache, producing a 409 that never clears on retry even though no other
+// editor ever touched the entity. See content-workspace-entity-atomic.ts's
+// own "WHY THE READ ALSO LIVES HERE NOW" header for the full account
+// (mirrors a previously-fixed, documented production incident in
+// character-resource-atomic.ts for a different table).
 
 import type { FieldOverride, OverrideChannel } from '../../app/lib/content-authoring/overrides'
 import { diffOverrides, emptyChannel, isValidOverridePath, removeOverridePath, upsertOverride } from '../../app/lib/content-authoring/overrides'
@@ -26,8 +43,13 @@ import type { BaseSourceRef, LegacyBaseRef } from '../../app/lib/content-identit
 import type { WorkspaceEntityOrigin, WorkspaceEntityState } from '../../app/lib/content-workspaces/types'
 import { directusServiceRequest } from './directus'
 import { CONTENT_WORKSPACE_ENTITIES_COLLECTION } from './content-workspaces'
-import { withWorkspaceSchema } from './content-workspace-schema'
-import { writeWorkspaceEntityOverrideAtomic, type WorkspaceOverrideColumn } from './content-workspace-entity-atomic'
+import { ContentWorkspacePersistenceUnavailableError, withWorkspaceSchema } from './content-workspace-schema'
+import {
+  readWorkspaceEntityRowAtomic,
+  readWorkspaceEntityRowsPageAtomic,
+  writeWorkspaceEntityOverrideAtomic,
+  type WorkspaceOverrideColumn
+} from './content-workspace-entity-atomic'
 
 type DirectusRow = Record<string, unknown>
 type DirectusResponse = { data?: unknown }
@@ -113,10 +135,65 @@ function normalizeDetail(row: DirectusRow): WorkspaceEntityDetail {
 const FULL_DETAIL_PAGE_SIZE = 500
 
 // Every entity in a workspace, WITH payloads -- Phase 6's whole-workspace
-// live source materialization. Paginated the same bounded way
+// live source materialization, consumed by world-content-sources.ts's
+// catalogue-building `loadWorkspaceAsSource` (gameplay-adjacent: feeds
+// character sheets/the catalogue for every World bound to this workspace,
+// not only the editor). Paginated the same bounded way
 // content-workspaces.ts's listWorkspaceEntityIdentities already reads the
 // identity-only projection, never an unbounded single fetch.
-export async function listAllWorkspaceEntityDetails(workspaceId: string): Promise<WorkspaceEntityDetail[]> {
+//
+// CATALOGUE CACHE-COHERENCY -- reads directly through Postgres FIRST
+// (readWorkspaceEntityRowsPageAtomic), same reasoning as
+// getWorkspaceEntityDetail's own fix: a GET through Directus here could
+// keep returning a stale, pre-write entity list (stale authored_mechanics
+// included) even after world-content-sources.ts's own revision check
+// correctly decided to refetch, which would make the refetch itself
+// pointless. UNLIKE getWorkspaceEntityDetail (editor-only, already
+// implicitly dependent on ELDRA_WORKSPACE_DB_URL for its own saves), this
+// function is also on the GAMEPLAY read path -- a deployment that has
+// never configured ELDRA_WORKSPACE_DB_URL at all (read-only/pinned-content-
+// only) must keep working exactly as before, so a persistence-unavailable
+// failure here falls back to the existing Directus-paginated read rather
+// than breaking character sheets/the catalogue. Any OTHER kind of error
+// (a real bug, not a configuration/connectivity question) still
+// propagates untouched.
+//
+// `source` on the result tells the caller WHICH path actually answered --
+// catalogue cache-fix follow-up: world-content-sources.ts must never cache
+// `source: 'directus-fallback'` entries under the authoritative revision
+// number, or a transient Postgres outage would "poison" the cache: a later
+// call at the SAME authoritative revision (Postgres having since
+// recovered) would wrongly treat the stale fallback list as still valid,
+// never refetching. See this function's own caller for the exact guard.
+export type WorkspaceEntityListResult = { entities: WorkspaceEntityDetail[]; source: 'postgres' | 'directus-fallback' }
+
+export async function listAllWorkspaceEntityDetails(workspaceId: string): Promise<WorkspaceEntityListResult> {
+  try {
+    const details: WorkspaceEntityDetail[] = []
+    let offset = 0
+
+    while (true) {
+      const page = await readWorkspaceEntityRowsPageAtomic(workspaceId, FULL_DETAIL_PAGE_SIZE, offset)
+      for (const row of page) details.push(normalizeDetail(row as unknown as DirectusRow))
+
+      if (page.length < FULL_DETAIL_PAGE_SIZE) break
+      offset += FULL_DETAIL_PAGE_SIZE
+    }
+
+    return { entities: details, source: 'postgres' }
+  } catch (error) {
+    if (!(error instanceof ContentWorkspacePersistenceUnavailableError)) throw error
+    return { entities: await listAllWorkspaceEntityDetailsViaDirectus(workspaceId), source: 'directus-fallback' }
+  }
+}
+
+// The ORIGINAL implementation, kept verbatim as the fallback for a
+// deployment with no ELDRA_WORKSPACE_DB_URL configured at all -- same
+// filter/sort/pagination/fields as the direct-Postgres path above, so a
+// caller sees identical results either way, just potentially staler ones
+// (the known, pre-existing tradeoff for a deployment that has not set up
+// the direct connection, unchanged by this fix).
+async function listAllWorkspaceEntityDetailsViaDirectus(workspaceId: string): Promise<WorkspaceEntityDetail[]> {
   return await withWorkspaceSchema(CONTENT_WORKSPACE_ENTITIES_COLLECTION, async () => {
     const details: WorkspaceEntityDetail[] = []
     let offset = 0
@@ -145,18 +222,8 @@ export async function listAllWorkspaceEntityDetails(workspaceId: string): Promis
 }
 
 export async function getWorkspaceEntityDetail(workspaceId: string, contentEntityId: string): Promise<WorkspaceEntityDetail | null> {
-  return await withWorkspaceSchema(CONTENT_WORKSPACE_ENTITIES_COLLECTION, async () => {
-    const res = await dx(`/items/${CONTENT_WORKSPACE_ENTITIES_COLLECTION}`, {
-      method: 'GET',
-      query: {
-        filter: { _and: [{ workspace_id: { _eq: workspaceId } }, { content_entity_id: { _eq: contentEntityId } }] },
-        limit: 1,
-        fields: DETAIL_FIELDS
-      }
-    })
-    const row = rows(res)[0]
-    return row ? normalizeDetail(row) : null
-  })
+  const row = await readWorkspaceEntityRowAtomic(workspaceId, contentEntityId)
+  return row ? normalizeDetail(row as unknown as DirectusRow) : null
 }
 
 export type EditOutcome =

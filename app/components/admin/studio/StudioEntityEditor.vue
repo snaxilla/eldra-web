@@ -370,6 +370,18 @@ function describeError(error: unknown): string | undefined {
 watch([() => props.workspaceId, () => props.contentEntityId], load, { immediate: true })
 watch(isDirty, (dirty) => emit('dirty-change', dirty))
 
+// The conflict banner's own "Reload" -- an EXPLICIT user action (never
+// automatic; a 409 alone never calls this), but still a real discard:
+// load() replaces draft/baseline (and mechanicsDraft/mechanicsBaseline)
+// with the server's current state, so the title/damage/etc. the user
+// typed before Save conflicted would otherwise vanish with no warning.
+// Confirms first, exactly like cancelDraft/requestClose already do for
+// every other way this editor discards unsaved work.
+function reloadAfterConflict() {
+  if (isDirty.value && !window.confirm('Reload to see the latest version? Your unsaved changes here will be lost -- reapply them after reloading if you still want them.')) return
+  load()
+}
+
 // Warn before an in-page navigation (not Vue Router -- this editor is
 // opened as a dialog/panel, never routed to directly) discards dirty
 // work the browser's own "leave site" prompt would otherwise silently
@@ -465,7 +477,15 @@ async function save() {
     const failure = error as { statusCode?: number; response?: { status?: number } }
     if ((failure.statusCode ?? failure.response?.status) === 409) {
       saveState.value = 'conflict'
-      errorMessage.value = 'This entity was saved by someone else since you loaded it. Your draft is kept below -- reload to see the latest version, or try saving again if you still want your changes applied on top.'
+      // Never suggests saving again: clicking Save again sends the SAME
+      // expectedRevision this request just used, which will conflict
+      // again every time -- there is no retry here that could succeed
+      // without first reloading. The only real path forward is Reload
+      // (re-fetches the current revision), then reapplying the edit on
+      // top of it -- which this banner's own Reload button does, never
+      // automatically, so an intervening change is never silently
+      // overwritten.
+      errorMessage.value = 'This entity was saved by someone else since you loaded it. Your draft is kept below -- click Reload to see the latest version, then reapply your changes on top of it. Saving again without reloading will fail the same way.'
     } else {
       saveState.value = 'error'
       errorMessage.value = describeError(error) || 'The save failed. Your draft is kept below -- try again.'
@@ -641,7 +661,7 @@ async function createCheckpoint() {
         v-if="saveState === 'conflict'"
         type="button"
         class="ml-2 underline underline-offset-4"
-        @click="load"
+        @click="reloadAfterConflict"
       >
         Reload
       </button>

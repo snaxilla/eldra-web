@@ -59,6 +59,23 @@ export class ContentWorkspaceSchemaError extends Error {
   }
 }
 
+// The direct-Postgres read path (content-workspace-entity-atomic.ts's
+// readWorkspaceEntityRowAtomic/readWorkspaceRevisionAtomic/
+// readWorkspaceEntityRowsPageAtomic) is unconfigured (ELDRA_WORKSPACE_DB_URL
+// unset) or genuinely unreachable. A DISTINCT error from "no such row" --
+// production save-conflict regression follow-up: database unavailability
+// must never silently read as "entity not found" (a caller checking only
+// `if (!entity)` would otherwise treat an infrastructure outage as a 404).
+// Named separately from ContentWorkspaceSchemaError above because the
+// remedy is different (a missing/misconfigured connection string, not a
+// missing collection) even though both resolve to a 503 at the HTTP layer.
+export class ContentWorkspacePersistenceUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ContentWorkspacePersistenceUnavailableError'
+  }
+}
+
 // Runs one Directus operation against a Content Workspace collection and
 // turns "collection missing or inaccessible" into a named, actionable
 // error. Every other failure propagates untouched.

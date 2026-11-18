@@ -47,7 +47,7 @@
 // player's homebrew spell is not silently absent from their own action list.
 
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
-import { getDerivedCharacter } from './character-derived'
+import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
 import { isAttackCapableAction } from '../../app/lib/content-actions'
 import type { CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
@@ -243,10 +243,29 @@ const UNARMED_STRIKE: ContentAction = {
   resolution: { kind: 'attack-roll', attackKind: 'melee' }
 }
 
-export async function getCharacterActions(
+// Roll System Phase 3C/3D (Roll Performance Audit) -- the shared assembly
+// behind both `getCharacterActions` (below, public contract unchanged) and
+// any caller that ALSO needs this same character's own `DerivedCharacterResult`
+// for a further purpose beyond the Actions list itself (e.g.
+// `resolveAttackAction`'s damage ability modifier, `resolveCombatAction`'s
+// attacker-side numbers). Exported so those callers can read `derived`
+// directly off the ONE assembleCharacter+getDerivedCharacter pass this
+// function already performs, instead of re-deriving the same character a
+// second time immediately afterward -- see click-to-dice-latency-trace.md
+// §12 (Roll System Phase 3C/3D) for the measured evidence this removes. Request-scoped by
+// construction (a plain return value threaded through one call, never a
+// cache/memo keyed on worldId/characterId), so there is no cross-request or
+// cross-character leak risk to reason about.
+export type CharacterActionsWithDerivedResult =
+  | { available: true; actions: CharacterAction[]; derived: DerivedCharacterResult }
+  | { available: false; reason: 'character-not-found' }
+  | { available: false; reason: 'no-catalogue-selection'; message: string }
+  | { available: false; reason: 'resource-persistence-unavailable'; message: string }
+
+export async function getCharacterActionsWithDerived(
   worldId: string | number,
   characterId: string | number
-): Promise<CharacterActionsResult> {
+): Promise<CharacterActionsWithDerivedResult> {
   const assembly = await assembleCharacter(worldId, characterId)
   if (!assembly.available) {
     if (assembly.reason === 'character-not-found') {
@@ -345,7 +364,24 @@ export async function getCharacterActions(
     }
   }
 
-  return { available: true, actions }
+  return { available: true, actions, derived }
+}
+
+// Public contract, UNCHANGED (consumed directly by
+// GET /api/worlds/:id/characters/:characterId/actions -- see that route's
+// own header: "makes no shaping decisions"). A thin wrapper over
+// `getCharacterActionsWithDerived` so the HTTP response shape never gains
+// the extra `derived` field; only in-process callers that import the
+// `WithDerived` variant see it.
+export async function getCharacterActions(
+  worldId: string | number,
+  characterId: string | number
+): Promise<CharacterActionsResult> {
+  const result = await getCharacterActionsWithDerived(worldId, characterId)
+  if (!result.available) {
+    return result
+  }
+  return { available: true, actions: result.actions }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +431,7 @@ export async function resolveAttackAction(
   characterId: string | number,
   actionId: string
 ): Promise<ResolveAttackActionResult> {
-  const actionsResult = await getCharacterActions(worldId, characterId)
+  const actionsResult = await getCharacterActionsWithDerived(worldId, characterId)
   if (!actionsResult.available) {
     if (actionsResult.reason === 'character-not-found') {
       return { ok: false, reason: 'character-not-found', message: 'Character not found in this world' }
@@ -423,7 +459,12 @@ export async function resolveAttackAction(
     }
   }
 
-  const derived = await getDerivedCharacter(worldId, characterId)
+  // Roll System Phase 3C/3D -- reused from the SAME assembleCharacter +
+  // getDerivedCharacter pass `getCharacterActionsWithDerived` already ran
+  // above, rather than a second independent `getDerivedCharacter` call
+  // (which `action.attackBonus` above already proves succeeded once for
+  // this exact character/World).
+  const derived = actionsResult.derived
   if (!derived.available) {
     return {
       ok: false,

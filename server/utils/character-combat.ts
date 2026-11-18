@@ -86,7 +86,7 @@
 // (there is no dice to double) and simply applies the same flat total.
 
 import { randomBytes } from 'node:crypto'
-import { getCharacterActions } from './character-actions'
+import { getCharacterActionsWithDerived } from './character-actions'
 import { getDerivedCharacter } from './character-derived'
 import { loadCharacterHealth, saveCharacterHealth } from './character-health'
 import { applyDamage, emptyCharacterHealth, type StoredCharacterHealth } from '../../app/lib/characters/health'
@@ -190,7 +190,7 @@ export async function resolveCombatAction(
   actionId: string,
   seed: string = randomBytes(16).toString('hex')
 ): Promise<CombatResolutionResult> {
-  const attackerActions = await getCharacterActions(worldId, attackerCharacterId)
+  const attackerActions = await getCharacterActionsWithDerived(worldId, attackerCharacterId)
   if (!attackerActions.available) {
     if (attackerActions.reason === 'character-not-found') {
       return { ok: false, reason: 'attacker-not-found', message: 'Attacking character not found in this world' }
@@ -206,7 +206,12 @@ export async function resolveCombatAction(
     return { ok: false, reason: 'no-resolution', message: `'${action.name}' has nothing to resolve -- it grants no attack roll or saving throw` }
   }
 
-  const attackerDerived = await getDerivedCharacter(worldId, attackerCharacterId)
+  // Roll System Phase 3C/3D -- reused from the SAME assembleCharacter +
+  // getDerivedCharacter pass `getCharacterActionsWithDerived` already ran
+  // above, rather than a second independent `getDerivedCharacter` call for
+  // the attacker (the target below is a genuinely different character and
+  // still needs its own separate call).
+  const attackerDerived = attackerActions.derived
   if (!attackerDerived.available) {
     return { ok: false, reason: 'rules-unavailable', message: attackerDerived.reason === 'character-not-found' ? 'Attacking character not found in this world' : attackerDerived.message }
   }

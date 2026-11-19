@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -49,6 +50,7 @@ const form = reactive({
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
 const {
   data: entities,
@@ -229,12 +231,14 @@ const selectedCharacterContextEntity = computed(() => {
 })
 
 
+// The Build-mode "nothing selected" aside that used to reserve this
+// space is gone -- Page Presentation now opens from the explicit
+// "Customize Page" button in the header instead, independent of `mode`.
 const characterDetailRailOpen = computed(() =>
   Boolean(
     selectedCharacterContextEntity.value ||
     showCreatePanel.value ||
-    showEditPanel.value ||
-    (mode.value === 'build' && !selectedCharacter.value)
+    showEditPanel.value
   )
 )
 
@@ -630,7 +634,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div data-character-page-shell :class="characterPageShellClass">
-      <div :class="selectedCharacter || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
+      <div :class="selectedCharacter ? 'pr-[380px]' : ''" class="transition-all duration-200">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -671,6 +675,14 @@ onBeforeUnmount(() => {
               >
                 Refresh
               </button>
+
+              <WorldPageCustomizeButton
+                :world-id="worldId"
+                page-key="characters"
+                title="Characters"
+                :can-edit="canEditPageSettings"
+                scope-note="Background and presentation mode for the Characters page. This does not affect the rest of the World."
+              />
             </div>
           </div>
 
@@ -776,23 +788,6 @@ onBeforeUnmount(() => {
         </section>
       </div>
     </div>
-
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <aside
-        v-if="mode === 'build' && !selectedCharacter"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
-      >
-      <div class="h-full min-w-0 overflow-y-auto overflow-x-hidden p-5">
-        <WorldPagePresentationPanel
-          embedded
-          :world-id="worldId"
-          page-key="characters"
-          title="Characters"
-          description="Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only."
-        />
-      </div>
-    </aside>
-    </Transition>
 
     <WorldEntityContextDrawer
       :open="Boolean(selectedCharacterContextEntity)"

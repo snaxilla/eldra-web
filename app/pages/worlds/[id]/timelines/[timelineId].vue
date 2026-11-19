@@ -7,6 +7,7 @@ import WorldMentionText from '~/components/world/WorldMentionText.vue'
 import WorldMentionAutocompleteTextarea from '~/components/world/WorldMentionAutocompleteTextarea.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,6 +57,9 @@ const { data, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.v
 
 const timeline = computed(() => (data.value as any)?.timeline || null)
 const events = computed(() => Array.isArray((data.value as any)?.events) ? (data.value as any).events : [])
+
+const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
 function compareTimelineEvents(a: any, b: any) {
   const sortDiff = Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)
@@ -363,14 +367,24 @@ onMounted(() => {
               </p>
             </div>
 
-            <button
-              v-if="mode === 'build'"
-              type="button"
-              class="eldra-button rounded-none px-4 py-2 text-sm"
-              @click="editingTimeline = !editingTimeline"
-            >
-              {{ editingTimeline ? 'Close Editor' : 'Edit Timeline' }}
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="mode === 'build'"
+                type="button"
+                class="eldra-button rounded-none px-4 py-2 text-sm"
+                @click="editingTimeline = !editingTimeline"
+              >
+                {{ editingTimeline ? 'Close Editor' : 'Edit Timeline' }}
+              </button>
+
+              <WorldPageCustomizeButton
+                :world-id="worldId"
+                page-key="timelines"
+                title="Timelines Page"
+                :can-edit="canEditPageSettings"
+                scope-note="Background and presentation mode for the whole Timelines page -- this applies to every timeline, not just this one. This does not affect the rest of the World."
+              />
+            </div>
           </div>
 
           <div
@@ -423,15 +437,6 @@ onMounted(() => {
           </div>
         </template>
       </section>
-
-      <div v-if="timeline && mode === 'build'" class="mt-6">
-        <WorldPagePresentationPanel
-          :world-id="worldId"
-          page-key="timelines"
-          title="Timelines Page"
-          description="Controls the timelines page presentation mode and background."
-        />
-      </div>
 
       <section
         v-if="timeline && mode === 'build'"

@@ -5,6 +5,7 @@ definePageMeta({
 
 import { render5eText } from '~/utils/render5e'
 import { renderMarkdown } from '~/utils/renderMarkdown'
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
@@ -31,6 +32,8 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: enemies, pending, error, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/enemies`, {
   default: () => []
 })
+
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
 function imageUrlForEnemy(enemy: any) {
   if (enemy?.imageUrl) return String(enemy.imageUrl)
@@ -224,12 +227,10 @@ function getEnemySummary(enemy: any) {
 
 
 
-const enemyDetailRailOpen = computed(() =>
-  Boolean(
-    selectedEnemy.value ||
-    (mode.value === 'build' && !selectedEnemy.value)
-  )
-)
+// The Build-mode "nothing selected" aside that used to reserve this
+// space is gone -- Page Presentation now opens from the explicit
+// "Customize Page" button in the header instead, independent of `mode`.
+const enemyDetailRailOpen = computed(() => Boolean(selectedEnemy.value))
 
 const enemyPageShellClass = computed(() => [
   'min-w-0 p-6 transition-[margin,max-width] duration-200',
@@ -499,13 +500,23 @@ async function deleteEnemy() {
               </p>
             </div>
 
-            <button
-              type="button"
-              class="eldra-button rounded-none px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
-              @click="refresh()"
-            >
-              Refresh
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+                @click="refresh()"
+              >
+                Refresh
+              </button>
+
+              <WorldPageCustomizeButton
+                :world-id="worldId"
+                page-key="enemies"
+                title="Enemies"
+                :can-edit="canEditPageSettings"
+                scope-note="Background and presentation mode for the Enemies page. This does not affect the rest of the World."
+              />
+            </div>
           </div>
 
           <div class="mt-5">
@@ -708,23 +719,6 @@ async function deleteEnemy() {
         </section>
       </div>
     </div>
-
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <aside
-        v-if="mode === 'build' && !selectedEnemy"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
-      >
-        <div class="p-5">
-          <WorldPagePresentationPanel
-        embedded
-            :world-id="worldId"
-            page-key="enemies"
-            title="Enemies"
-            description="Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only."
-          />
-        </div>
-      </aside>
-    </Transition>
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside

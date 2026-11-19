@@ -879,3 +879,98 @@ read-path change, no write-path/schema implication).
 ### Status
 
 **NOT committed.** Stopped here for review per this task's own closing instruction.
+
+## Page/background customization: explicit entry point (not yet committed)
+
+Follow-up #2 above, now fixed. Play/Build (`mode`) is confirmed Map-pin-only in product intent; this
+pass removes the last non-map surface still reading it for a presentation control.
+
+**Before**: `WorldPagePresentationPanel` (background image + presentation mode, keyed by `pageKey`)
+had no entry point reachable outside Build mode, and five call sites each independently gated it
+behind their own copy of a "Build mode, nothing selected" aside/block
+(`WorldEntityInteractivePage.vue`, `enemies.vue`, `characters/index.vue`, `timelines/index.vue`,
+`timelines/[timelineId].vue`) — on mobile this was additionally unreachable regardless of mode
+(`hidden md:block`). Entity-level AUTHORING actions already living in the SAME aside/header
+(Location Tools' "New Location" form; a Timeline's own "Edit Timeline"/"Add Timeline Entry") are a
+separate, still open, out-of-scope mode-coupling issue — not touched here, left exactly as they
+were. These were not fixed opportunistically alongside the presentation fix above, and deserve
+their OWN discoverability review (same shape as the entity Edit/Delete regression this whole
+document tracks, but for entity *creation*/editing controls specifically, not presentation) rather
+than being folded into this pass's narrower scope.
+
+**After**: a new capability-gated "Customize Page" button (`app/components/world/WorldPageCustomizeButton.vue`)
+in each of those five pages' own header action row, visible only when `world.settings.edit` is held
+(`app/lib/eldra/world-settings-eligibility.ts`'s `canEditWorldSettings`, the same established
+capability-only, no-`mode`-parameter pattern as `worldEntityDirectEditEligibility.ts`'s
+`canEditWorldEntities`). Opens the EXACT SAME, unmodified `WorldPagePresentationPanel` inside Nuxt
+UI's `UModal` (the same shared dialog primitive `CharacterInventoryPanel.vue`/
+`CharacterSpellcastingPanel.vue` already use) — no second implementation of the editor, no new
+persistence/save model (every panel action is already an immediate network save with no separate
+draft step, so there is no dirty-draft state to protect on close). Each call site's `scope-note`
+states plainly what the setting affects, including the two Timeline pages, which share ONE `pageKey`
+("timelines") between the list and per-timeline views — the note says so explicitly rather than
+implying the change is scoped to just the timeline being viewed.
+
+Build-mode asides that had NOTHING else in them (`enemies.vue`, `characters/index.vue`,
+`timelines/index.vue`, `timelines/[timelineId].vue`) were deleted outright, including their
+now-dead `mode`-based rail-open/padding computeds. `WorldEntityInteractivePage.vue`'s aside keeps
+Location Tools (untouched, still Build-mode-gated, out of scope) and now only renders at all on
+location pages, since the Presentation panel it used to also hold moved to the header button.
+
+**Explicitly NOT touched, and why**: `entities/[entityId]/index.vue`'s own "Page Builder" button+drawer
+already has an explicit, non-"nothing-selected" entry point and already reuses
+`WorldPagePresentationPanel` unchanged — but it bundles that panel together with a much larger
+Article metadata/body/sidebar editor (its own `articleDirty`/`headerDirty` draft model) behind ONE
+`mode === 'build'`-gated button, and a `watch(mode, ...)` that force-closes the drawer on mode exit.
+Decoupling just the presentation slice of that page from `mode` would mean reaching into the Article
+editor's broader gating — ruled out here as entity/article-editor redesign, which this task's own
+boundaries excluded. Recorded as a follow-up, narrower than before: only this one remaining page
+still couples a presentation control to `mode`, and fixing it means first deciding how "Page Builder"
+button visibility should relate to Article-editing authority versus `world.settings.edit` specifically.
+
+**Verification**: typecheck (902 errors before and after, confirmed identical baseline via
+`git stash`, zero new errors in any touched/created file), lint (one genuine new issue found and
+fixed — an unused `defineProps` return in the new button component; everything else in touched
+files is the same pre-existing `no-explicit-any`/unused-var debt already documented in this file,
+confirmed at the specific flagged lines via the same stash-based diff), full suite (6507/6507
+passing, 320 files, including 6 new tests for `canEditWorldSettings`), production build (`pnpm build`
+exits 0, new chunk for `WorldEntityInteractivePage` compiles cleanly), `git diff --check` (clean).
+Live smoke check against this repo's own disposable dev instance: unauthenticated GET/POST to a
+presentation endpoint both return 401. **Not verified**: no browser tool was available this session —
+the actual button→modal open/close, desktop width, 390×844 layout, focus/Escape handling, and
+"Game Admin → Page Setup still works after this change" were traced through the code (Page Setup's
+own call site in `admin.vue` was not modified at all) but not browser-tested. Stated as an open gap,
+not claimed as proven by the build/typecheck/unit results above.
+
+**Follow-ups explicitly retained from this pass** (none of these three are fixed by this pass; each
+is a distinct, separately-scoped item, not a detail to lose track of inside the writeup above):
+1. `entities/[entityId]/index.vue`'s "Page Builder" button+drawer still couples the SAME presentation
+   panel to `mode === 'build'` (via its own button visibility and its `watch(mode, ...)` auto-close) —
+   this is the one remaining map-mode dependency on a presentation control, deliberately not touched
+   here (see "Explicitly NOT touched, and why" above).
+2. Location Tools' "New Location" form and the Timeline pages' "Edit Timeline"/"Add Timeline Entry"
+   controls are entity-authoring actions still gated on `mode === 'build'` — a separate
+   discoverability review, not a presentation-control issue, and not attempted in this pass.
+3. Browser acceptance is still pending for the new "Customize Page" modal (open/close, desktop width,
+   390×844 layout, focus/Escape handling) AND for confirming Game Admin → Page Setup still works
+   unaffected — neither was browser-tested this session (no browser tool was available); both were
+   only traced through the code.
+
+### Deployment requirements
+
+None — pure client-side visibility/entry-point change, reusing the already-existing
+`world.settings.edit` capability and the already-existing presentation API/persistence unchanged. No
+schema, environment variable, or credential change.
+
+### Separate, unrelated note recorded alongside this pass
+
+World Properties (the World display-name rename feature, tracked only by its own commit messages,
+not in this document) is owner-confirmed working in production, per a screenshot showing a renamed
+"Solaris Test" World. This is the owner's own acceptance of the rename itself; it does not mean every
+individual verification step from that feature's own implementation report (CLI ambiguity handling,
+narrow-viewport layout, etc.) was independently re-verified here — those remain as that feature's own
+report stated them.
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

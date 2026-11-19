@@ -3,6 +3,8 @@ definePageMeta({
   layout: 'world-workspace'
 })
 
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
+
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
@@ -26,6 +28,9 @@ const { data, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.v
     timelines: []
   })
 })
+
+const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
 const timelines = computed(() => {
   const list = Array.isArray((data.value as any)?.timelines) ? (data.value as any).timelines : []
@@ -144,13 +149,23 @@ async function deleteTimeline(timeline: any) {
             </p>
           </div>
 
-          <button
-            type="button"
-            class="eldra-button rounded-none px-4 py-2 text-sm"
-            @click="refresh"
-          >
-            Refresh
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="eldra-button rounded-none px-4 py-2 text-sm"
+              @click="refresh"
+            >
+              Refresh
+            </button>
+
+            <WorldPageCustomizeButton
+              :world-id="worldId"
+              page-key="timelines"
+              title="Timelines Page"
+              :can-edit="canEditPageSettings"
+              scope-note="Background and presentation mode for the whole Timelines page -- this applies to every timeline, not just one. This does not affect the rest of the World."
+            />
+          </div>
         </div>
 
         <div class="mt-6">
@@ -162,15 +177,6 @@ async function deleteTimeline(timeline: any) {
           >
         </div>
       </section>
-
-      <div v-if="mode === 'build'" class="mt-6">
-        <WorldPagePresentationPanel
-          :world-id="worldId"
-          page-key="timelines"
-          title="Timelines Page"
-          description="Controls the timelines page presentation mode and background."
-        />
-      </div>
 
       <section
         v-if="mode === 'build'"

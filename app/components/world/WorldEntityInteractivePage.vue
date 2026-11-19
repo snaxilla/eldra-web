@@ -8,6 +8,7 @@ import {
   serverMetaLines as resolveServerMetaLines
 } from '~/lib/world-entity-collection/server-meta-lines'
 import { canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 import { isSafeCollectionReturnPath, writeDraftTransfer } from '~/lib/world-entity-collection/direct-edit-navigation'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
 
@@ -63,8 +64,12 @@ watch(
 
 const selectedEntityId = ref<string | null>(null)
 
+// The Build-mode aside below only ever contains Location Tools now (the
+// Page Presentation panel it used to also embed moved to the explicit,
+// capability-gated "Customize Page" button in the header) -- so it only
+// has anything to show on location pages.
 const collectionRailOpen = computed(() =>
-  Boolean(selectedEntityId.value) || (mode.value === 'build' && !selectedEntityId.value)
+  Boolean(selectedEntityId.value) || (mode.value === 'build' && !selectedEntityId.value && isLocationPage.value)
 )
 
 const collectionShellClass = computed(() => [
@@ -148,6 +153,7 @@ const canShowSpellHomebrewActions = computed(() =>
 // unaffected, authoritative gate regardless of what these return.
 const canEditEntities = computed(() => canEditWorldEntities(world.value?.capabilities))
 const canDeleteEntities = computed(() => canDeleteWorldEntities(world.value?.capabilities))
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
 function openHomebrewSpellForge(templateId?: string) {
   router.push(buildHomebrewForgeRoute(worldId.value, templateId))
@@ -1280,6 +1286,14 @@ async function createLocationArticle() {
               >
                 Refresh
               </button>
+
+              <WorldPageCustomizeButton
+                :world-id="worldId"
+                :page-key="pageKey"
+                :title="title"
+                :can-edit="canEditPageSettings"
+                :scope-note="`Background and presentation mode for the ${title} page. This does not affect the rest of the World.`"
+              />
             </div>
           </div>
 
@@ -1528,7 +1542,7 @@ async function createLocationArticle() {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
-        v-if="mode === 'build' && !selectedEntity"
+        v-if="mode === 'build' && !selectedEntity && isLocationPage"
         class="eldra-ornate-panel eldra-frame-corners hidden md:block fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="space-y-5 p-5">
@@ -1651,13 +1665,6 @@ async function createLocationArticle() {
                 </button>
               </form>
             </div>
-          <WorldPagePresentationPanel
-        embedded
-            :world-id="worldId"
-            :page-key="pageKey"
-            :title="title"
-            description="Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only."
-          />
         </div>
       </aside>
     </Transition>

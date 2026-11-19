@@ -30,7 +30,7 @@ vi.mock('../../../server/utils/world-memberships', () => ({
   createOwnerMembership: createOwnerMembershipMock
 }))
 
-import { createWorld, normalizeWorld } from '../../../server/utils/worlds'
+import { createWorld, normalizeWorld, getWorldById, renameWorld, MAX_WORLD_NAME_LENGTH } from '../../../server/utils/worlds'
 
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
@@ -194,5 +194,149 @@ describe('createWorld', () => {
 
     const postCall = directusServiceRequestMock.mock.calls.find(([, options]) => options.method === 'POST')
     expect(postCall?.[1].query.fields).toBe('id,name,slug,system_key,description,visibility,owner_id')
+  })
+})
+
+describe('getWorldById', () => {
+  it('returns the normalized World for a real id', async () => {
+    directusServiceRequestMock.mockResolvedValue({ data: { id: 5, name: 'Solaris', slug: 'solaris' } })
+
+    const world = await getWorldById(5)
+
+    expect(world?.name).toBe('Solaris')
+    expect(world?.slug).toBe('solaris')
+    const call = directusServiceRequestMock.mock.calls[0]
+    expect(call[0]).toBe('/items/worlds/5')
+    expect(call[1].method).toBe('GET')
+  })
+
+  it('returns null when Directus has no matching row', async () => {
+    directusServiceRequestMock.mockResolvedValue({ data: null })
+
+    expect(await getWorldById(999)).toBeNull()
+  })
+
+  it('returns null (never throws) when the Directus request itself fails', async () => {
+    directusServiceRequestMock.mockRejectedValue(new Error('network error'))
+
+    expect(await getWorldById(5)).toBeNull()
+  })
+})
+
+describe('renameWorld -- World Properties (Game Admin -> World Properties -> change name -> Save)', () => {
+  beforeEach(() => {
+    directusServiceRequestMock.mockReset()
+  })
+
+  it('renames the World, preserving id and slug untouched', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (options.method === 'GET') return { data: { id: 5, name: 'Old Name', slug: 'old-slug', system_key: 'dnd5e' } }
+      return { data: { id: 5, name: options.body.name, slug: 'old-slug', system_key: 'dnd5e' } }
+    })
+
+    const result = await renameWorld(5, 'New Name')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.changed).toBe(true)
+    expect(result.world.id).toBe(5)
+    expect(result.world.slug).toBe('old-slug')
+    expect(result.world.name).toBe('New Name')
+  })
+
+  it('trims surrounding whitespace before saving', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (options.method === 'GET') return { data: { id: 5, name: 'Old Name', slug: 'old-slug' } }
+      return { data: { id: 5, name: options.body.name, slug: 'old-slug' } }
+    })
+
+    await renameWorld(5, '   Trimmed Name   ')
+
+    const patchCall = directusServiceRequestMock.mock.calls.find(([, options]) => options.method === 'PATCH')
+    expect(patchCall?.[1].body.name).toBe('Trimmed Name')
+  })
+
+  it('rejects an empty name without ever calling Directus to write', async () => {
+    const result = await renameWorld(5, '')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('invalid-name')
+    expect((result as any).reason).toBe('empty')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a whitespace-only name the same way as empty', async () => {
+    const result = await renameWorld(5, '   \t  ')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('invalid-name')
+    expect((result as any).reason).toBe('empty')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a name longer than MAX_WORLD_NAME_LENGTH without ever calling Directus', async () => {
+    const result = await renameWorld(5, 'x'.repeat(MAX_WORLD_NAME_LENGTH + 1))
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('invalid-name')
+    expect((result as any).reason).toBe('too-long')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a name at exactly MAX_WORLD_NAME_LENGTH', async () => {
+    const exactName = 'x'.repeat(MAX_WORLD_NAME_LENGTH)
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (options.method === 'GET') return { data: { id: 5, name: 'Old Name', slug: 'old-slug' } }
+      return { data: { id: 5, name: options.body.name, slug: 'old-slug' } }
+    })
+
+    const result = await renameWorld(5, exactName)
+    expect(result.ok).toBe(true)
+  })
+
+  it('reports not-found for a World id that does not exist, without writing', async () => {
+    directusServiceRequestMock.mockResolvedValue({ data: null })
+
+    const result = await renameWorld(999, 'New Name')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('not-found')
+    const patchCall = directusServiceRequestMock.mock.calls.find(([, options]) => options.method === 'PATCH')
+    expect(patchCall).toBeUndefined()
+  })
+
+  it('no-op: an unchanged name (after trim) never issues a Directus write', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (options.method === 'GET') return { data: { id: 5, name: 'Same Name', slug: 'same-slug' } }
+      throw new Error('should never PATCH for a no-op rename')
+    })
+
+    const result = await renameWorld(5, '  Same Name  ')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.changed).toBe(false)
+    expect(result.world.name).toBe('Same Name')
+    const patchCall = directusServiceRequestMock.mock.calls.find(([, options]) => options.method === 'PATCH')
+    expect(patchCall).toBeUndefined()
+  })
+
+  it('duplicate names across different Worlds are allowed -- no uniqueness check, matching createWorld\'s own existing policy', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (options.method === 'GET') return { data: { id: 7, name: 'Old Name', slug: 'world-seven' } }
+      return { data: { id: 7, name: options.body.name, slug: 'world-seven' } }
+    })
+
+    // "Solaris" already names a DIFFERENT World in this scenario -- renameWorld
+    // never checks for that, by design, since creation never did either.
+    const result = await renameWorld(7, 'Solaris')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.world.name).toBe('Solaris')
   })
 })

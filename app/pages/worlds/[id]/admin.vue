@@ -3,6 +3,7 @@
 // pre-existing, unrelated violation on all 49 of them -- not fixed here).
 // This one import stays ahead of it instead of adding a 50th instance.
 import AdminContentStudioPanel from '~/components/admin/studio/AdminContentStudioPanel.vue'
+import AdminWorldPropertiesPanel from '~/components/admin/AdminWorldPropertiesPanel.vue'
 
 definePageMeta({
   layout: 'world-workspace',
@@ -29,6 +30,18 @@ const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const activePanel = ref<GameAdminPanelKey>('overview')
+// Switching Game Admin rail sections never goes through the router (see
+// AdminWorldPropertiesPanel.vue's own header comment) -- this page's
+// `v-else-if` chain unmounts the leaving section's component outright, so
+// World Properties' own draft is checked here, synchronously, at the one
+// moment it would otherwise be silently destroyed.
+const worldPropertiesPanelRef = ref<{ dirty: boolean } | null>(null)
+function selectPanel(key: GameAdminPanelKey) {
+  if (key !== activePanel.value && activePanel.value === 'properties' && worldPropertiesPanelRef.value?.dirty) {
+    if (!window.confirm('Discard unsaved changes?')) return
+  }
+  activePanel.value = key
+}
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -571,7 +584,7 @@ async function refreshAdmin() {
       <AdminSectionRail
         :sections="panels"
         :active-key="activePanel"
-        @select="activePanel = $event as typeof activePanel"
+        @select="selectPanel($event as GameAdminPanelKey)"
       />
 
       <div class="relative z-10 min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -1247,6 +1260,12 @@ async function refreshAdmin() {
         </div>
       </section>
 
+      <section
+        v-else-if="activePanel === 'properties'"
+        class="mt-6 grid gap-6"
+      >
+        <AdminWorldPropertiesPanel ref="worldPropertiesPanelRef" :world-id="worldId" />
+      </section>
 
       <section
         v-else-if="activePanel === 'setup'"

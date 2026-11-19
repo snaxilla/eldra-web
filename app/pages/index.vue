@@ -2,6 +2,7 @@
 import WorldCreateModal from '~/components/world/WorldCreateModal.vue'
 import { useAuth } from '~/composables/useAuth'
 import { resolveWorldSelectionState } from '~/utils/worldSelectionState'
+import { WORLDS_LIST_CACHE_KEY } from '~/lib/eldra/world-cache-keys'
 
 // Authentication Flow Cleanup -- this page (the World Selection page,
 // "Choose a world to enter") is now gated by the project's own canonical
@@ -28,7 +29,15 @@ if (!state.value.ready) {
 // `auth` middleware above already guarantees this request only ever fires
 // for an authenticated visitor, so it is called unconditionally here (no
 // `immediate` gate needed) like any other page's own `useFetch` call.
-const { data: worlds, pending: worldsPending, error: worldsError, refresh: refreshWorlds } = await useFetch('/api/worlds')
+// World Properties (rename) -- an explicit, predictable key (see
+// world-cache-keys.ts's own header) so AdminWorldPropertiesPanel.vue can
+// refresh this World Selector listing via `refreshNuxtData` after a
+// successful rename -- it shows the new name on next visit (or
+// immediately, if this page happens to already be mounted), never a
+// stale cached name from before the rename.
+const { data: worlds, pending: worldsPending, error: worldsError, refresh: refreshWorlds } = await useFetch('/api/worlds', {
+  key: WORLDS_LIST_CACHE_KEY
+})
 
 // WORLD SELECTION DATA STATES -- see worldSelectionState.ts's own header
 // for why this is a pure, separately-tested function rather than inline

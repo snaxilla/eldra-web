@@ -153,3 +153,76 @@ export async function createWorld(input: CreateWorldInput): Promise<WorldRecord>
 
   return world
 }
+
+// World Properties (rename) -- Game Admin -> World Properties -> change
+// name -> Save. No column on `worlds` imposes an explicit length limit
+// this codebase has ever declared (traced: no MAX_NAME/MAX_TITLE constant
+// exists anywhere for a World-like name, and createWorld's own validation
+// above is "required, non-empty" and nothing more). This cap is a safety
+// ceiling against Directus's own default VARCHAR(255) column width -- it
+// matches that default exactly rather than inventing an unrelated
+// app-specific number, so a request this module accepts can never fail
+// at the database layer for being too long.
+export const MAX_WORLD_NAME_LENGTH = 255
+
+export type WorldNotFoundError = { stage: 'not-found' }
+export type WorldNameInvalidError = { stage: 'invalid-name'; reason: 'empty' | 'too-long' }
+export type RenameWorldResult =
+  | { ok: true; world: WorldRecord; changed: boolean }
+  | ({ ok: false } & (WorldNotFoundError | WorldNameInvalidError))
+
+// Reads exactly one World by id -- `GET /api/worlds/:id` (index.get.ts)
+// instead fetches every World (`limit: 100`) and finds this one client-side,
+// which `renameWorld` below has no reason to repeat just to read the
+// CURRENT name for its own no-op check.
+export async function getWorldById(worldId: string | number): Promise<WorldRecord | null> {
+  const res: any = await directusServiceRequest(`/items/worlds/${encodeURIComponent(String(worldId))}`, {
+    method: 'GET',
+    query: { fields: WORLD_FIELDS }
+  }).catch(() => null)
+
+  const row = res?.data
+  return row ? normalizeWorld(row) : null
+}
+
+// Renames a World's display `name` ONLY. Explicitly, by design, this never
+// touches: `slug` (globally unique, generated once at creation -- see
+// uniqueWorldSlug above; this World's own existing slug, and therefore
+// every /article/:slug URL and any packageId/workspace key a human chose
+// to match it, is untouched), `id` (every existing ID-based route,
+// character/membership/media/map/content-binding foreign key keeps
+// resolving exactly as before), and no other column. Duplicate names
+// across different Worlds are explicitly ALLOWED -- the existing product
+// policy, established by createWorld itself never checking name
+// uniqueness (only `slug` has a uniqueness constraint) -- so this
+// function does not invent a new restriction creation never had.
+// No-op (see `changed` on the result): if the trimmed name is identical
+// to the current stored name, this skips the Directus write entirely
+// rather than issuing a no-op PATCH.
+export async function renameWorld(worldId: string | number, rawName: string): Promise<RenameWorldResult> {
+  const name = String(rawName ?? '').trim()
+
+  if (!name) {
+    return { ok: false, stage: 'invalid-name', reason: 'empty' }
+  }
+  if (name.length > MAX_WORLD_NAME_LENGTH) {
+    return { ok: false, stage: 'invalid-name', reason: 'too-long' }
+  }
+
+  const current = await getWorldById(worldId)
+  if (!current) {
+    return { ok: false, stage: 'not-found' }
+  }
+
+  if (current.name === name) {
+    return { ok: true, world: current, changed: false }
+  }
+
+  const res: any = await directusServiceRequest(`/items/worlds/${encodeURIComponent(String(worldId))}`, {
+    method: 'PATCH',
+    query: { fields: WORLD_FIELDS },
+    body: { name }
+  })
+
+  return { ok: true, world: normalizeWorld(res?.data ?? { ...current, name }), changed: true }
+}

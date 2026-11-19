@@ -36,6 +36,7 @@ export type GameAdminPanelKey =
   | 'content-studio'
   | 'health'
   | 'setup'
+  | 'properties'
 
 // PROCESS 2.0 -- GAME ADMIN IA & PLAYER OPERATIONS: this exact order and
 // these exact labels, agreed before implementation (this task's own
@@ -55,5 +56,10 @@ export const GAME_ADMIN_SECTIONS: readonly (AdminRailSection & { key: GameAdminP
   // Studio is what the World actually resolves from those releases.
   { key: 'content-studio', label: 'Content Studio', icon: 'i-lucide-library-big' },
   { key: 'health', label: 'Project Health', icon: 'i-lucide-activity' },
+  // World Properties (rename) -- grouped next to Page Setup: both are
+  // World-level settings (`world.settings.edit`), as opposed to every
+  // section above, which edits WORLD CONTENT (party, inventory, content
+  // packs, etc.) rather than the World record itself.
+  { key: 'properties', label: 'World Properties', icon: 'i-lucide-settings' },
   { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' }
 ] as const

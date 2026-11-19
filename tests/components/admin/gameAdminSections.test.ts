@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { GAME_ADMIN_SECTIONS, type GameAdminPanelKey } from '../../../app/components/admin/gameAdminSections'
 
 describe('GAME_ADMIN_SECTIONS', () => {
-  it('is exactly the eleven agreed sections, in the agreed order, with the agreed labels', () => {
+  it('is exactly the twelve agreed sections, in the agreed order, with the agreed labels', () => {
     expect(GAME_ADMIN_SECTIONS.map((section) => ({ key: section.key, label: section.label }))).toEqual([
       { key: 'overview', label: 'Overview' },
       { key: 'player', label: 'Player Management' },
@@ -20,12 +20,18 @@ describe('GAME_ADMIN_SECTIONS', () => {
       { key: 'content-packs', label: 'Content Packs' },
       { key: 'content-studio', label: 'Content Studio' },
       { key: 'health', label: 'Project Health' },
+      { key: 'properties', label: 'World Properties' },
       { key: 'setup', label: 'Page Setup' }
     ])
   })
 
-  it('has exactly eleven sections -- Grants and Transfers merged into one, never left as two, plus Content Studio', () => {
-    expect(GAME_ADMIN_SECTIONS).toHaveLength(11)
+  it('has exactly twelve sections -- Grants and Transfers merged into one, never left as two, plus Content Studio and World Properties', () => {
+    expect(GAME_ADMIN_SECTIONS).toHaveLength(12)
+  })
+
+  it('places World Properties immediately before Page Setup -- both are World-settings sections, grouped together', () => {
+    const keys = GAME_ADMIN_SECTIONS.map((s) => s.key)
+    expect(keys.indexOf('properties')).toBe(keys.indexOf('setup') - 1)
   })
 
   it('every key is unique -- no section collides with another in the v-else-if chain it drives', () => {

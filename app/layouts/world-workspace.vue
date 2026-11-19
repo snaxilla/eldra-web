@@ -4,6 +4,7 @@
 // individual page, is its home).
 import WorldDiceOverlay from '~/components/world/WorldDiceOverlay.vue'
 import { resolveWorldWorkspacePageKey } from '~/lib/eldra/world-workspace-page-key'
+import { worldDataCacheKey } from '~/lib/eldra/world-cache-keys'
 
 const route = useRoute()
 
@@ -147,7 +148,16 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('overflow-hidden')
 })
 
-const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+// World Properties (rename) -- an explicit, predictable key (see
+// world-cache-keys.ts's own header) so AdminWorldPropertiesPanel.vue can
+// refresh this exact fetch via `refreshNuxtData` after a successful
+// rename, updating the sidebar heading below without a sign-out or full
+// application restart. Behavior is otherwise unchanged -- same URL, same
+// default caching, just a named key instead of Nuxt's own auto-generated
+// hash.
+const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`, {
+  key: () => worldDataCacheKey(worldId.value)
+})
 
 // Beta Zero audit, Issue 2: `mode` is a single global useState key shared
 // across every World the app renders in this client session, not scoped to

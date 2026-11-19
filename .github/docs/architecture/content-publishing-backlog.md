@@ -215,3 +215,67 @@ requests for different files never cross-contaminate results.
   Retry UI, the `aspect-[4/3]` layout-shift prevention, and `loading="lazy"` behavior as actually
   rendered in a browser remain unverified — flagged here explicitly rather than implied by the
   server-side verification above.
+
+**Owner production acceptance follow-up (2026-11-19) — incomplete fix, now closed.** Gallery cards
+passed production acceptance, but the owner found the fix was incomplete: `WorldMediaPicker`'s grid
+thumbnails correctly used the `card` derivative, but merely **clicking** an image to preview it (not
+"using" it) in the picker's own right-hand selected-image panel still rendered `selectedFile.url` —
+the plain original — directly. Clicking the reported ~146MB Caldera image left that panel blank/slow,
+exactly as reported, because selecting it for preview alone downloaded the full original a second
+time.
+
+**Root cause, traced, not assumed**: `WorldMediaPicker.vue`'s side panel `<img :src="selectedFile.url">`
+was a separate rendering path from the grid's own (already-fixed) `thumbnailUrl()` — fixing the grid
+alone never touched it. The same pattern existed one level removed in `MapImageOverlayEditor.vue`
+(the Build Tool's own Image Overlay create/edit dialog, reached through the same picker): its small
+in-dialog preview rendered `editingOverlay.imageUrl` — the REAL overlay reference, which must stay the
+full original because it is what gets saved and what the Scene Graph renderer (`WorldMapLeaflet.client.vue`)
+actually draws on the map — directly too, so picking an overlay image downloaded the original purely
+to show a 160px-tall dialog preview.
+
+**Fix**: both now derive a SEPARATE, display-only `card`-preset URL from the same underlying reference
+— `thumbnailUrl()`/`sidePreviewLoadedId` in `WorldMediaPicker.vue`, `dialogPreviewUrl` in
+`MapImageOverlayEditor.vue` — while the underlying value used for the real contract (`selectFile`'s
+`emit('select', file)`; `editingOverlay.imageUrl`) is never touched, so "Use This Image", double-click
+selection, and actual map-overlay rendering all still resolve to the original, unchanged. The
+duplicated `?preset=card` URL-building logic (previously inline and slightly different in three
+places: the Gallery grid, the Picker's own grid, and now these two preview surfaces) was extracted
+into one shared, unit-tested pure function, `app/lib/media/thumbnail-url.ts`'s `buildCardThumbnailUrl`.
+Rapid selection changes in the Picker's side panel cannot show a stale previous image as current: the
+`<img>` is keyed by `selectedFile.id` (forcing a fresh DOM element per selection, so the browser can
+never paint an old element's already-loaded pixels under a new `src`), and a `sidePreviewLoadedId`
+comparison shows a "Loading preview..." placeholder until the NEW image's own `load` event fires.
+Selecting an image itself stays synchronous (`pickFile`/`selectFile` only ever set a ref) — nothing
+about this fix makes selection wait on its preview.
+
+**Traced, not fixed — explicitly out of scope for this pass**: `Check the Map Picker and other
+WorldMediaPicker callers` found the identical "small passive preview bound directly to the original
+reference" pattern in two more consumers — `WorldEntityDirectEditDialog.vue` and
+`StudioEntityEditor.vue` (both a 64×64px image-field preview) — and a third, `SheetManageCharacterRail.vue`,
+sets a sheet THEME BACKGROUND image from the picker's selection, which may legitimately need more
+resolution than a 640px card bound (not traced closely enough to say either way). `EldraRichTextEditor.vue`
+and `AdminHomebrewDraftImagePicker.vue`/`timelines/[timelineId].vue` were skimmed but not fully traced.
+None of these were touched this pass — the brief's own explicit scope was the Picker's own preview and
+"the map upload form" (identified as `MapImageOverlayEditor.vue`, the only Map-related consumer); fixing
+the remainder is a reasonable, bounded follow-up, not done here to avoid scope creep into files/components
+with varying risk profiles this pass did not have time to trace individually.
+
+**Verification — stated honestly, per instruction not to claim HTTP tests establish UI behavior.** No
+browser automation tool was available this session either. What WAS verified:
+- Direct code inspection confirms both template `<img>` bindings now reference the derivative
+  (`thumbnailUrl(selectedFile)` / `dialogPreviewUrl`), never the original, for these two preview
+  surfaces specifically — and that the underlying `selectedFile`/`editingOverlay.imageUrl` values used
+  by `selectFile`'s emit and by the real overlay-rendering contract are untouched.
+  `buildCardThumbnailUrl` itself has full unit coverage (empty input, existing query string, retry
+  token present/absent/falsy, whitespace).
+  - Build, full test suite (318 files / 6478 tests), typecheck (902, unchanged), and lint (zero new
+    across every touched file) all pass.
+- **NOT verified**: an actual browser session confirming the picker's side panel and the overlay
+  dialog visually show the small derivative (not a blank/slow load) when a real large image is
+  selected; that rapid selection switching never flashes a stale previous image in practice; that the
+  error/Retry state renders and actually recovers; and narrow-viewport layout. This is the exact gap
+  stated rather than papered over — the owner's own next deploy-and-click-through pass is what closes
+  it, the same way the grid fix's own browser verification is still open from the prior pass.
+
+Picker selection preview and the overlay dialog preview are now implemented per the fix above;
+browser verification of both remains open until the next deploy.

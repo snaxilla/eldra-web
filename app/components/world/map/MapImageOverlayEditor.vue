@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
 
 type ImageOverlayDraft = {
   objectId: string
@@ -29,8 +30,24 @@ function cleanText(value: any) {
   return String(value ?? '').trim()
 }
 
+// `previewUrl` (and `editingOverlay.imageUrl` it reads) is the REAL
+// overlay reference -- what gets saved and what the Scene Graph renderer
+// actually draws on the map at full resolution (WorldMapLeaflet.client.vue),
+// so it is never replaced with a derivative; "do not alter intentional
+// map rendering" applies directly to it. `dialogPreviewUrl` is a
+// SEPARATE, display-only value, used ONLY by this dialog's own small
+// (h-40) thumbnail below -- owner production acceptance follow-up: that
+// thumbnail previously rendered `previewUrl` directly, so simply picking
+// an image to preview it in this dialog (before Save) downloaded the
+// full original purely for a 160px-tall preview.
 const previewUrl = computed(() => cleanText(props.editingOverlay?.imageUrl))
+const dialogPreviewUrl = computed(() => buildCardThumbnailUrl(previewUrl.value))
+const dialogPreviewFailed = ref(false)
 const overlayLabel = computed(() => cleanText(props.editingOverlay?.name) || 'Image Overlay')
+
+watch(previewUrl, () => {
+  dialogPreviewFailed.value = false
+})
 
 function fileIdFrom(file: any) {
   return cleanText(
@@ -169,12 +186,21 @@ function removeOverlay() {
 
                 <div
                   v-if="previewUrl"
-                  class="eldra-image-frame mb-3 overflow-hidden rounded-none border bg-black/20"
+                  class="eldra-image-frame relative mb-3 h-40 overflow-hidden rounded-none border bg-black/20"
                 >
+                  <div
+                    v-if="dialogPreviewFailed"
+                    class="flex h-full items-center justify-center px-3 text-center text-[11px] uppercase tracking-wide text-eldra-text-faint"
+                  >
+                    Preview unavailable
+                  </div>
                   <img
-                    :src="previewUrl"
+                    v-else
+                    :key="previewUrl"
+                    :src="dialogPreviewUrl"
                     :alt="overlayLabel"
-                    class="h-40 w-full object-cover"
+                    class="h-full w-full object-cover"
+                    @error="dialogPreviewFailed = true"
                   >
                 </div>
 

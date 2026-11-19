@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+
 type MediaFile = {
   id: string
   title: string
@@ -36,16 +38,27 @@ const uploading = ref(false)
 const error = ref('')
 const selectedFile = ref<MediaFile | null>(null)
 
-// Media Gallery Thumbnail Performance pass -- same contract as
-// app/pages/worlds/[id]/media.vue's own identical helpers: the grid
-// requests the `card` preset, `selectedFile.url` itself (used by the side
-// preview panel and the `select` emit) stays the plain original.
+// Media Gallery Thumbnail Performance pass -- the grid requests the
+// `card` preset. `selectedFile.url` itself (the plain original) is NEVER
+// used for display here -- it is read only by `selectFile`'s own emit,
+// so "Use This Image"/double-click still return the original asset
+// reference unchanged, per that fix's own contract.
+//
+// Owner production acceptance follow-up -- the right-hand selected-image
+// side panel below used `selectedFile.url` DIRECTLY for its own preview
+// `<img>`, so merely clicking a card to preview it (not "using" it) still
+// downloaded the full original a second time -- confirmed as the exact
+// reported gap (clicking a ~146MB Caldera image left that panel blank/
+// slow). It now uses `thumbnailUrl()` too, the same derivative the grid
+// already uses, reusing the SAME `failedThumbnails`/`retryTokens` state
+// (keyed by file id) since both surfaces show the identical underlying
+// derivative for the same file -- a failure/retry in one place is
+// correctly a failure/retry for the other.
 const failedThumbnails = ref<Set<string>>(new Set())
 const retryTokens = ref<Record<string, number>>({})
 
 function thumbnailUrl(file: MediaFile) {
-  const token = retryTokens.value[file.id]
-  return `${file.url}?preset=card${token ? `&retry=${token}` : ''}`
+  return buildCardThumbnailUrl(file.url, retryTokens.value[file.id])
 }
 
 function onThumbnailError(file: MediaFile) {
@@ -57,6 +70,22 @@ function retryThumbnail(file: MediaFile) {
   next.delete(file.id)
   failedThumbnails.value = next
   retryTokens.value = { ...retryTokens.value, [file.id]: Date.now() }
+}
+
+// Tracks which file id's side-panel preview has actually finished
+// loading. Compared against `selectedFile.id` (never set eagerly on
+// selection) so rapidly switching the selection cannot display the
+// PREVIOUS file's already-loaded image as if it were the current one --
+// selecting a new file immediately makes this comparison false again,
+// showing the loading placeholder, until the new image's own `load`
+// event fires. Combined with `:key="selectedFile.id"` on the `<img>`
+// itself (forces the DOM node to be recreated per selection, so the
+// browser never paints a prior element's old pixels under a new `src`),
+// this is a structural guarantee, not a timing-dependent flag.
+const sidePreviewLoadedId = ref<string | null>(null)
+
+function onSidePreviewLoad(file: MediaFile) {
+  sidePreviewLoadedId.value = file.id
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -329,12 +358,37 @@ onBeforeUnmount(() => {
 
             <aside class="min-h-0 border-t border-[rgba(201,164,90,0.22)] bg-black/20 p-5 md:border-l md:border-t-0">
               <template v-if="selectedFile">
-                <div class="eldra-image-frame overflow-hidden rounded-none border bg-black/20">
-                  <img
-                    :src="selectedFile.url"
-                    :alt="selectedFile.title || selectedFile.filename"
-                    class="max-h-72 w-full object-contain"
+                <div class="eldra-image-frame relative h-72 overflow-hidden rounded-none border bg-black/20">
+                  <div
+                    v-if="failedThumbnails.has(selectedFile.id)"
+                    class="flex h-full flex-col items-center justify-center gap-2 px-3 text-center"
                   >
+                    <span class="text-[11px] uppercase tracking-wide text-[#9f9278]">Preview unavailable</span>
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-2 py-1 text-[11px]"
+                      @click="retryThumbnail(selectedFile)"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                  <template v-else>
+                    <div
+                      v-if="sidePreviewLoadedId !== selectedFile.id"
+                      class="absolute inset-0 flex items-center justify-center text-xs text-[#9f9278]"
+                    >
+                      Loading preview...
+                    </div>
+                    <img
+                      :key="selectedFile.id"
+                      :src="thumbnailUrl(selectedFile)"
+                      :alt="selectedFile.title || selectedFile.filename"
+                      class="h-full w-full object-contain transition-opacity duration-150"
+                      :class="sidePreviewLoadedId === selectedFile.id ? 'opacity-100' : 'opacity-0'"
+                      @load="onSidePreviewLoad(selectedFile)"
+                      @error="onThumbnailError(selectedFile)"
+                    >
+                  </template>
                 </div>
 
                 <div class="mt-4">

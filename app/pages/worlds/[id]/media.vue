@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -42,8 +44,7 @@ const failedThumbnails = ref<Set<string>>(new Set())
 const retryTokens = ref<Record<string, number>>({})
 
 function thumbnailUrl(file: MediaFile) {
-  const token = retryTokens.value[file.id]
-  return `${file.url}?preset=card${token ? `&retry=${token}` : ''}`
+  return buildCardThumbnailUrl(file.url, retryTokens.value[file.id])
 }
 
 function onThumbnailError(file: MediaFile) {

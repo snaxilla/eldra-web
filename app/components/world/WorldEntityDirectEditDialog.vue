@@ -29,6 +29,7 @@
 import { computed, ref, watch } from 'vue'
 import StudioEntityEditor from '~/components/admin/studio/StudioEntityEditor.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
 
 const props = withDefaults(defineProps<{
   worldId: string | number
@@ -498,13 +499,13 @@ const notYetLiveWarning = ref('')
           <div class="mt-1 flex items-center gap-3">
             <img
               v-if="draft.image?.url"
-              :src="draft.image.url"
+              :src="buildCardThumbnailUrl(draft.image.url)"
               alt=""
               class="h-16 w-16 rounded-none border border-eldra-accent/24 object-cover"
             >
             <img
               v-else-if="draft.image === undefined && needsPreparation.presentation?.image?.url"
-              :src="needsPreparation.presentation.image.url"
+              :src="buildCardThumbnailUrl(needsPreparation.presentation.image.url)"
               alt=""
               class="h-16 w-16 rounded-none border border-eldra-accent/24 object-cover"
             >

@@ -40,6 +40,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
 import type { PresentationEntry } from '~/lib/content-presentation'
 import {
   ITEM_RARITY_OPTIONS,
@@ -794,7 +795,7 @@ async function createCheckpoint() {
           <div class="mt-1 flex items-center gap-3">
             <img
               v-if="draft.image?.url || (draft.image === undefined && preview?.effectivePresentation?.image?.url)"
-              :src="draft.image?.url || preview?.effectivePresentation?.image?.url"
+              :src="buildCardThumbnailUrl(draft.image?.url || preview?.effectivePresentation?.image?.url || '')"
               alt=""
               class="h-16 w-16 rounded-none border border-eldra-accent/24 object-cover"
             >

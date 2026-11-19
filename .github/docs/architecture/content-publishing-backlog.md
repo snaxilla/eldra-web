@@ -279,3 +279,70 @@ browser automation tool was available this session either. What WAS verified:
 
 Picker selection preview and the overlay dialog preview are now implemented per the fix above;
 browser verification of both remains open until the next deploy.
+
+## Remaining authoring image previews (not yet committed)
+
+Closes the two of the three follow-ups named above that still had the identical "small preview bound
+directly to the original reference" pattern.
+
+**Traced, changed**:
+- `WorldEntityDirectEditDialog.vue` — the 64×64px Image-field preview (both the pending-draft `<img>`
+  and the inherited/`needsPreparation.presentation.image` fallback `<img>`) now wraps its `:src` in
+  `buildCardThumbnailUrl`. The value actually STORED on selection (`onImageSelected`'s
+  `draft.value.image = { fileId: file.id, url: file.url }`, and the edit payload's `fileId`) is
+  untouched — still the original, confirmed by inspection of `onImageSelected` and the `edits.push`
+  call that only ever sends `fileId`, never a URL.
+- `StudioEntityEditor.vue` — the same 64×64px Image-field preview (draft-or-effective), same fix, same
+  untouched-storage guarantee (`onImageSelected`/`revertPath`/the save payload's `fileId`-only shape).
+  Also traced its own `ContentPresentationPanel` ("Last saved state" live preview, `max-h-72/80`
+  artwork) — this is intentional, prominent artwork display (the Builder's before-selection preview
+  and the Sheet's after-creation display, per that component's own header comment), not a small
+  editing-control thumbnail, so left unchanged on purpose.
+
+**Traced, no change needed**:
+- `SheetManageCharacterRail.vue` — the earlier "may legitimately need more resolution" question is now
+  resolved by tracing: this file has no `<img>` tag and no small preview surface for the sheet theme
+  background AT ALL. The chosen background is applied ONLY as a live, full-size CSS `background-image`
+  (`safeAppearanceCssUrl(theme.backgroundUrl)`) on the actual sheet surface — the real, intentional
+  rendered background this backlog has always said to leave alone — and the "Appearance" panel shows
+  only a text title (`backgroundTitle`) plus "Gallery"/"Default" buttons, no thumbnail of any kind.
+  Nothing to fix here; `selectSheetThemeMedia` already stores the original `file.url` unchanged.
+
+**Confirmed safe to apply `buildCardThumbnailUrl` unconditionally to both changed surfaces** (per this
+task's own instruction to check the helper's URL contract before reusing it): every value flowing into
+these two `<img>` bindings is always either empty/absent or an internal `/api/assets/:id` reference --
+never external. `draft.image.url` always comes from `WorldMediaPicker`'s own `select` emit (confirmed:
+`MediaFile.url` is always server-built via `assetUrl(id)`); `needsPreparation.presentation.image.url` /
+`preview?.effectivePresentation?.image?.url` always comes from
+`server/utils/content-presentation-assets.ts`'s `resolvePortableAssetRef`, which only ever returns
+`url: \`/api/assets/${file.id}\`` or `image: null` (never an external/foreign URL, by construction --
+`unsupported-kind`/`not-found`/`world-scope-mismatch` all resolve to `null`, never a passthrough of
+some other string).
+
+**Still open, unchanged, explicitly out of scope for this pass too**: `EldraRichTextEditor.vue`,
+`AdminHomebrewDraftImagePicker.vue`, and `timelines/[timelineId].vue` were named in the prior pass as
+"skimmed but not fully traced" — this pass's own brief named only the three files above, so these
+three remain exactly as open as before. Not touched, not newly investigated.
+
+**No new tests added.** `buildCardThumbnailUrl` itself is unchanged and already has full unit coverage
+(see the prior pass's own entry above); these two changes are plain template `:src` bindings calling
+that same already-tested function, with no new helper behavior and no DOM-mount test harness in this
+repo to exercise a rendered `<img>` against -- a test that only re-asserts the template expression
+would duplicate it, not verify anything new.
+
+**Verification**: typecheck (902, confirmed unchanged baseline -- one transient new error introduced by
+an unguarded `string | undefined` argument was caught and fixed with a `|| ''` fallback before this
+count was taken), lint (zero errors in both touched files), full suite (321 files / 6511 tests
+passing), production build (clean, no new warnings for either file), `git diff --check` (clean). No
+browser tool was available this session -- rapid-selection/stale-image behavior, thumbnail
+failure/Retry, and actual rendered layout at both preview sites were NOT browser-verified; this is
+traced-through-code confidence only, stated as such rather than implied.
+
+### Deployment requirements
+
+None -- reuses the existing, already-deployed `buildCardThumbnailUrl`/`preset=card` path; no schema,
+environment, or credential change.
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

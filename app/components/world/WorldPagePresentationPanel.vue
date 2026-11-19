@@ -1,4 +1,14 @@
 <script setup lang="ts">
+// PAGE BACKGROUND PICKER UX CORRECTION -- the square preview is now the
+// single control: click it (empty or filled) to open the shared World
+// Media Gallery picker and choose/upload an image there, rather than a
+// separate "Set Background" button opening a native file chooser. The
+// old click-to-enlarge lightbox is replaced by this -- enlarging a
+// background was never asked for as a requirement here, and "no nested
+// buttons" rules out keeping both an enlarge affordance and a change
+// affordance on the same single button.
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+
 const props = withDefaults(defineProps<{
   worldId: string
   pageKey: string
@@ -11,6 +21,19 @@ const props = withDefaults(defineProps<{
   isolated: false,
   embedded: false
 })
+
+// WorldPageCustomizeButton.vue (the only caller that hosts this panel
+// inside a UModal) listens for this to toggle its own modal's
+// `dismissible` off while the picker is open -- see that file's own
+// comment for why: WorldMediaPicker is a hand-rolled Teleport overlay,
+// not a Reka-UI layer, so the UModal underneath has no built-in way to
+// know it is covered and would otherwise treat a click on the picker's
+// own backdrop (or Escape) as "outside" and close itself too. Emitted
+// unconditionally (not only when embedded) -- harmless for Page Setup's
+// non-modal usage, which simply has no listener for it.
+const emit = defineEmits<{
+  (e: 'picker-open-change', value: boolean): void
+}>()
 
 type PresentationState = {
   worldKey: string
@@ -52,9 +75,10 @@ const presentationState = computed<PresentationState | null>({
 const presentationRefreshNonce = useState<number>('world-page-presentation-refresh-nonce', () => 0)
 const presentationBusy = ref(false)
 const presentationMessage = ref('')
-const hiddenBgInput = ref<HTMLInputElement | null>(null)
+const presentationMessageIsError = ref(false)
 const loadingPresentation = ref(false)
-const backgroundLightboxOpen = ref(false)
+const pickerOpen = ref(false)
+const previewButtonRef = ref<HTMLButtonElement | null>(null)
 
 const worldPagePresentationPanelClass = computed(() => [
   'min-w-0 overflow-hidden',
@@ -65,12 +89,6 @@ const worldPagePresentationPanelClass = computed(() => [
 
 
 const currentMode = computed(() => String(presentationState.value?.presentationMode || 'neutral'))
-
-const previewFileId = computed(() =>
-  presentationState.value?.backgroundFileId
-    ? String(presentationState.value.backgroundFileId)
-    : ''
-)
 
 const previewImageUrl = computed(() => {
   if (presentationState.value?.backgroundImageUrl) {
@@ -84,15 +102,23 @@ const previewImageUrl = computed(() => {
   return ''
 })
 
-const previewMetaLine = computed(() => {
-  const parts = [
-    `Mode: ${currentMode.value}`,
-    previewFileId.value ? `File: ${previewFileId.value}` : 'No file selected',
-    `Page: ${props.pageKey || 'unknown'}`
-  ]
+// The small square preview's own derivative -- never the original,
+// matching the Media Gallery Thumbnail Performance pass's own rule
+// (app/lib/media/thumbnail-url.ts). The ACTUAL page background
+// (world-workspace.vue's own backgroundImageUrl computed, which this
+// component never touches) still resolves the real original unchanged
+// -- this is purely this editor's own small preview.
+const previewThumbnailUrl = computed(() =>
+  previewImageUrl.value ? buildCardThumbnailUrl(previewImageUrl.value) : ''
+)
 
-  return parts.join(' · ')
-})
+// "File: <uuid>"/"No file selected" (a raw Directus id) and a "Page:"
+// repeat of the title shown right above were removed -- neither is
+// actionable to the person using this editor (owner observation: "no
+// nested buttons"/scope-messaging correction). Mode is kept: it is the
+// one piece of state here not already visible from the buttons' own
+// active-highlight styling at a glance in every viewport width.
+const previewMetaLine = computed(() => `Mode: ${currentMode.value}`)
 
 function fallbackState(): PresentationState {
   return {
@@ -157,8 +183,17 @@ async function savePresentation(nextMode: string, backgroundFileId: string | nul
 }
 
 async function setPresentationMode(nextMode: 'immersive' | 'muted' | 'neutral') {
+  // Guards against rapid/out-of-order actions (e.g. clicking another
+  // mode, or Clear, while a save from a PRIOR click is still in flight)
+  // restoring stale state -- each mutating action here bails out while
+  // another one of its own kind is already running, rather than relying
+  // only on the buttons' own `:disabled` binding, which can lag one
+  // click behind the actual busy state.
+  if (presentationBusy.value) return
+
   presentationBusy.value = true
   presentationMessage.value = ''
+  presentationMessageIsError.value = false
 
   try {
     await savePresentation(nextMode, presentationState.value?.backgroundFileId || null)
@@ -169,69 +204,65 @@ async function setPresentationMode(nextMode: 'immersive' | 'muted' | 'neutral') 
       error?.data?.message ||
       error?.message ||
       'Failed to save presentation mode.'
+    presentationMessageIsError.value = true
   } finally {
     presentationBusy.value = false
   }
 }
 
-function triggerBackgroundPicker() {
-  hiddenBgInput.value?.click()
+function openBackgroundPicker() {
+  if (presentationBusy.value) return
+  pickerOpen.value = true
 }
 
-async function onBackgroundPicked(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input?.files?.[0]
-
-  if (!file) return
+// Browsing/highlighting files in the picker never calls this -- only
+// its own "Use This Image" action (or the established double-click
+// convention) emits `select`, so merely opening the gallery and looking
+// around, or Cancelling it, can never mutate the saved background.
+async function onBackgroundSelected(file: { id: string }) {
+  if (presentationBusy.value) return
+  if (!file?.id) return
 
   presentationBusy.value = true
   presentationMessage.value = ''
+  presentationMessageIsError.value = false
 
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const uploaded = await $fetch<any>(`/api/worlds/${props.worldId}/presentation/upload-background`, {
-      method: 'POST',
-      body: formData
-    })
-
-    const uploadedFileId =
-      uploaded?.backgroundFileId ||
-      uploaded?.fileId ||
-      uploaded?.id ||
-      uploaded?.data?.id ||
-      null
-
-    if (!uploadedFileId) {
-      throw new Error('Upload did not return a file id.')
-    }
-
+    // Stores the ORIGINAL asset id the picker returns -- never a
+    // thumbnail URL. The square's own display below reads this back
+    // through buildCardThumbnailUrl itself; the stored reference stays
+    // the real id throughout, exactly as it already was for an
+    // uploaded-through-the-old-flow background.
     await savePresentation(
       currentMode.value === 'neutral' ? 'immersive' : currentMode.value,
-      String(uploadedFileId)
+      String(file.id)
     )
-
-    presentationMessage.value = 'Background updated.'
+    presentationMessage.value = 'Background saved.'
   } catch (error: any) {
     presentationMessage.value =
       error?.data?.statusMessage ||
       error?.data?.message ||
       error?.message ||
-      'Failed to upload background.'
+      'Failed to save background.'
+    presentationMessageIsError.value = true
   } finally {
     presentationBusy.value = false
-    if (input) input.value = ''
   }
 }
 
 async function clearBackground() {
+  if (presentationBusy.value) return
+
   presentationBusy.value = true
   presentationMessage.value = ''
+  presentationMessageIsError.value = false
 
   try {
+    // Clears the PAGE'S association with the file only (backgroundFileId
+    // -> null on this World/pageKey's own presentation row) -- never a
+    // file delete; the underlying asset is untouched and still exists
+    // in the Media Gallery for any other use.
     await savePresentation(currentMode.value, null)
-    backgroundLightboxOpen.value = false
     presentationMessage.value = 'Background cleared.'
   } catch (error: any) {
     presentationMessage.value =
@@ -239,31 +270,26 @@ async function clearBackground() {
       error?.data?.message ||
       error?.message ||
       'Failed to clear background.'
+    presentationMessageIsError.value = true
   } finally {
     presentationBusy.value = false
   }
 }
 
-function openBackgroundLightbox() {
-  if (!previewImageUrl.value) return
-  backgroundLightboxOpen.value = true
-}
+watch(pickerOpen, (isOpen, wasOpen) => {
+  emit('picker-open-change', isOpen)
 
-function closeBackgroundLightbox() {
-  backgroundLightboxOpen.value = false
-}
+  // WorldMediaPicker has no focus-management of its own (confirmed: no
+  // focus-trap, no restore-on-close) -- this restores focus to the
+  // button that opened it specifically, which this component DOES own.
+  if (!isOpen && wasOpen) {
+    nextTick(() => previewButtonRef.value?.focus())
+  }
+})
 </script>
 
 <template>
   <div data-world-page-presentation-panel :class="worldPagePresentationPanelClass">
-    <input
-      ref="hiddenBgInput"
-      type="file"
-      accept="image/*"
-      class="hidden"
-      @change="onBackgroundPicked"
-    >
-
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
@@ -285,16 +311,17 @@ function closeBackgroundLightbox() {
     <div data-page-presentation-body class="mt-5 grid gap-5">
       <div data-page-presentation-preview-column class="min-w-0">
         <button
+          ref="previewButtonRef"
           type="button"
-          class="group block aspect-square w-full overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-well/54 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-eldra-accent/58"
-          :class="previewImageUrl ? 'cursor-zoom-in' : 'cursor-default'"
-          :disabled="!previewImageUrl"
-          @click="openBackgroundLightbox"
+          class="group relative block aspect-square w-full cursor-pointer overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-well/54 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-eldra-accent/58 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eldra-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="presentationBusy || loadingPresentation"
+          :aria-label="previewThumbnailUrl ? 'Change page background image' : 'Choose a page background image from the Media Gallery'"
+          @click="openBackgroundPicker"
         >
           <img
-            v-if="previewImageUrl"
-            :src="previewImageUrl"
-            alt="Background preview"
+            v-if="previewThumbnailUrl"
+            :src="previewThumbnailUrl"
+            alt=""
             class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
           >
 
@@ -302,22 +329,39 @@ function closeBackgroundLightbox() {
             v-else
             class="flex h-full w-full flex-col items-center justify-center gap-3 p-5 text-center"
           >
-            <UIcon name="i-lucide-image" class="h-8 w-8 text-eldra-text-faint" />
+            <UIcon name="i-lucide-image-plus" class="h-8 w-8 text-eldra-text-faint" />
             <div>
               <div class="text-sm font-semibold text-eldra-text-strong">
-                No background selected
+                Choose background
               </div>
               <div class="mt-1 text-xs leading-5 text-eldra-text-faint">
-                Upload a background to preview it here.
+                Click to pick an image from the Media Gallery.
               </div>
             </div>
+          </div>
+
+          <div
+            v-if="previewThumbnailUrl"
+            class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/55 group-hover:opacity-100 group-focus-visible:bg-black/55 group-focus-visible:opacity-100"
+          >
+            <span class="rounded-none border border-eldra-accent/42 bg-black/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+              {{ presentationBusy ? 'Saving…' : 'Change background' }}
+            </span>
           </div>
         </button>
 
         <div class="mt-2 text-[10px] uppercase tracking-[0.16em] text-[#756a57]">
-          {{ previewImageUrl ? 'Click preview to enlarge' : 'Square preview' }}
+          {{ previewThumbnailUrl ? 'Click to change' : 'Click to choose' }}
         </div>
       </div>
+
+      <WorldMediaPicker
+        v-model:open="pickerOpen"
+        :world-id="worldId"
+        title="Choose Page Background"
+        select-label="Use This Image"
+        @select="onBackgroundSelected"
+      />
 
       <div class="min-w-0">
         <div data-page-presentation-actions class="flex flex-wrap gap-2">
@@ -361,15 +405,6 @@ function closeBackgroundLightbox() {
         <div data-page-presentation-actions class="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            class="eldra-button rounded-none px-4 py-2 text-sm disabled:opacity-50"
-            :disabled="presentationBusy || loadingPresentation"
-            @click="triggerBackgroundPicker"
-          >
-            {{ presentationBusy ? 'Working…' : 'Set Background' }}
-          </button>
-
-          <button
-            type="button"
             class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong disabled:opacity-50"
             :disabled="presentationBusy || loadingPresentation"
             @click="clearBackground"
@@ -388,61 +423,16 @@ function closeBackgroundLightbox() {
 
         <div
           v-if="presentationMessage"
-          class="mt-4 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-3 text-sm text-eldra-text-soft"
+          class="mt-4 rounded-none border px-4 py-3 text-sm"
+          :class="presentationMessageIsError
+            ? 'border-red-400/32 bg-red-400/10 text-red-200'
+            : 'border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft'"
+          role="status"
         >
           {{ presentationMessage }}
         </div>
       </div>
     </div>
-
-    <Teleport to="body">
-      <Transition
-        enter-from-class="opacity-0"
-        enter-active-class="transition duration-150"
-        leave-to-class="opacity-0"
-        leave-active-class="transition duration-150"
-      >
-        <div
-          v-if="backgroundLightboxOpen"
-          class="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050505]/92 p-4 backdrop-blur-sm"
-          @click.self="closeBackgroundLightbox"
-        >
-          <div class="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-eldra-accent/32 bg-[linear-gradient(to_bottom,rgba(16,14,10,0.98),rgba(7,6,4,0.98))] shadow-2xl">
-            <header class="flex items-start justify-between gap-4 border-b border-eldra-accent/22 px-5 py-4">
-              <div>
-                <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
-                  Background Preview
-                </div>
-
-                <h3 class="mt-1 text-2xl font-semibold text-white">
-                  {{ title }}
-                </h3>
-
-                <div class="mt-1 text-xs text-eldra-text-faint">
-                  {{ previewMetaLine }}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                class="rounded-none border border-eldra-accent/24 px-3 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-white"
-                @click="closeBackgroundLightbox"
-              >
-                Close
-              </button>
-            </header>
-
-            <div class="min-h-0 flex-1 bg-black/40 p-4">
-              <img
-                :src="previewImageUrl"
-                alt="Full background preview"
-                class="mx-auto max-h-[78vh] w-full object-contain"
-              >
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 

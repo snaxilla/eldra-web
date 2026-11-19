@@ -18,9 +18,24 @@
 // dismissal, and a responsive mobile layout for free.
 //
 // No dirty-draft guard here: every WorldPagePresentationPanel action
-// (mode buttons, background upload, Clear) is an immediate network save
+// (mode buttons, background select, Clear) is an immediate network save
 // with no separate draft/Save step -- there is nothing to protect on
 // close.
+//
+// PAGE BACKGROUND PICKER UX CORRECTION -- the panel's background
+// control now opens WorldMediaPicker, a hand-rolled Teleport overlay,
+// not a Reka-UI layer. Reka-UI's own dismissable-layer stack (what lets
+// nested Reka-UI dialogs/popovers avoid closing each other) has no way
+// to know WorldMediaPicker is covering this UModal, so without this,
+// clicking the picker's own backdrop to cancel it -- or pressing Escape
+// while it's open -- would read as "outside this modal" and close
+// Customize Page too. `pickerOpen` (relayed up via the panel's own
+// `picker-open-change` emit) turns `dismissible` off for exactly as
+// long as the picker is open, so both are blocked instead; Escape then
+// does nothing while the picker is open rather than closing the wrong
+// surface. (WorldMediaPicker itself has no Escape handling of its own
+// either -- a pre-existing gap in that shared component, not
+// introduced here, and out of this task's scope to fix broadly.)
 defineProps<{
   worldId: string
   pageKey: string
@@ -33,6 +48,7 @@ defineProps<{
 }>()
 
 const open = ref(false)
+const pickerOpen = ref(false)
 </script>
 
 <template>
@@ -49,6 +65,7 @@ const open = ref(false)
     v-model:open="open"
     title="Customize Page"
     :description="scopeNote"
+    :dismissible="!pickerOpen"
     :ui="{ content: 'max-w-2xl' }"
   >
     <template #body>
@@ -58,6 +75,7 @@ const open = ref(false)
         :page-key="pageKey"
         :title="title"
         :description="scopeNote"
+        @picker-open-change="pickerOpen = $event"
       />
     </template>
   </UModal>

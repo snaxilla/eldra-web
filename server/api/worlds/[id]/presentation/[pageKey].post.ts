@@ -1,4 +1,5 @@
 import { requireCapability } from '../../../../utils/authorization'
+import { fileBelongsToWorld } from '../../../../utils/world-page-presentation'
 
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
@@ -63,6 +64,28 @@ export default defineEventHandler(async (event) => {
     body?.backgroundFileId === 'null'
       ? null
       : String(body.backgroundFileId)
+
+  // PAGE BACKGROUND PICKER UX CORRECTION -- a background can now come
+  // from picking an EXISTING Media Gallery file, not only a brand-new
+  // upload (which was always created scoped to this World already, by
+  // construction). An existing-file id is caller-supplied, so it must be
+  // verified to actually belong to THIS World before being persisted --
+  // otherwise a client could reference another World's file, which
+  // would then render (GET /api/assets/:id has no World-scoping of its
+  // own) as if it belonged here. No new capability: still gated on the
+  // SAME world.settings.edit check above.
+  if (backgroundFileId) {
+    const fileCheck = await dxFetch(
+      `/files/${encodeURIComponent(backgroundFileId)}?fields[]=id&fields[]=world_id`
+    )
+
+    if (!fileCheck?.data?.id || !fileBelongsToWorld(fileCheck.data.world_id, worldId)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'That image does not belong to this World.'
+      })
+    }
+  }
 
   const checkParams = new URLSearchParams()
   checkParams.set('filter[world_key][_eq]', worldId)

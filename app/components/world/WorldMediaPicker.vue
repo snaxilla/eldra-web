@@ -1,5 +1,28 @@
 <script setup lang="ts">
 import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+// PAGE BACKGROUND PICKER UX CORRECTION -- this overlay previously had no
+// focus management of its own at all, which only became a visible
+// problem once it could be opened nested inside another dialog
+// (WorldPagePresentationPanel.vue, inside WorldPageCustomizeButton.vue's
+// UModal). Reka-UI's UModal traps Tab focus to its OWN content and sets
+// `document.body.style.pointerEvents = 'none'` while open (confirmed by
+// reading node_modules/reka-ui/dist/FocusScope/FocusScope.js and
+// DismissableLayer.js directly, not assumed) -- neither mechanism has
+// any way to know a plain Teleport like this one is covering it, so
+// without this, Tab could never reach this dialog at all, and clicks
+// on it could silently fail to register.
+//
+// `FocusScope` is reka-ui's own public primitive (the same one Reka-UI's
+// own DialogContentImpl uses internally for every Dialog/Modal), and
+// mounting a SECOND `trapped` FocusScope automatically pauses whichever
+// one was previously active (reka-ui/dist/FocusScope/stack.js's own
+// stack) -- so wrapping this dialog's content in one, rather than
+// inventing a parallel mechanism, is what makes Tab/focus behave
+// correctly while nested, using Reka-UI's own existing convention for
+// exactly this situation. It is harmless when this picker is used
+// standalone (its only other current context) -- there is no outer
+// FocusScope to pause, and loop/trapped are a correct default.
+import { FocusScope } from 'reka-ui'
 
 type MediaFile = {
   id: string
@@ -154,6 +177,32 @@ watch(search, () => {
   searchTimer = setTimeout(() => loadMedia(), 250)
 })
 
+// Escape must close ONLY this dialog, never save, and never let an
+// outer dialog (e.g. Customize Page's own UModal) see the keystroke and
+// close itself instead. A capture-phase window listener runs before
+// Reka-UI's own bubble-phase Escape handling (also on `window`, via
+// VueUse's onKeyStroke inside its DismissableLayer) -- stopping
+// propagation here means that handler never fires at all while this is
+// open, regardless of what other dialog happens to be underneath.
+function onCaptureKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  event.stopPropagation()
+  close()
+}
+
+watch(
+  () => props.open,
+  (value) => {
+    if (typeof window === 'undefined') return
+
+    if (value) {
+      window.addEventListener('keydown', onCaptureKeydown, { capture: true })
+    } else {
+      window.removeEventListener('keydown', onCaptureKeydown, { capture: true })
+    }
+  }
+)
+
 function formatBytes(value: number) {
   const bytes = Number(value || 0)
   if (!bytes) return 'Unknown size'
@@ -218,6 +267,9 @@ async function onUploadSelected(event: Event) {
 
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onCaptureKeydown, { capture: true })
+  }
 })
 </script>
 
@@ -232,8 +284,10 @@ onBeforeUnmount(() => {
       <div
         v-if="isOpen"
         class="fixed inset-0 z-[9999] bg-[#050505]/88 p-3 backdrop-blur-sm md:p-6"
+        style="pointer-events: auto"
         @click.self="close"
       >
+        <FocusScope as-child trapped loop>
         <div class="eldra-ornate-panel eldra-frame-corners mx-auto flex h-full max-h-[92vh] max-w-6xl flex-col overflow-hidden rounded-none border bg-[linear-gradient(to_bottom,rgba(16,14,10,0.98),rgba(7,6,4,0.98))] shadow-2xl">
           <header class="flex flex-wrap items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
             <div>
@@ -426,6 +480,7 @@ onBeforeUnmount(() => {
             </aside>
           </div>
         </div>
+        </FocusScope>
       </div>
     </Transition>
   </Teleport>

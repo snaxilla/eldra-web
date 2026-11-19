@@ -974,3 +974,156 @@ report stated them.
 ### Status
 
 **NOT committed.** Stopped here for review per this task's own closing instruction.
+
+## Article Page Builder without Play/Build mode (not yet committed)
+
+Closes follow-up #1 above. `entities/[entityId]/index.vue` was the one remaining page where reaching
+an authoring control required visiting the World Map and flipping its Play/Build toggle first.
+
+### Inventory (traced before changing anything)
+
+The floating "Page Builder" button only ever opened a drawer containing `WorldPagePresentationPanel`
+(background/mode) — the article's OWN authoring controls (Header Editor, Article Image upload,
+Article Body editor with Save/Reset, Article Style buttons, Sidebar Notes editor,
+`WorldEntityRelationshipsPanel`'s edit affordance) were rendered inline in the page body, gated
+**separately and independently** by the World Map's global `mode === 'build'` state — not by the
+drawer being open at all. This is the actual root cause: clicking "Page Builder" never revealed any
+of this; only visiting the Map and flipping Play/Build did. A `watch(mode, ...)` additionally
+force-closed the drawer the instant Build mode left, even though the drawer's own content (page
+presentation) has nothing to do with the Map.
+
+Two capabilities were already distinct server-side, but neither was checked client-side at all:
+article authoring (header/body/sidebar/image, `server/api/worlds/[id]/entities/[entityId].patch.ts`,
+`.../blocks/[blockKey].put.ts`, `.../apply-image.post.ts`) all require `world.entity.edit`; page
+presentation (`.../presentation/[pageKey].post.ts`) requires `world.settings.edit` — the SAME
+distinction already established for the other World pages' "Customize Page" entry points. A second,
+independent `mode === 'build'` check lived inside `WorldEntityRelationshipsPanel.vue` itself
+(`canEdit`), reachable only through this page's own `variant="article"` call (its other caller,
+`WorldEntityContextDrawer.vue`, uses `variant="drawer"` with `allow-edit` hardcoded `false`, so it was
+never actually affected by that check). No dirty-navigation guard (router or `beforeunload`) existed
+anywhere in this 2,700-line file, despite a real, already-existing draft/dirty model
+(`headerDirty`/`articleDirty`, with existing Save/Reset -- "Reset" clears to the generated default,
+not to the last save, a pre-existing behavior left unchanged). No entity-type restriction gates Page
+Builder's reachability today (confirmed by inspection, not assumed) -- it applies uniformly to
+whatever entity type reaches this page; not newly restricted here.
+
+### Changes
+
+- `canAuthorArticle` (`world.entity.edit`) and `canEditPageSettings` (`world.settings.edit`) --
+  the same two pure, already-tested helpers the earlier passes established
+  (`worldEntityDirectEditEligibility.ts`, `world-settings-eligibility.ts`), reused, not reinvented.
+- `authoringActive = buildDrawerOpen && canAuthorArticle` is now the ONE flag every former
+  `mode === 'build'` site in this file uses: the button's own nav bar, Article Image upload, Header
+  Editor, Article Style buttons, the Article Body editor, the generated-content-vs-editor toggle, and
+  `WorldEntityRelationshipsPanel`'s `allow-edit`. The floating "Page Builder" button itself is now
+  gated on `canAuthorArticle || canEditPageSettings` (either capability alone is enough to reach it),
+  per "gate individual controls by their existing appropriate capabilities, do not make every control
+  available merely because the drawer can open": the presentation panel inside the drawer is
+  independently gated on `canEditPageSettings`, with an explicit "You do not have permission to edit
+  this page's presentation" message (matching `AdminWorldPropertiesPanel.vue`'s own established
+  amber-box convention) for a caller who can author the article but not touch presentation.
+- `WorldEntityRelationshipsPanel.vue`'s own `canEdit` no longer requires `mode === 'build'` -- a new
+  pure helper, `worldEntityRelationshipsEligibility.ts`'s `canEditEntityRelationships(variant,
+  allowEdit)`, replaces it, with its own unit tests proving the 'drawer' variant stays uneditable
+  through this gate regardless of `allowEdit` (the boundary that used to be enforced jointly by
+  `mode` AND the variant check, now by the variant check alone).
+- The `watch(mode, ...)` auto-close is removed outright -- Page Builder's own open/close state
+  (`buildDrawerOpen`) is now fully local and never reacts to the Map's own state.
+- `onBeforeRouteLeave` AND `onBeforeRouteUpdate` dirty-navigation guards added (there were none):
+  the latter specifically because navigating between two different articles' `entityId` under the
+  SAME route component does not trigger `onBeforeRouteLeave` at all, yet this file's own
+  entity-change watchers would otherwise silently overwrite an unsaved draft.
+- Copy referencing "Play mode"/"Build mode" in sidebar-visibility option descriptions (now
+  meaningless on this page) reworded to say "players"/"viewers" directly, since nothing here
+  instructed switching modes to begin with -- there was no literal "enter Build mode" instruction to
+  remove.
+- `mode`'s own `useState('world-workspace-mode', ...)` declaration, and its two now-dead pass-throughs
+  to `WorldEntityContextDrawer`/`WorldEntityRelationshipsPanel` (confirmed unused by both: the first
+  never reads `props.mode` at all; the second's own `mode === 'build'` read was the exact thing just
+  removed), are gone from this ONE file only -- the `mode` prop itself stays declared on both shared
+  components for their other callers, per this task's own "no repository-wide mode cleanup" boundary.
+  Map pin behavior, the Map's own Play/Build toggle, and Location Tools/Timeline entity-authoring
+  (a separately recorded, still-open item) are all untouched.
+
+### Verification
+
+Source-traced and tool-verified (not a browser): typecheck (902 errors before and after, confirmed
+identical baseline via `git stash`, zero new errors in any touched/created file -- one transient
+`import/first` regression from the three new imports was avoided entirely by placing them ahead of
+`definePageMeta`, the same exception precedent `admin.vue`'s own header already established, rather
+than accepted as new debt), lint (121 errors/4 warnings before and after across every touched file,
+confirmed via the same baseline diff -- zero new issues, the new pure module and its test are clean),
+full suite (6541/6541 passing, 324 files, including 6 new tests for
+`canEditEntityRelationships` proving the drawer-variant boundary), production build (clean, no new
+warnings for either touched file), `git diff --check` (clean). A live smoke check against this repo's
+own disposable dev instance confirmed the entity PATCH and block PUT routes still correctly return 401
+unauthenticated (neither server route was touched this pass).
+
+**NOT browser-verified -- no browser tool was available this session, stated separately rather than
+implied by the checks above**: a fresh direct article URL actually showing Page Builder without a Map
+visit; the authorized-vs-unauthorized-viewer distinction as actually rendered; the
+`world.entity.edit`-only vs `world.settings.edit`-only split rendering correctly as two different
+users; the existing save/failure/dirty-navigation flow as actually clicked through; refresh retaining
+a saved change; desktop and ~390×844 layout (unchanged CSS, not newly verified); that leaving/entering
+Map Build mode truly has zero visible effect on this page; that returning to the Map still has its own
+pin Play/Build behavior intact.
+
+### Draft persistence across Page Builder close/reopen (checked before committing)
+
+Making `authoringActive` depend on `buildDrawerOpen` means closing Page Builder now `v-if`-unmounts
+the Header Editor, Article Body editor, Article Style buttons, and Sidebar Notes editor -- previously
+these were gated on the Map's own `mode`, never on the drawer's open state, so this is a genuinely new
+coupling worth checking rather than assuming safe.
+
+**Traced: no confirmation needed, nothing is lost.** Every one of those sections binds `v-model`
+straight to a PAGE-level ref (`metaTitle`/`metaSlug`/`metaSummary`/`locationTypeDraft`/
+`articleThemeDraft`/`articleDraft`, and `articleSidebarItemsDraft`'s own array-held item objects via
+`v-model="item.title"` etc.), never to local state inside the unmounted DOM subtree itself -- closing
+only removes the rendered inputs, not the data they were bound to. The Article Body editor
+(`EldraRichTextEditor.vue`, Tiptap-based) confirms the same guarantee for rich text specifically: its
+own `onUpdate` hook emits `update:modelValue` on every edit transaction (every keystroke), not only on
+blur/unmount, so `articleDraft` is already current before any unmount could happen; remounting re-
+creates the Tiptap instance from `props.modelValue`, which is that same unchanged ref. The only two
+places that ever set `buildDrawerOpen = false` (`closeArticleBuildDrawer`, the drawer's own X button;
+`openMentionContext`, switching to the context drawer) touch neither of these refs. There is also no
+Escape-key or backdrop dismissal on this drawer at all (confirmed by inspection -- no `keydown`
+listener and no `@click.self` anywhere in this file for it); the X button is the only dismissal path
+today.
+
+No change was made here -- adding a confirmation would have been the "unnecessary" case this task's
+own instructions explicitly called out. The router-level guards from the prior pass
+(`onBeforeRouteLeave`/`onBeforeRouteUpdate`) remain the real protection for the cases that actually
+DO lose data (navigating away/to a different entity); declining that confirm already correctly aborts
+the navigation and leaves the builder open with the draft untouched, by Vue Router's own semantics.
+
+**Save/discard dirty-state clearing, re-confirmed**: both `saveEntityMetadata` and
+`saveArticleOverride` call `refreshEntity()` on success, which re-triggers this file's own existing
+`watch(() => entity.value, ...)` / `watch(() => [entityId.value, articleOverrideMarkdown.value, ...], ...)`
+handlers -- these reset the draft refs to match the just-saved entity exactly, so `headerDirty`/
+`articleDirty` both correctly read `false` immediately after a successful save (confirmed by reading
+the comparison logic, not assumed). "Reset" (the existing discard-style action) is intentionally NOT
+a dirty-clearing action: it stages a *different* pending edit (revert to the generated article),
+which is itself unsaved until Save is clicked again -- its own `articleSaveSuccess` message already
+says "Draft reset. Save to keep it." This is pre-existing, correct behavior, left unchanged.
+Immediate-save presentation controls (`WorldPagePresentationPanel`) remain outside this dirty model
+entirely, as before -- confirmed the dirty checks never reference presentation state.
+
+### Remaining limitations
+
+- Location Tools' "New Location" form and the Timeline pages' "Edit Timeline"/"Add Timeline Entry"
+  controls remain `mode`-gated -- the same already-recorded, separately-scoped discoverability item,
+  untouched by this pass.
+- `EldraRichTextEditor.vue`'s own internal image-insertion flow (used by the Article Body editor) was
+  not traced further in this pass -- out of this task's own named scope.
+- The character-sheet Roll Tray is unrelated to this pass and was not touched; it is already
+  collapsible.
+
+### Deployment requirements
+
+None -- pure client-side visibility/entry-point and dirty-navigation change, reusing the already-
+existing `world.entity.edit`/`world.settings.edit` capabilities and the already-existing save routes
+unchanged. No schema, environment variable, or credential change.
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

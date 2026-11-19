@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { canEditEntityRelationships } from './worldEntityRelationshipsEligibility'
+
 const props = withDefaults(defineProps<{
   worldId?: string | number
   entity?: any | null
@@ -114,11 +116,16 @@ const entityTitle = computed(() =>
 const isArticleVariant = computed(() => props.variant === 'article')
 const isDrawerVariant = computed(() => props.variant === 'drawer')
 
-const canEdit = computed(() =>
-  isArticleVariant.value &&
-  props.mode === 'build' &&
-  props.allowEdit === true
-)
+// ARTICLE PAGE BUILDER WITHOUT PLAY/BUILD MODE -- previously also
+// required `props.mode === 'build'` (the World Map's own Play/Build
+// toggle), which made this panel's own editing depend on a control that
+// has nothing to do with it. Only the 'article' variant (the ONE caller:
+// entities/[entityId]/index.vue) ever passes `allowEdit` as anything but
+// hardcoded `false`, so this is scoped to that flow by construction --
+// the 'drawer' variant (WorldEntityContextDrawer.vue) is unaffected,
+// since the variant check alone already excludes it regardless of mode.
+// See worldEntityRelationshipsEligibility.test.ts for the proof.
+const canEdit = computed(() => canEditEntityRelationships(props.variant, props.allowEdit))
 
 const relationships = computed(() =>
   Array.isArray(payload.value?.relationships) ? payload.value.relationships : []

@@ -1,4 +1,12 @@
 <script setup lang="ts">
+// These three stay ahead of definePageMeta() rather than adding more
+// instances of this file's own pre-existing "imports after
+// definePageMeta" pattern (the four below it) -- the same exception
+// precedent admin.vue's own header already established for new imports.
+import { canEditWorldEntities } from '~/components/world/worldEntityDirectEditEligibility'
+import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -12,7 +20,11 @@ const route = useRoute()
 
 const worldId = computed(() => String(route.params.id || ''))
 const entityId = computed(() => String(route.params.entityId || ''))
-const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+// ARTICLE PAGE BUILDER WITHOUT PLAY/BUILD MODE -- this page no longer
+// reads the World Map's own Play/Build toggle (`world-workspace-mode`)
+// at all; Page Builder's reachability and every authoring control inside
+// it are capability-gated instead (canAuthorArticle/canEditPageSettings,
+// below), independent of the Map entirely.
 
 const uploadingImage = ref(false)
 const imageError = ref('')
@@ -72,17 +84,17 @@ const ARTICLE_SIDEBAR_VISIBILITY_OPTIONS = [
   {
     label: 'Players',
     value: 'public',
-    description: 'Visible in Play mode.'
+    description: 'Visible to players viewing this article.'
   },
   {
     label: 'GM Only',
     value: 'gm',
-    description: 'Stored now, hidden from Play mode until GM permissions are wired.'
+    description: 'Stored now, hidden from players until GM permissions are wired.'
   },
   {
     label: 'Hidden Draft',
     value: 'hidden',
-    description: 'Hidden from Play mode.'
+    description: 'Hidden from players.'
   }
 ]
 
@@ -97,7 +109,7 @@ function articleSidebarVisibilityLabel(value: any) {
 }
 
 function isArticleSidebarItemVisible(item: any) {
-  if (mode.value === 'build') return true
+  if (authoringActive.value) return true
 
   return normalizedArticleSidebarVisibility(item?.visibility) === 'public'
 }
@@ -202,6 +214,26 @@ const locationLinkedMapIdDraft = ref('')
 const locationParentLocationIdDraft = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+
+// ARTICLE PAGE BUILDER WITHOUT PLAY/BUILD MODE -- article authoring
+// (header, body, sidebar notes, article image) and page presentation
+// (background/mode) are DIFFERENT capabilities, same as everywhere else
+// this distinction already exists (world-settings-eligibility.ts's own
+// header). Neither was checked client-side here before this pass; every
+// authoring section below instead keyed off `mode === 'build'`, the
+// World Map's own Play/Build toggle -- these two pure helpers are the
+// same ones worldEntityDirectEditEligibility.ts/the "Customize Page"
+// pass already established, not a new permission system.
+const canAuthorArticle = computed(() => canEditWorldEntities(world.value?.capabilities))
+const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
+
+// The one combined "is the article-authoring UI actually showing" check
+// every former `mode === 'build'` site below now uses: Page Builder is
+// open (buildDrawerOpen, declared further down) AND the viewer actually
+// holds world.entity.edit. Referencing buildDrawerOpen before its own
+// declaration is safe here -- this is a lazy computed getter, not read
+// until render, by which point the whole script setup has already run.
+const authoringActive = computed(() => buildDrawerOpen.value && canAuthorArticle.value)
 
 const { data: entity, refresh: refreshEntity } = await useAsyncData(
   `entity-${worldId.value}-${entityId.value}`,
@@ -563,10 +595,10 @@ const articleOverrideSidebarItems = computed(() =>
   normalizeArticleSidebarItems(articleOverrideBlock.value?.data?.sidebarItems)
 )
 const activeArticleSidebarEnabled = computed(() =>
-  mode.value === 'build' ? articleSidebarEnabledDraft.value : articleOverrideSidebarEnabled.value
+  authoringActive.value ? articleSidebarEnabledDraft.value : articleOverrideSidebarEnabled.value
 )
 const activeArticleSidebarItems = computed(() =>
-  mode.value === 'build' ? normalizeArticleSidebarItems(articleSidebarItemsDraft.value) : articleOverrideSidebarItems.value
+  authoringActive.value ? normalizeArticleSidebarItems(articleSidebarItemsDraft.value) : articleOverrideSidebarItems.value
 )
 const visibleArticleSidebarItems = computed(() =>
   activeArticleSidebarEnabled.value
@@ -676,10 +708,10 @@ watch(
 )
 
 const selectedArticleTheme = computed(() =>
-  mode.value === 'build' ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
+  authoringActive.value ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
 )
 const displayArticleTheme = computed(() =>
-  mode.value === 'build' ? 'codex' : selectedArticleTheme.value
+  authoringActive.value ? 'codex' : selectedArticleTheme.value
 )
 const activeArticleThemeLabel = computed(() =>
   ARTICLE_THEME_OPTIONS.find((option) => option.value === selectedArticleTheme.value)?.label || 'Codex'
@@ -1210,11 +1242,36 @@ function closeContextDrawer() {
   contextDrawerEntity.value = null
 }
 
-watch(mode, (nextMode) => {
-  if (nextMode !== 'build') {
-    closeArticleBuildDrawer()
-  }
-})
+// Map Build mode must stay local to the Map (ARTICLE PAGE BUILDER
+// WITHOUT PLAY/BUILD MODE) -- this page's own Page Builder used to
+// auto-close the instant the World Map's global Play/Build toggle left
+// 'build', even though nothing on THIS page has anything to do with the
+// Map. Removed outright: Page Builder's own open/close state is now
+// entirely local (buildDrawerOpen), never reacting to `mode`.
+
+// Dirty-navigation protection -- this page previously had NONE at all
+// (neither a router guard nor a beforeunload listener), despite already
+// having a real draft/dirty model (headerDirty/articleDirty). Opening or
+// closing Page Builder itself never discards a draft (the draft refs are
+// only ever overwritten by a successful save's own refetch, or by the
+// entity/entityId watchers below when navigating to a DIFFERENT entity),
+// so only actual navigation needs a guard:
+//   - onBeforeRouteLeave covers leaving this page entirely (Back,
+//     browser back/forward, another route).
+//   - onBeforeRouteUpdate covers the case onBeforeRouteLeave does NOT:
+//     clicking a mention/link to a DIFFERENT article's entityId while
+//     staying on this exact same route component -- Vue Router reuses
+//     the component for a param-only change, so onBeforeRouteLeave never
+//     fires, yet this file's own watch(() => [entityId.value, ...], ...)
+//     handlers would otherwise silently overwrite the draft out from
+//     under the user.
+function confirmDiscardIfDirty(): boolean {
+  if (!headerDirty.value && !articleDirty.value) return true
+  return window.confirm('Discard unsaved changes?')
+}
+
+onBeforeRouteLeave(() => confirmDiscardIfDirty())
+onBeforeRouteUpdate(() => confirmDiscardIfDirty())
 
 
 async function onImageSelected(event: Event) {
@@ -1254,7 +1311,7 @@ async function onImageSelected(event: Event) {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <button
-      v-if="mode === 'build'"
+      v-if="canAuthorArticle || canEditPageSettings"
       type="button"
       class="fixed right-6 top-24 z-30 rounded-none border border-[rgba(201,164,90,0.36)] bg-[rgba(20,17,12,0.92)] px-4 py-2 text-sm font-semibold text-[#fff7df] shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur transition hover:border-[rgba(201,164,90,0.58)] hover:bg-[rgba(201,164,90,0.14)]"
       @click="openArticleBuildDrawer"
@@ -1264,7 +1321,7 @@ async function onImageSelected(event: Event) {
 
     <div :class="pageContentClass">
       <nav
-        v-if="mode === 'build'"
+        v-if="authoringActive"
         data-article-build-nav
         class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.66)] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)] backdrop-blur-xl"
       >
@@ -1312,7 +1369,7 @@ async function onImageSelected(event: Event) {
               {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
             </div>
 
-            <div v-if="mode === 'build'" class="mt-4 rounded-none border border-stone-500/20 bg-[#151515]/70 p-4">
+            <div v-if="authoringActive" class="mt-4 rounded-none border border-stone-500/20 bg-[#151515]/70 p-4">
               <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-zinc-500">
                 Article Image
               </label>
@@ -1336,7 +1393,7 @@ async function onImageSelected(event: Event) {
             </div>
 
             <div
-              v-if="mode === 'build'"
+              v-if="authoringActive"
               id="article-build-header"
               data-article-build-section
               class="article-build-section mt-5 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.70)] p-4 shadow-[0_14px_38px_rgba(0,0,0,0.22)]"
@@ -1543,7 +1600,7 @@ async function onImageSelected(event: Event) {
           </div>
 
           <div
-            v-if="mode === 'build'"
+            v-if="authoringActive"
             class="flex flex-wrap items-center gap-2"
           >
             <span class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Article Style</span>
@@ -1562,7 +1619,7 @@ async function onImageSelected(event: Event) {
         </div>
 
         <div
-          v-if="mode !== 'build' && !articleOverrideMarkdown && entity?.entity_type === 'class' && classFeatureCards.length"
+          v-if="!authoringActive && !articleOverrideMarkdown && entity?.entity_type === 'class' && classFeatureCards.length"
           class="mt-6 space-y-5"
         >
           <div class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-4 backdrop-blur-xl">
@@ -1622,7 +1679,7 @@ async function onImageSelected(event: Event) {
         </div>
 
           <div
-              v-else-if="mode === 'build'"
+              v-else-if="authoringActive"
               id="article-build-body"
               data-article-build-section
               class="article-build-section mt-6 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.70)] p-4 shadow-[0_14px_38px_rgba(0,0,0,0.22)]"
@@ -1681,7 +1738,7 @@ async function onImageSelected(event: Event) {
                     Sidebar Notes
                   </div>
                   <p class="mt-1 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
-                    Optional article-side details for people, places, secrets, and notes. Public entries show in Play mode.
+                    Optional article-side details for people, places, secrets, and notes. Public entries are visible to players.
                   </p>
                 </div>
 
@@ -1961,12 +2018,20 @@ async function onImageSelected(event: Event) {
 
           <div class="flex-1 overflow-y-auto p-5">
             <WorldPagePresentationPanel
-        embedded
+              v-if="canEditPageSettings"
+              embedded
               :world-id="worldId"
               page-key="entity-article"
               title="Entity Article"
               description="Controls the article page presentation and background."
             />
+
+            <div
+              v-else
+              class="rounded-none border border-amber-400/22 bg-amber-400/8 px-3 py-2 text-xs text-amber-100"
+            >
+              You do not have permission to edit this page's presentation.
+            </div>
           </div>
         </div>
       </aside>
@@ -2001,8 +2066,7 @@ async function onImageSelected(event: Event) {
             :show-graph="true"
             :world-id="worldId"
             :entity="entity"
-            :mode="mode"
-            :allow-edit="mode === 'build'"
+            :allow-edit="authoringActive"
             @open-entity="openMentionContext"
           />
         </div>
@@ -2013,7 +2077,6 @@ async function onImageSelected(event: Event) {
       :open="contextDrawerOpen"
       :entity="contextDrawerEntity"
       :world-id="worldId"
-      :mode="mode"
       :allow-build-actions="false"
       @close="closeContextDrawer"
     />

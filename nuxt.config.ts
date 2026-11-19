@@ -29,6 +29,16 @@ export default defineNuxtConfig({
   },
   css: ['~/assets/css/main.css', '~/assets/css/eldra-shell.css'],
 
+  // Installable Web App -- guarantees the manifest's content-type
+  // regardless of how a given self-hosted deployment serves static files
+  // (not every static-file layer's MIME table necessarily knows
+  // .webmanifest -> application/manifest+json out of the box).
+  routeRules: {
+    '/manifest.webmanifest': {
+      headers: { 'Content-Type': 'application/manifest+json' }
+    }
+  },
+
   runtimeConfig: {
     // PRIVATE (server only)
     directusToken: process.env.DIRECTUS_TOKEN || '',
@@ -42,7 +52,31 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'Eldra'
+      title: 'Eldra',
+      // Installable Web App -- manifest.webmanifest and the generated
+      // icons (public/icons/, from app/assets/pwa/icon-source.svg via
+      // scripts/pwa/generate-icons.mjs) are all deployment-relative paths,
+      // never an absolute domain, so this works unmodified on any
+      // self-hosted origin. No service worker: current Chromium
+      // installability criteria (web.dev's own install-criteria doc, MDN's
+      // "Making PWAs installable" guide) require only HTTPS + a valid
+      // manifest with the fields below -- a service worker is explicitly
+      // not one of them, and Offline gameplay is out of scope here, so
+      // none is registered. iOS/iPadOS Safari's "Add to Home Screen" (16.4+)
+      // has no install-prompt event and no manifest requirement at all; it
+      // reads the apple-touch-icon link and the apple-mobile-web-app-*
+      // meta tags below instead.
+      link: [
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' }
+      ],
+      meta: [
+        { name: 'theme-color', content: '#0a0907' },
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
+        { name: 'apple-mobile-web-app-title', content: 'Eldra' }
+      ]
     }
   }
 })

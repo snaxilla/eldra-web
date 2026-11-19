@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    Eldra app icon: source of truth, rasterized to public/icons/*.png by
+    scripts/pwa/generate-icons.mjs (sharp). Reuses this app's own existing
+    brand identity rather than inventing new branding.
+      Colors: the Fantasy theme's own tokens (app/assets/css/themes/fantasy.css),
+      the eldra panel strong color (10 9 7, #0a0907) and the eldra accent
+      color (201 164 90, #c9a45a, "antique gold").
+      Motif: the same four point compass star and rings construction as the
+      existing decorative ornament, app/assets/ornaments/fantasy/emblem.svg
+      (the eldra ornament emblem token), redrawn bold and filled rather than
+      hairline stroked, since that original is a subtle background texture
+      at low opacity and disappears at icon sizes (illegible well before
+      48px, let alone a 16px favicon equivalent).
+    Full bleed background, no rounded corners baked in (the OS applies its
+    own mask shape for maskable icons); the star's own points stay within
+    about 195px of center (the safe zone radius for a 512px maskable icon
+    is roughly 205px, the inner 80% diameter), so this single file is
+    reused unmodified for the "any" and "maskable" manifest icon purposes,
+    and for the Apple touch icon.
+  -->
+  <rect width="512" height="512" fill="#0a0907" />
+
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#c9a45a" stroke-width="5" opacity="0.5" />
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#c9a45a" stroke-width="3" stroke-dasharray="10 20" opacity="0.38" />
+
+  <!-- Horizontal points, dimmer, matching the ornament's own two tone split -->
+  <path d="M90 256 L198 240 L256 256 L198 272 Z" fill="#c9a45a" opacity="0.78" />
+  <path d="M422 256 L314 272 L256 256 L314 240 Z" fill="#c9a45a" opacity="0.78" />
+
+  <!-- Vertical points, full strength -->
+  <path d="M256 90 L272 198 L256 256 L240 198 Z" fill="#c9a45a" />
+  <path d="M256 422 L240 314 L256 256 L272 314 Z" fill="#c9a45a" />
+
+  <!-- Thin diagonal cross bracing, as the original ornament has -->
+  <path
+    d="M150 150 L222 214 M362 362 L290 298 M362 150 L290 214 M150 362 L222 298"
+    stroke="#c9a45a"
+    stroke-width="3"
+    opacity="0.45"
+    stroke-linecap="round"
+  />
+
+  <circle cx="256" cy="256" r="12" fill="#c9a45a" />
+</svg>

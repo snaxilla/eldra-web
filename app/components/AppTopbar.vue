@@ -44,6 +44,7 @@ const pageTitle = computed(() => {
         </div>
 
         <EldraAccessibilityMenu compact />
+        <AppInstallMenu compact />
 
         <NuxtLink
           to="/"

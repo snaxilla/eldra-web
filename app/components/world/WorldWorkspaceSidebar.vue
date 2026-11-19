@@ -165,6 +165,10 @@ const navItems = computed(() => [
           <EldraAccessibilityMenu compact fill />
         </div>
 
+        <div class="mb-2">
+          <AppInstallMenu compact fill />
+        </div>
+
         <!-- Exactly one Switch World action, now wrapped the same way every
              nav item above it is (`<UTooltip>`, not a native `title`) --
              the one real inconsistency found while tracing a reported
@@ -276,6 +280,7 @@ const navItems = computed(() => [
         </div>
 
         <EldraAccessibilityMenu />
+        <AppInstallMenu />
 
         <NuxtLink
           to="/"

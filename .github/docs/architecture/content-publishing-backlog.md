@@ -346,3 +346,43 @@ environment, or credential change.
 ### Status
 
 **NOT committed.** Stopped here for review per this task's own closing instruction.
+
+## Maps listing thumbnails (not yet committed)
+
+Owner report: the Maps listing (`app/pages/worlds/[id]/maps.vue`) renders a card preview per map,
+including the large Caldera asset, and appeared to request the full original image.
+
+**Traced**: `server/api/worlds/[id]/maps.get.ts` returns each map's `imageUrl` as either `null` or
+`/api/assets/:id` -- always internal, never an external/legacy URL for this specific route -- so
+wrapping it in the existing `buildCardThumbnailUrl` (the same `preset=card` helper already used for
+the Media Gallery, `WorldMediaPicker`, `MapImageOverlayEditor`, and the two entity-editor previews)
+is safe unconditionally. The map-creation form itself has no image preview of its own (only the
+selected filename as text) -- nothing else to fix there. The stored `image_file`/`directusFileId`
+reference, the actual interactive map renderer (`WorldMapLeaflet.client.vue`, reached via "Open Map"),
+tiling, zoom, overlays, and pin coordinates are all untouched -- this pass only ever changed the
+listing CARD's own `<img>` src.
+
+No retry/error-recovery UI was added for this card thumbnail specifically (there was none before, and
+none exists for comparable card grids elsewhere that this pass could point to as "reuse" beyond
+`WorldMediaPicker`'s own grid, a different, larger surface) -- "no automatic original-image fallback
+on failure" is satisfied by construction (nothing falls back to anything), not by adding a dedicated
+Retry affordance. See `.github/docs/architecture/direct-content-editing.md`'s "Creation entry points,
+Map thumbnails, and Map wording" section for the full writeup, including the Locations/Timelines
+creation-entry-point work and the "Upload Map" → "Create Map" wording pass done in the same session.
+
+### Verification
+
+Typecheck/lint (compared against `git show HEAD:maps.vue` directly rather than a stash, per this
+task's own instruction for an already-dirty workspace -- confirmed zero new issues, one FEWER lint
+error than baseline since an unused `mode` variable was also removed), full suite passing, production
+build clean. **Not browser-verified**: that the card actually requests the smaller derivative over
+the network rather than the original, and that it renders correctly at both viewport sizes -- no
+browser tool was available this session.
+
+### Deployment requirements
+
+None -- reuses the existing `buildCardThumbnailUrl`/`preset=card` path, already deployed.
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

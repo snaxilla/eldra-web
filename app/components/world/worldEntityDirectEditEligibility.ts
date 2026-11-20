@@ -19,6 +19,15 @@ export function canEditWorldEntities(capabilities: unknown): boolean {
   return Array.isArray(capabilities) && capabilities.includes('world.entity.edit')
 }
 
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- a separate,
+// distinct capability from edit (server: world.entity.create, e.g.
+// server/api/worlds/[id]/locations.post.ts). A worldbuilder holds both,
+// but they are not the same grant, so this is its own function rather
+// than aliasing canEditWorldEntities.
+export function canCreateWorldEntities(capabilities: unknown): boolean {
+  return Array.isArray(capabilities) && capabilities.includes('world.entity.create')
+}
+
 export function canDeleteWorldEntities(capabilities: unknown): boolean {
   return Array.isArray(capabilities) && capabilities.includes('world.entity.delete')
 }

@@ -1127,3 +1127,197 @@ unchanged. No schema, environment variable, or credential change.
 ### Status
 
 **NOT committed.** Stopped here for review per this task's own closing instruction.
+
+## Creation entry points, Map thumbnails, and Map wording (not yet committed)
+
+Closes the "Location Tools"/Timeline half of follow-up item above (still-open item below). Three
+owner-reported bugs: Location/Timeline creation stranded behind Map Build mode, Maps listing cards
+fetching full original images, and "Upload Map" wording not matching what that flow actually does
+(create/configure a map, not just upload a file).
+
+### Trace
+
+- **Locations** (`WorldEntityInteractivePage.vue`, `locations.vue`): the "New Location" form was gated
+  on the Map's `mode === 'build'` directly, nested inside a `hidden md:block` aside (unreachable on
+  mobile regardless of mode) that ALSO held no other content once this moved out. Server:
+  `server/api/worlds/[id]/locations.post.ts` requires `world.entity.create` -- a capability distinct
+  from `world.entity.edit`, never checked client-side before this pass.
+- **Timelines** (`timelines/index.vue`, `timelines/[timelineId].vue`): Create Timeline, Delete
+  Timeline, Edit Timeline, Add/Edit/Delete Timeline Entry were all gated on `mode === 'build'`.
+  Server: every one of these routes (`timelines/index.post.ts`, `[timelineId].patch/delete.ts`,
+  `[timelineId]/events.post.ts`, `[timelineId]/events/[eventId].patch/delete.ts`) requires the SAME
+  single capability, `world.timeline.edit` -- confirmed by reading each route, not assumed.
+- **Maps** (`maps.vue`): traced and found the OPPOSITE problem from Locations/Timelines -- `mode` was
+  declared in this file but never actually read anywhere else; Create/Upload Map was already reachable
+  regardless of Map state. The real, previously-unchecked gap was that NOTHING client-side reflected
+  `world.map.edit` (required by `maps/upload.post.ts`, `[mapId]/set-parent.post.ts`,
+  `[mapId]/set-default.post.ts`) at all -- every write action was shown to every viewer regardless of
+  capability, relying entirely on the server to refuse an unauthorized attempt after the fact.
+  Confirmed `maps.get.ts`'s own `imageUrl` field is always either `null` or an internal
+  `/api/assets/:id` reference, never external/legacy -- safe to wrap in `buildCardThumbnailUrl`
+  unconditionally. The map-creation form itself has no image preview surface at all (only a filename
+  string, "Selected: {{ uploadFile.name }}") -- nothing to fix there.
+
+### Changes
+
+- `canCreateWorldEntities` (new, `worldEntityDirectEditEligibility.ts`), `canEditWorldTimelines` (new,
+  `app/lib/eldra/world-timeline-eligibility.ts`), `canEditWorldMaps` (new,
+  `app/lib/eldra/world-map-eligibility.ts`) -- three small, pure, unit-tested capability gates,
+  following the exact established pattern of every other Play/Build decoupling this document tracks.
+- **Locations**: a capability-gated "Create Location" button in the collection header (visible on
+  `canCreateEntities`, independent of Map mode) opens the SAME existing creation form, now in a
+  `UModal` instead of the old `hidden md:block` aside -- fixing the mobile-unreachability bug as a
+  direct consequence, the same move "Customize Page" made earlier. The empty state now distinguishes
+  "nothing created yet" (shows the Create action) from "a search matched nothing" (suggests widening
+  the search instead) via a new `hasAnyEntitiesOfThisType` computed, rather than one message/condition
+  covering both. `collectionRailOpen` no longer reserves rail space for the removed aside.
+- **Timelines**: a "Create Timeline" toggle button added to the listing header and (when nothing
+  exists yet) the empty state, reusing the existing inline create form and `createTimeline()`
+  unchanged -- only its gating moved from `mode` to `canEditTimelines`. Delete, Edit Timeline, Add/Edit/
+  Delete Entry all re-gated the same way. The per-timeline empty state ("No timeline entries yet")
+  now says something true for both an authorized viewer (points at Add Timeline Entry, which is right
+  below it once this capability is held) and an unauthorized one (states the fact plainly, no
+  instruction to use a control they cannot see).
+- **Maps**: "Upload Map" renamed to "Create Map" everywhere user-facing (header button, form heading,
+  submit button/busy label, success messages, page description) -- "Upload from Device" and "Browse
+  Media Gallery" inside the form are untouched, since those genuinely are upload/browse actions.
+  No internal name changed (`uploadMap()`, `showUploadForm`, `uploadSuccess`, etc. all keep their
+  existing names, per this task's own "no renames solely for wording" instruction). The map card
+  thumbnail now wraps `buildCardThumbnailUrl(map.imageUrl)` -- the stored/saved reference, the actual
+  interactive map renderer, and the upload flow's own fetch of the real original (needed for
+  tiling/upload, `selectGalleryImage`'s own `buildFileFromGallerySelection`) are all untouched. Parent-
+  map selection, Save Parent, and Set as World Map are now gated on `canManageMaps`, with a read-only
+  "Current Parent" line replacing the dropdown for an unauthorized viewer rather than leaving an
+  orphaned control with no way to confirm a change. A "No maps yet" / "No maps match your search"
+  empty state was added (there was none at all before), with a Create Map action for authorized
+  viewers, matching the same distinction Locations/Timelines now make. The unused `mode` declaration
+  was removed (it was never read elsewhere in this file).
+- `WorldEntityContextDrawer`'s and `WorldEntityRelationshipsPanel`'s own now-dead `:mode="mode"` pass-
+  throughs inside `timelines/[timelineId].vue` were removed (same confirmed-unused pattern as the
+  Article Page Builder pass): `WorldEntityContextDrawer` never reads `props.mode`, and this caller
+  already hardcodes `allow-build-actions="false"`.
+
+### Targeted inventory (other collection headers)
+
+- `characters/index.vue` already has multiple working, non-mode-gated creation entry points (Create
+  Character, Guided PC Builder, Add Character) -- confirmed, not a gap.
+- `enemies.vue` has no creation action and no server route to create one at all (`server/api/worlds/
+  [id]/enemies/` only has a per-enemy DELETE; no POST exists anywhere) -- a genuinely unsupported
+  authoring category today, not a hidden/mode-gated workflow. Not fixed here, per this task's own
+  "do not build new generic creation systems" boundary.
+- `classes.vue`/`feats.vue`/`backgrounds.vue`/`species.vue`/`races.vue`/`spells.vue`/`items.vue` have
+  no "Create"/"New" action anywhere (confirmed by search) -- these are import-only collections by
+  design (5etools import pipeline), not entities meant to be authored directly in this flow. Their
+  own empty-state copy already correctly points at the Importer, not Build mode (only `feats.vue` sets
+  a custom one; the rest use the shared default, which was already accurate).
+- A FOURTH "Switch to Build mode" instruction was found outside this task's named scope:
+  `SheetInventoryTab.vue`'s "Inventory is empty. Switch to Build mode to add imported or custom
+  items." -- a Character Sheet inventory control, a different subsystem with its own authority model.
+  Reported, not fixed, to avoid expanding this pass into Character Sheet territory.
+
+### Verification
+
+**Recovered from the prior session** (this exact pass, before an interruption): the bulk of the
+Locations/Timelines/Maps implementation above, confirmed intact by reading the live working tree
+rather than assumed. One loose end from before the interruption was finished this pass: Maps'
+thumbnail fix, wording pass, capability gating on Save Parent/Set as World Map, and its new empty
+state had not yet been applied -- confirmed via `git diff` against HEAD, then completed.
+
+**This session's own checks, run on the actual (dirty) working tree, never via `git stash`** (per
+this task's own explicit instruction to avoid stash-based comparisons here): typecheck (902 errors,
+identical total to the long-established baseline every prior pass in this document has confirmed);
+for the few individual lines flagged in touched files, compared directly against `git show
+HEAD:<file>` content rather than stashing, confirming each was pre-existing. Lint: compared each
+touched file's full error/warning signature set against `git show HEAD:<file> | eslint --stdin`
+(an isolated, non-destructive comparison) rather than stashing -- found and fixed two genuinely NEW
+`import/first` instances (new imports placed after `definePageMeta`, avoided by moving them ahead of
+it, the same precedent used earlier this session) in the two Timeline files; confirmed
+`WorldEntityInteractivePage.vue`'s one net-new `no-explicit-any` matches its own immediately
+adjacent, pre-existing sibling line's exact same callback-typing convention, left as is; confirmed
+`maps.vue` has one FEWER lint error than baseline (the unused `mode` variable, now removed). Full
+suite: 6553/6553 passing (326 files). Production build: clean, no new warnings for any touched file.
+`git diff --check`: clean. Live smoke check against this repo's own disposable dev instance:
+unauthenticated POST to the locations/timelines/maps-upload routes all correctly return 401 (none of
+these server routes were touched this pass).
+
+**NOT browser-verified -- no browser tool was available this session, stated separately from the
+checks above and not claimed as proven by them**: a fresh Locations/Timelines direct URL actually
+showing the new header actions without a Map visit; the Create Location/Create Timeline flows
+clicked through end to end (save, list refresh, failure/recovery, cancel-discards-nothing); the
+authorized-vs-unauthorized split as actually rendered for all three pages; Maps cards visually
+requesting the derivative instead of the original over the network; an actual Create Map →
+gallery-selection → configure → create → open-map walkthrough, and that the resulting map's real
+dimensions/zoom/tile coordinates are unaffected; desktop and ~390x844 layout for any of the new UI.
+
+### Draft persistence across Location/Timeline forms (final bounded check, before committing)
+
+A separate, later pass checked close/Escape/backdrop/route-navigation draft behavior for the three
+new forms above, mirroring the Article Page Builder's own equivalent check
+(see "Draft persistence across Page Builder close/reopen" above).
+
+**Create Location (`WorldEntityInteractivePage.vue`) and Create Timeline
+(`timelines/index.vue`) -- traced, already correct, no change needed for close/reopen/failure.**
+Both bind their inputs straight to a page-level `reactive()` object (`newLocationForm`/`form`) that
+is reset ONLY inside the respective create function's own success path
+(`createLocationArticle`/`createTimeline`) -- confirmed by grepping every call site of
+`resetNewLocationForm`/the `form.*= ''` reset lines; neither modal/section close path (the UModal's
+native X button and `v-model:open` for Locations; the plain toggle button for Timelines, which has no
+Escape/backdrop concept since it is not a modal) touches that object. Closing and reopening shows the
+same unsaved draft. Failure (`catch`) sets only the error ref, leaving the draft and the open/visible
+state untouched. Opening or dismissing either form never calls its create function, so neither can
+ever create a record on its own.
+
+**Edit Timeline / Add-Edit Timeline Entry (`timelines/[timelineId].vue`) -- one real bug found and
+fixed.** `timelineForm` is kept in sync with the loaded timeline via
+`watch(() => timeline.value, ...)`. That watcher re-fires on ANY `refresh()` of this page's `useFetch`
+-- including the ones inside `saveEvent()`/`deleteEvent()`, which are a different action entirely
+(editing/deleting a Timeline Entry, not the Timeline's own title/description/visibility/sort). Since
+`refresh()` always produces a new `timeline.value` object, the watcher fired regardless of which
+action triggered it, silently overwriting an in-progress, unsaved "Edit Timeline" draft with the
+server's stored values the moment the user saved or deleted an unrelated Timeline Entry while the
+Timeline's own edit form was still open. **Fixed** by (1) guarding the watcher's body with
+`if (editingTimeline.value) return`, so it only re-seeds `timelineForm` while the editor is closed,
+and (2) reordering `saveTimeline()`'s own success path to set `editingTimeline.value = false` BEFORE
+its `await refresh()` (previously after), so the legitimate "re-sync my own form to what I just saved"
+case still re-seeds correctly instead of being skipped by its own new guard. "Cancel Edit" on an
+in-progress Timeline Entry edit was deliberately left as an unconfirmed, immediate discard -- it is an
+explicitly-labeled, single-purpose Cancel action (not an ambiguous dismissal like Escape/backdrop),
+consistent with how the rest of this codebase treats a dedicated Cancel button.
+
+**Route navigation away from any of the three pages -- none had a guard at all; added one to each,
+mirroring `confirmDiscardIfDirty`/`onBeforeRouteLeave`/`onBeforeRouteUpdate` from the Article Page
+Builder pass.** Closing a modal/section leaves the owning page mounted (draft refs survive, per
+above), but actual Vue Router navigation unmounts the whole page/component, which none of these three
+forms' refs would survive. Added a scoped `*FormDirty` computed plus matching
+`onBeforeRouteLeave`/`onBeforeRouteUpdate` guards to `WorldEntityInteractivePage.vue` (Location
+draft), `timelines/index.vue` (Create Timeline draft), and `timelines/[timelineId].vue` (both the
+Edit Timeline and the Add/Edit Timeline Entry drafts, combined into one guard). Each prompts
+`window.confirm('Discard unsaved changes?')` only when its own draft actually has unsaved content;
+declining aborts the navigation and leaves the draft untouched, by Vue Router's own semantics for a
+guard returning `false`. A save-triggered `router.replace`/`router.push` (e.g. a Timeline's slug
+changing on save) never re-triggers its own guard, because the relevant dirty flag is already `false`
+by the time that navigation happens (confirmed from the same ordering fix above).
+
+### Remaining limitations
+
+- `SheetInventoryTab.vue`'s own "Switch to Build mode" inventory-empty instruction (Character Sheet
+  subsystem) -- reported above, not fixed, separate scope.
+- `enemies.vue` has no creation workflow of any kind (server or client) -- reported above as a
+  genuine category gap, not something this pass invented a fix for.
+- The Timeline Edit form's dirty check does not survive an unrelated `refresh()` firing AFTER the
+  editor has already been closed without saving (e.g. close "Edit Timeline" without saving, then
+  save/delete a Timeline Entry) -- at that point `editingTimeline.value` is `false`, so the watcher's
+  guard no longer applies and the next open would show freshly-reseeded values instead of the earlier
+  abandoned draft. Treated as an acceptable, narrow edge case (the draft is not visibly "pending"
+  anywhere once the editor is closed) rather than building a persistent cross-refresh dirty flag for
+  it -- flagged here rather than silently left unexamined.
+
+### Deployment requirements
+
+None -- pure client-side visibility/entry-point, wording, and thumbnail-URL changes, reusing already-
+existing capabilities (`world.entity.create`, `world.timeline.edit`, `world.map.edit`) and
+already-existing save/list routes unchanged. No schema, environment variable, or credential change.
+
+### Status
+
+**NOT committed.** Stopped here for review per this task's own closing instruction.

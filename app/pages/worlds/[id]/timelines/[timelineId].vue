@@ -1,4 +1,11 @@
 <script setup lang="ts">
+// Stays ahead of definePageMeta() rather than adding another instance of
+// this file's own pre-existing "imports after definePageMeta" pattern
+// (the five below it) -- the same exception precedent established
+// elsewhere this session for new imports.
+import { canEditWorldTimelines } from '~/lib/eldra/world-timeline-eligibility'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -13,7 +20,6 @@ const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const timelineId = computed(() => String(route.params.timelineId || ''))
-const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const editingTimeline = ref(false)
 const savingTimeline = ref(false)
@@ -60,6 +66,7 @@ const events = computed(() => Array.isArray((data.value as any)?.events) ? (data
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
+const canEditTimelines = computed(() => canEditWorldTimelines(world.value?.capabilities))
 
 function compareTimelineEvents(a: any, b: any) {
   const sortDiff = Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)
@@ -141,6 +148,16 @@ watch(
   () => timeline.value,
   (value: any) => {
     if (!value) return
+    // FINAL BOUNDED CHECK (draft behavior) -- refresh() always replaces
+    // `timeline.value` with a new object, even when only an unrelated
+    // Timeline Entry (event) was saved/deleted (saveEvent/deleteEvent,
+    // below). Without this guard, that refresh silently re-fires this
+    // watcher and overwrites an in-progress, unsaved Edit Timeline draft.
+    // saveTimeline() clears editingTimeline BEFORE its own refresh() (see
+    // below), so the legitimate "re-sync after my own successful save"
+    // case still re-seeds correctly; only an unrelated action's refresh
+    // while this editor is open is skipped.
+    if (editingTimeline.value) return
     timelineForm.title = value.title || ''
     timelineForm.description = value.description || ''
     timelineForm.visibility = value.visibility || 'public'
@@ -216,8 +233,10 @@ async function saveTimeline() {
       }
     })
 
-    await refresh()
+    // Clear editingTimeline before refresh() so the timeline.value watcher's
+    // dirty guard (above) doesn't also skip this, the legitimate re-sync.
     editingTimeline.value = false
+    await refresh()
 
     const saved = res?.timeline
     if (saved?.slug && saved.slug !== timelineId.value) {
@@ -324,6 +343,31 @@ function closeContextDrawer() {
 onMounted(() => {
   resetEventForm()
 })
+
+// FINAL BOUNDED CHECK (draft behavior) -- closing/reopening Edit Timeline
+// or Cancel Edit on a Timeline Entry already preserve their drafts (the
+// close paths above never reset timelineForm/eventForm), but actual route
+// navigation away from this page unmounts it entirely, losing an
+// in-progress draft silently. Mirrors the Article Page Builder's own
+// confirmDiscardIfDirty precedent (entities/[entityId]/index.vue).
+const timelineFormDirty = computed(() =>
+  editingTimeline.value && Boolean(timeline.value) && (
+    cleanText(timelineForm.title) !== cleanText(timeline.value?.title) ||
+    cleanText(timelineForm.description) !== cleanText(timeline.value?.description) ||
+    timelineForm.visibility !== (timeline.value?.visibility || 'public') ||
+    Number(timelineForm.sortOrder) !== Number(timeline.value?.sortOrder || 0)
+  )
+)
+
+const eventFormDirty = computed(() => Boolean(cleanText(eventForm.title) || editingEventId.value))
+
+function confirmDiscardTimelineDetailDraftIfDirty(): boolean {
+  if (!timelineFormDirty.value && !eventFormDirty.value) return true
+  return window.confirm('Discard unsaved changes?')
+}
+
+onBeforeRouteLeave(() => confirmDiscardTimelineDetailDraftIfDirty())
+onBeforeRouteUpdate(() => confirmDiscardTimelineDetailDraftIfDirty())
 </script>
 
 <template>
@@ -369,7 +413,7 @@ onMounted(() => {
 
             <div class="flex flex-wrap items-center gap-2">
               <button
-                v-if="mode === 'build'"
+                v-if="canEditTimelines"
                 type="button"
                 class="eldra-button rounded-none px-4 py-2 text-sm"
                 @click="editingTimeline = !editingTimeline"
@@ -388,7 +432,7 @@ onMounted(() => {
           </div>
 
           <div
-            v-if="editingTimeline && mode === 'build'"
+            v-if="editingTimeline && canEditTimelines"
             class="mt-6 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-4"
           >
             <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_130px_auto]">
@@ -439,7 +483,7 @@ onMounted(() => {
       </section>
 
       <section
-        v-if="timeline && mode === 'build'"
+        v-if="timeline && canEditTimelines"
         class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-5 backdrop-blur-xl"
       >
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -603,7 +647,9 @@ onMounted(() => {
         >
           <div class="text-xl font-semibold text-white">No timeline entries yet</div>
           <p class="mt-2 text-sm text-[#9f9278]">
-            Switch to Build mode and add an era, event, session, or note.
+            {{ canEditTimelines
+              ? 'Add your first era, event, session, or note using Add Timeline Entry below.'
+              : 'Nothing has been added to this timeline yet.' }}
           </p>
         </div>
 
@@ -646,7 +692,7 @@ onMounted(() => {
                 </div>
 
                 <div
-                  v-if="mode === 'build'"
+                  v-if="canEditTimelines"
                   class="flex flex-wrap gap-2"
                 >
                   <button
@@ -718,7 +764,6 @@ onMounted(() => {
       :open="contextDrawerOpen"
       :entity="contextDrawerEntity"
       :world-id="worldId"
-      :mode="mode"
       :allow-build-actions="false"
       @close="closeContextDrawer"
     />

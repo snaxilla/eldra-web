@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  canCreateWorldEntities,
   canDeleteWorldEntities,
   canEditWorldEntities,
   shouldShowDirectEditAction,
@@ -32,6 +33,21 @@ describe('canEditWorldEntities', () => {
   it('false when capabilities is missing/not an array (unauthenticated or still loading)', () => {
     expect(canEditWorldEntities(undefined)).toBe(false)
     expect(canEditWorldEntities(null)).toBe(false)
+  })
+})
+
+describe('canCreateWorldEntities', () => {
+  it('true when world.entity.create is present', () => {
+    expect(canCreateWorldEntities(['world.entity.create'])).toBe(true)
+  })
+
+  it('false for a caller who can edit but not create -- a distinct capability, not an alias', () => {
+    expect(canCreateWorldEntities(['world.entity.edit'])).toBe(false)
+  })
+
+  it('false when capabilities is missing/not an array', () => {
+    expect(canCreateWorldEntities(undefined)).toBe(false)
+    expect(canCreateWorldEntities(null)).toBe(false)
   })
 })
 

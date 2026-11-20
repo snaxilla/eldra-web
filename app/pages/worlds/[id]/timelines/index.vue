@@ -1,4 +1,11 @@
 <script setup lang="ts">
+// Stays ahead of definePageMeta() rather than adding another instance of
+// this file's own pre-existing "imports after definePageMeta" pattern
+// (canEditWorldSettings, just below) -- the same exception precedent
+// established elsewhere this session for new imports.
+import { canEditWorldTimelines } from '~/lib/eldra/world-timeline-eligibility'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -8,9 +15,9 @@ import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
-const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
+const showCreateTimelineForm = ref(false)
 const creating = ref(false)
 const createError = ref('')
 const deleteError = ref('')
@@ -31,9 +38,16 @@ const { data, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.v
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- create/edit/
+// delete all require world.timeline.edit server-side, never Map mode.
+const canEditTimelines = computed(() => canEditWorldTimelines(world.value?.capabilities))
+
+const rawTimelines = computed(() =>
+  Array.isArray((data.value as any)?.timelines) ? (data.value as any).timelines : []
+)
 
 const timelines = computed(() => {
-  const list = Array.isArray((data.value as any)?.timelines) ? (data.value as any).timelines : []
+  const list = rawTimelines.value
   const query = normalized(search.value)
 
   if (!query) return list
@@ -94,6 +108,7 @@ async function createTimeline() {
     form.description = ''
     form.visibility = 'public'
     form.sortOrder = 0
+    showCreateTimelineForm.value = false
 
     await refresh()
 
@@ -111,6 +126,28 @@ async function createTimeline() {
     creating.value = false
   }
 }
+
+// FINAL BOUNDED CHECK (draft behavior) -- closing/reopening Create Timeline
+// already preserves the draft (the header toggle never touches `form`),
+// but actual route navigation away from this page unmounts it entirely,
+// losing any typed-but-unsaved draft silently. Mirrors the Article Page
+// Builder's own confirmDiscardIfDirty precedent (entities/[entityId]/index.vue).
+const createTimelineFormDirty = computed(() =>
+  showCreateTimelineForm.value && Boolean(
+    cleanText(form.title) ||
+    cleanText(form.description) ||
+    form.visibility !== 'public' ||
+    Number(form.sortOrder) !== 0
+  )
+)
+
+function confirmDiscardTimelineDraftIfDirty(): boolean {
+  if (!createTimelineFormDirty.value) return true
+  return window.confirm('Discard unsaved changes?')
+}
+
+onBeforeRouteLeave(() => confirmDiscardTimelineDraftIfDirty())
+onBeforeRouteUpdate(() => confirmDiscardTimelineDraftIfDirty())
 
 async function deleteTimeline(timeline: any) {
   const ok = window.confirm(`Delete "${timeline.title}" and all of its events?`)
@@ -151,6 +188,15 @@ async function deleteTimeline(timeline: any) {
 
           <div class="flex flex-wrap items-center gap-2">
             <button
+              v-if="canEditTimelines"
+              type="button"
+              class="eldra-button rounded-none px-4 py-2 text-sm font-semibold"
+              @click="showCreateTimelineForm = !showCreateTimelineForm"
+            >
+              {{ showCreateTimelineForm ? 'Close' : 'Create Timeline' }}
+            </button>
+
+            <button
               type="button"
               class="eldra-button rounded-none px-4 py-2 text-sm"
               @click="refresh"
@@ -179,7 +225,7 @@ async function deleteTimeline(timeline: any) {
       </section>
 
       <section
-        v-if="mode === 'build'"
+        v-if="showCreateTimelineForm && canEditTimelines"
         class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-5 backdrop-blur-xl"
       >
         <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Create Timeline</div>
@@ -242,13 +288,32 @@ async function deleteTimeline(timeline: any) {
         </div>
 
         <div
+          v-else-if="!timelines.length && rawTimelines.length"
+          class="eldra-ornate-panel eldra-frame-corners rounded-none border p-10 text-center"
+        >
+          <div class="text-xl font-semibold text-white">No timelines match your search</div>
+          <p class="mt-2 text-sm text-[#9f9278]">
+            Try a different search term or clear the filter.
+          </p>
+        </div>
+
+        <div
           v-else-if="!timelines.length"
           class="eldra-ornate-panel eldra-frame-corners rounded-none border p-10 text-center"
         >
           <div class="text-xl font-semibold text-white">No timelines yet</div>
           <p class="mt-2 text-sm text-[#9f9278]">
-            Switch to Build mode and create your first world timeline.
+            Create your first world timeline to track eras, histories, and events.
           </p>
+
+          <button
+            v-if="canEditTimelines"
+            type="button"
+            class="eldra-button mt-5 rounded-none px-4 py-2.5 text-sm font-semibold"
+            @click="showCreateTimelineForm = true"
+          >
+            Create Timeline
+          </button>
         </div>
 
         <div
@@ -298,7 +363,7 @@ async function deleteTimeline(timeline: any) {
               </NuxtLink>
 
               <button
-                v-if="mode === 'build'"
+                v-if="canEditTimelines"
                 type="button"
                 class="rounded-none border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
                 :disabled="deletingId === timeline.id"

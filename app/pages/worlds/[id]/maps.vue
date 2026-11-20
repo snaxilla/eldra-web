@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { buildFileFromGallerySelection } from '~/lib/maps/gallery-selection'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+import { canEditWorldMaps } from '~/lib/eldra/world-map-eligibility'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -8,9 +10,16 @@ definePageMeta({
 const route = useRoute()
 
 const worldId = computed(() => String(route.params.id || ''))
-const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- this page
+// never actually gated Create/Upload Map on the World Map's Play/Build
+// toggle (confirmed by inspection: `mode` was declared here but never
+// read anywhere else in this file) -- the real, previously-unchecked
+// gap was that NOTHING client-side reflected world.map.edit at all,
+// relying entirely on the server's own requireCapability to refuse an
+// unauthorized write after the form was already shown.
+const canManageMaps = computed(() => canEditWorldMaps(world.value?.capabilities))
 
 const maps = ref<any[]>([])
 const mapsLoading = ref(false)
@@ -186,7 +195,7 @@ async function uploadMap() {
     uploadTitle.value = ''
     uploadType.value = 'area'
     uploadFile.value = null
-    uploadSuccess.value = generateTiles.value ? 'Map uploaded and tiled.' : 'Map uploaded.'
+    uploadSuccess.value = generateTiles.value ? 'Map created and tiled.' : 'Map created.'
     showUploadForm.value = false
 
     await loadMaps()
@@ -272,7 +281,7 @@ function parentOptionsFor(mapId: string) {
             <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Maps</div>
             <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">{{ world?.name || 'World' }}</h1>
             <p class="mt-2 max-w-3xl text-sm leading-7 text-[#d8ceb8]">
-              Manage map uploads, the default world map, and parent-child map hierarchy.
+              Create and manage this World's maps, the default world map, and parent-child map hierarchy.
             </p>
           </div>
 
@@ -284,11 +293,12 @@ function parentOptionsFor(mapId: string) {
               class="eldra-input rounded-none px-4 py-3 text-sm"
             >
             <button
+              v-if="canManageMaps"
               type="button"
               class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
               @click="showUploadForm = !showUploadForm"
             >
-              {{ showUploadForm ? 'Close Upload' : 'Upload Map' }}
+              {{ showUploadForm ? 'Close' : 'Create Map' }}
             </button>
           </div>
         </div>
@@ -302,10 +312,10 @@ function parentOptionsFor(mapId: string) {
       </section>
 
       <section
-        v-if="showUploadForm"
+        v-if="showUploadForm && canManageMaps"
         class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 backdrop-blur-xl"
       >
-        <div class="mb-4 text-lg font-semibold text-white">Upload New Map</div>
+        <div class="mb-4 text-lg font-semibold text-white">Create Map</div>
 
         <div class="grid gap-4 md:grid-cols-2">
           <div>
@@ -407,7 +417,7 @@ function parentOptionsFor(mapId: string) {
             :disabled="uploadBusy"
             @click="uploadMap"
           >
-            {{ uploadBusy ? 'Uploading…' : 'Upload Map' }}
+            {{ uploadBusy ? 'Creating…' : 'Create Map' }}
           </button>
         </div>
       </section>
@@ -427,6 +437,35 @@ function parentOptionsFor(mapId: string) {
         Loading maps...
       </section>
 
+      <section
+        v-else-if="!filteredMaps.length && maps.length"
+        class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-10 text-center"
+      >
+        <div class="text-xl font-semibold text-white">No maps match your search</div>
+        <p class="mt-2 text-sm text-[#9f9278]">
+          Try a different search term or clear the filter.
+        </p>
+      </section>
+
+      <section
+        v-else-if="!filteredMaps.length"
+        class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-10 text-center"
+      >
+        <div class="text-xl font-semibold text-white">No maps yet</div>
+        <p class="mt-2 text-sm text-[#9f9278]">
+          {{ canManageMaps ? 'Create your first map to get started.' : 'No maps have been created for this World yet.' }}
+        </p>
+
+        <button
+          v-if="canManageMaps"
+          type="button"
+          class="eldra-button mt-5 rounded-none px-4 py-2.5 text-sm font-semibold"
+          @click="showUploadForm = true"
+        >
+          Create Map
+        </button>
+      </section>
+
       <section v-else class="mt-6 grid gap-5 lg:grid-cols-2">
         <article
           v-for="map in filteredMaps"
@@ -434,7 +473,7 @@ function parentOptionsFor(mapId: string) {
           class="eldra-ornate-panel eldra-frame-corners overflow-hidden rounded-none border backdrop-blur-xl"
         >
           <div v-if="map.imageUrl" class="aspect-[16/8] overflow-hidden border-b border-[rgba(201,164,90,0.22)] bg-black/20">
-            <img :src="map.imageUrl" :alt="map.title" class="h-full w-full object-cover">
+            <img :src="buildCardThumbnailUrl(map.imageUrl)" :alt="map.title" class="h-full w-full object-cover">
           </div>
 
           <div class="p-5">
@@ -470,7 +509,9 @@ function parentOptionsFor(mapId: string) {
             <div class="mt-4 grid gap-4">
               <div>
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Parent Map</label>
+
                 <select
+                  v-if="canManageMaps"
                   v-model="parentDrafts[map.id]"
                   class="eldra-input w-full rounded-none px-4 py-3 text-sm"
                 >
@@ -503,6 +544,7 @@ function parentOptionsFor(mapId: string) {
                 </NuxtLink>
 
                 <button
+                  v-if="canManageMaps"
                   type="button"
                   class="rounded-none border border-[rgba(201,164,90,0.24)] px-4 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-white disabled:opacity-50"
                   :disabled="parentSaveBusy[map.id]"
@@ -512,7 +554,7 @@ function parentOptionsFor(mapId: string) {
                 </button>
 
                 <button
-                  v-if="!map.isDefaultWorldMap"
+                  v-if="canManageMaps && !map.isDefaultWorldMap"
                   type="button"
                   class="rounded-none border border-[rgba(201,164,90,0.3)] bg-[rgba(201,164,90,0.1)] px-4 py-2 text-sm text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.2)]"
                   @click="setAsWorldMap(map.id)"

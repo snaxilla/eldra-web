@@ -7,10 +7,11 @@ import {
   itemCodeLabel as collectionClientItemCodeLabel,
   serverMetaLines as resolveServerMetaLines
 } from '~/lib/world-entity-collection/server-meta-lines'
-import { canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
+import { canCreateWorldEntities, canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
 import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 import { isSafeCollectionReturnPath, writeDraftTransfer } from '~/lib/world-entity-collection/direct-edit-navigation'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 
 const props = defineProps<{
   entityType: string
@@ -25,7 +26,6 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
-const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
 
@@ -64,13 +64,13 @@ watch(
 
 const selectedEntityId = ref<string | null>(null)
 
-// The Build-mode aside below only ever contains Location Tools now (the
-// Page Presentation panel it used to also embed moved to the explicit,
-// capability-gated "Customize Page" button in the header) -- so it only
-// has anything to show on location pages.
-const collectionRailOpen = computed(() =>
-  Boolean(selectedEntityId.value) || (mode.value === 'build' && !selectedEntityId.value && isLocationPage.value)
-)
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- Location
+// Tools (New Location) moved out of the Build-mode aside into its own
+// capability-gated "Create Location" modal below, the same move the
+// Page Presentation panel already made into "Customize Page". The aside
+// this computed used to also reserve rail space for is gone entirely;
+// only an actual entity selection opens a rail now.
+const collectionRailOpen = computed(() => Boolean(selectedEntityId.value))
 
 const collectionShellClass = computed(() => [
   'min-w-0 p-6 transition-[margin,max-width] duration-200',
@@ -154,6 +154,11 @@ const canShowSpellHomebrewActions = computed(() =>
 const canEditEntities = computed(() => canEditWorldEntities(world.value?.capabilities))
 const canDeleteEntities = computed(() => canDeleteWorldEntities(world.value?.capabilities))
 const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- Location
+// creation (createLocationArticle, below) requires world.entity.create
+// server-side (server/api/worlds/[id]/locations.post.ts), a DIFFERENT
+// capability from world.entity.edit -- never substituted for it.
+const canCreateEntities = computed(() => canCreateWorldEntities(world.value?.capabilities))
 
 function openHomebrewSpellForge(templateId?: string) {
   router.push(buildHomebrewForgeRoute(worldId.value, templateId))
@@ -983,6 +988,16 @@ const filteredEntities = computed(() => {
     .sort((a: any, b: any) => String(a?.title || '').localeCompare(String(b?.title || '')))
 })
 
+// CREATION ENTRY POINTS, MAP THUMBNAILS, AND MAP WORDING -- "nothing of
+// this type exists yet" (the type filter only, no search/facet applied)
+// vs. "a search/facet narrowed it to zero" need different empty-state
+// copy and a different action: only the former should ever invite
+// creating something, since typing a wider search is the actual fix for
+// the latter, not creating a duplicate.
+const hasAnyEntitiesOfThisType = computed(() =>
+  (entities.value || []).some((entity: any) => matchesCollectionType(entity))
+)
+
 const selectedEntity = computed(() => {
   if (!selectedEntityId.value) return null
   return (entities.value || []).find((entity: any) => String(entity.id) === String(selectedEntityId.value)) || null
@@ -1211,6 +1226,31 @@ function resetNewLocationForm() {
   newLocationError.value = ''
 }
 
+// FINAL BOUNDED CHECK (draft behavior) -- closing/reopening the Create
+// Location modal already preserves the draft (nothing in the close path
+// touches newLocationForm), but actual route navigation away from this
+// page unmounts it entirely, losing any typed-but-unsaved draft silently.
+// Mirrors the Article Page Builder's own confirmDiscardIfDirty precedent
+// (entities/[entityId]/index.vue).
+const newLocationFormDirty = computed(() =>
+  showNewLocationForm.value && Boolean(
+    String(newLocationForm.title || '').trim() ||
+    String(newLocationForm.population || '').trim() ||
+    newLocationForm.linkedMapId ||
+    newLocationForm.parentLocationId ||
+    String(newLocationForm.summary || '').trim() ||
+    newLocationForm.locationType !== 'location'
+  )
+)
+
+function confirmDiscardLocationDraftIfDirty(): boolean {
+  if (!newLocationFormDirty.value) return true
+  return window.confirm('Discard unsaved changes?')
+}
+
+onBeforeRouteLeave(() => confirmDiscardLocationDraftIfDirty())
+onBeforeRouteUpdate(() => confirmDiscardLocationDraftIfDirty())
+
 async function createLocationArticle() {
   if (!isLocationPage.value || creatingLocation.value) return
 
@@ -1277,6 +1317,15 @@ async function createLocationArticle() {
                 @click="openHomebrewSpellForge()"
               >
                 Create New Spell from Template
+              </button>
+
+              <button
+                v-if="isLocationPage && canCreateEntities"
+                type="button"
+                class="eldra-button rounded-none px-4 py-2.5 text-sm font-semibold"
+                @click="showNewLocationForm = true"
+              >
+                Create Location
               </button>
 
               <button
@@ -1373,6 +1422,16 @@ async function createLocationArticle() {
         </section>
 
         <section
+          v-else-if="!filteredEntities.length && hasAnyEntitiesOfThisType"
+          class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
+        >
+          <div class="text-lg font-medium text-white">No {{ title.toLowerCase() }} match your search</div>
+          <p class="mt-2 text-sm text-eldra-text-soft">
+            Try a different search term or clear the filter.
+          </p>
+        </section>
+
+        <section
           v-else-if="!filteredEntities.length"
           class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
@@ -1380,6 +1439,15 @@ async function createLocationArticle() {
           <p class="mt-2 text-sm text-eldra-text-soft">
             {{ emptyMessage || `Import ${title.toLowerCase()} from the Importer page, then come back here to browse them.` }}
           </p>
+
+          <button
+            v-if="isLocationPage && canCreateEntities"
+            type="button"
+            class="eldra-button mt-5 rounded-none px-4 py-2.5 text-sm font-semibold"
+            @click="showNewLocationForm = true"
+          >
+            Create Location
+          </button>
         </section>
 
         <section
@@ -1540,134 +1608,114 @@ async function createLocationArticle() {
       </div>
     </div>
 
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <aside
-        v-if="mode === 'build' && !selectedEntity && isLocationPage"
-        class="eldra-ornate-panel eldra-frame-corners hidden md:block fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
-      >
-        <div class="space-y-5 p-5">
-            <div
-              v-if="isLocationPage"
-              class="eldra-codex-soft rounded-none p-4"
+    <UModal
+      v-if="isLocationPage"
+      v-model:open="showNewLocationForm"
+      title="Create Location"
+      description="Create a location article manually, independent of the World Map."
+      :ui="{ content: 'max-w-xl' }"
+    >
+      <template #body>
+        <form
+          class="space-y-3"
+          @submit.prevent="createLocationArticle"
+        >
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Title</span>
+            <input
+              v-model="newLocationForm.title"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+              placeholder="e.g. Old Market District"
             >
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">Location Tools</div>
-                  <div class="mt-1 text-sm text-eldra-text-soft">Create a location article manually.</div>
-                </div>
+          </label>
 
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-3 py-2 text-sm"
-                  @click="showNewLocationForm = !showNewLocationForm"
-                >
-                  {{ showNewLocationForm ? 'Close' : 'New Location' }}
-                </button>
-              </div>
-
-              <form
-                v-if="showNewLocationForm"
-                class="mt-4 space-y-3"
-                @submit.prevent="createLocationArticle"
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Type</span>
+            <select
+              v-model="newLocationForm.locationType"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
+            >
+              <option
+                v-for="option in LOCATION_TYPE_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+                class="bg-[#090909] text-eldra-accent-text"
               >
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Title</span>
-                  <input
-                    v-model="newLocationForm.title"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm"
-                    placeholder="e.g. Old Market District"
-                  >
-                </label>
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
 
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Type</span>
-                  <select
-                    v-model="newLocationForm.locationType"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
-                  >
-                    <option
-                      v-for="option in LOCATION_TYPE_OPTIONS"
-                      :key="option.value"
-                      :value="option.value"
-                      class="bg-[#090909] text-eldra-accent-text"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </select>
-                </label>
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Population</span>
+            <input
+              v-model="newLocationForm.population"
+              inputmode="numeric"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+              placeholder="e.g. 1,234"
+            >
+          </label>
 
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Population</span>
-                  <input
-                    v-model="newLocationForm.population"
-                    inputmode="numeric"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm"
-                    placeholder="e.g. 1,234"
-                  >
-                </label>
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Linked Map</span>
+            <select
+              v-model="newLocationForm.linkedMapId"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
+            >
+              <option value="" class="bg-[#090909] text-eldra-accent-text">No linked map</option>
+              <option
+                v-for="map in mapOptions"
+                :key="map.id"
+                :value="map.id"
+                class="bg-[#090909] text-eldra-accent-text"
+              >
+                {{ map.title }}
+              </option>
+            </select>
+          </label>
 
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Linked Map</span>
-                  <select
-                    v-model="newLocationForm.linkedMapId"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
-                  >
-                    <option value="" class="bg-[#090909] text-eldra-accent-text">No linked map</option>
-                    <option
-                      v-for="map in mapOptions"
-                      :key="map.id"
-                      :value="map.id"
-                      class="bg-[#090909] text-eldra-accent-text"
-                    >
-                      {{ map.title }}
-                    </option>
-                  </select>
-                </label>
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Parent Location</span>
+            <select
+              v-model="newLocationForm.parentLocationId"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
+            >
+              <option value="" class="bg-[#090909] text-eldra-accent-text">No parent location</option>
+              <option
+                v-for="location in parentLocationOptions"
+                :key="location.id"
+                :value="location.id"
+                class="bg-[#090909] text-eldra-accent-text"
+              >
+                {{ location.title }}
+              </option>
+            </select>
+          </label>
 
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Parent Location</span>
-                  <select
-                    v-model="newLocationForm.parentLocationId"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
-                  >
-                    <option value="" class="bg-[#090909] text-eldra-accent-text">No parent location</option>
-                    <option
-                      v-for="location in parentLocationOptions"
-                      :key="location.id"
-                      :value="location.id"
-                      class="bg-[#090909] text-eldra-accent-text"
-                    >
-                      {{ location.title }}
-                    </option>
-                  </select>
-                </label>
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Summary Blurb</span>
+            <textarea
+              v-model="newLocationForm.summary"
+              rows="4"
+              class="eldra-input w-full resize-y rounded-none px-3 py-2 text-sm leading-6"
+              placeholder="Short public-facing summary..."
+            ></textarea>
+          </label>
 
-                <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Summary Blurb</span>
-                  <textarea
-                    v-model="newLocationForm.summary"
-                    rows="4"
-                    class="eldra-input w-full resize-y rounded-none px-3 py-2 text-sm leading-6"
-                    placeholder="Short public-facing summary..."
-                  ></textarea>
-                </label>
+          <div v-if="newLocationError" class="text-sm text-red-300">
+            {{ newLocationError }}
+          </div>
 
-                <div v-if="newLocationError" class="text-sm text-red-300">
-                  {{ newLocationError }}
-                </div>
-
-                <button
-                  type="submit"
-                  class="eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                  :disabled="creatingLocation"
-                >
-                  {{ creatingLocation ? 'Creating...' : 'Create Location' }}
-                </button>
-              </form>
-            </div>
-        </div>
-      </aside>
-    </Transition>
+          <button
+            type="submit"
+            class="eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+            :disabled="creatingLocation"
+          >
+            {{ creatingLocation ? 'Creating...' : 'Create Location' }}
+          </button>
+        </form>
+      </template>
+    </UModal>
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside

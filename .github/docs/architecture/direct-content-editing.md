@@ -1128,7 +1128,7 @@ unchanged. No schema, environment variable, or credential change.
 
 **NOT committed.** Stopped here for review per this task's own closing instruction.
 
-## Creation entry points, Map thumbnails, and Map wording (not yet committed)
+## Creation entry points, Map thumbnails, and Map wording (COMMITTED)
 
 Closes the "Location Tools"/Timeline half of follow-up item above (still-open item below). Three
 owner-reported bugs: Location/Timeline creation stranded behind Map Build mode, Maps listing cards
@@ -1317,6 +1317,172 @@ by the time that navigation happens (confirmed from the same ordering fix above)
 None -- pure client-side visibility/entry-point, wording, and thumbnail-URL changes, reusing already-
 existing capabilities (`world.entity.create`, `world.timeline.edit`, `world.map.edit`) and
 already-existing save/list routes unchanged. No schema, environment variable, or credential change.
+
+### Status
+
+**Committed** (`207aae6`). See "Blank Location article + Quick-Create image" below for a follow-up
+pass against this same work: a real post-deployment regression it introduced, and an optional image
+field added to Create Location.
+
+## Blank Location article + Quick-Create image (not yet committed)
+
+Two owner-reported issues after deploying `207aae6`: (1) Create Location succeeds, but "Open
+Article" navigates to a real entity URL that renders only the World workspace shell -- the article
+area is completely blank; (2) Create Location has no way to attach an image, only after-the-fact via
+the full article editor.
+
+### Issue 1: blank article -- root cause, NOT what it looked like
+
+The screenshot proved navigation occurred, so this was traced as an actual rendering failure, not a
+permissions/deployment/cache guess -- confirmed for real against the disposable Directus instance
+(`http://127.0.0.1:18055`, the same one prior passes in this document used; schema already
+provisioned from earlier sessions, with three previously-unprovisioned collections --
+`entity_statblocks`, `entity_actions`, `monster_profiles`, needed by
+`server/api/worlds/[id]/entities/[entityId].get.ts`'s own `Promise.all` -- created fresh this pass,
+purely so this disposable instance could serve a real entity GET at all; this gap is specific to this
+disposable instance's own provisioning history, not a code issue), via a real session
+(`createEldraSession` from `server/utils/eldra-sessions.ts`, invoked through jiti + the repo's own
+runtime shim, the exact precedent this document's earlier passes established), a real owned World,
+and the REAL `POST /api/worlds/:id/locations` -> `GET /worlds/:id/entities/:id` path end to end --
+not simulated.
+
+**Found: a genuine TDZ (temporal dead zone) `ReferenceError`, not a data/permissions problem.**
+`app/pages/worlds/[id]/entities/[entityId]/index.vue`'s own `authoringActive` computed
+(`computed(() => buildDrawerOpen.value && canAuthorArticle.value)`, added by the Article Page
+Builder pass, `91919e1`) closed over `buildDrawerOpen`, a `const` declared roughly 900 lines further
+down the SAME `<script setup>`. That file's own comment at the time claimed this was safe because
+"this is a lazy computed getter, not read until render, by which point the whole script setup has
+already run" -- **that assumption was wrong**. `watch(() => [...], ..., { immediate: true })` feeding
+`resolveArticleSidebarMentions` (further down, but still textually before `buildDrawerOpen`'s own
+declaration) has a SOURCE getter that reads `visibleArticleSidebarItems.value`, and a `watch()`
+source getter runs SYNCHRONOUSLY the instant `watch()` is called, to seed its own initial tracked
+value -- regardless of the `immediate` option, which only controls the CALLBACK. That getter chains
+`visibleArticleSidebarItems -> activeArticleSidebarEnabled -> authoringActive -> buildDrawerOpen`,
+hitting `buildDrawerOpen` before its own `const` line had run: `Cannot access 'buildDrawerOpen'
+before initialization`. Reproduced directly: **every single entity article page returned HTTP 500
+with exactly that message, on every load, for every entity (not just freshly created Locations)** --
+confirmed with and without a session cookie, confirmed against both a bare Location and one with a
+summary. Nuxt has no `error.vue`/error boundary in `app.vue` (confirmed by reading it), so in a real
+browser this most plausibly surfaces as `<NuxtPage>`'s router-view failing to mount a replacement for
+the previous page while the surrounding `world-workspace.vue` layout (already mounted) stays exactly
+where it was -- matching the reported symptom ("workspace shell" renders, "article area" does not)
+far more precisely than a generic full-page error would.
+
+**Fixed**: moved `const buildDrawerOpen = ref(false)` to immediately before `authoringActive`'s own
+declaration (removing the later, now-redundant declaration), so nothing can ever read it before
+initialization again. Purely an ordering fix -- no behavior, capability, or renderer-contract change.
+Corrected the comment's own wrong claim rather than leaving it to mislead the next reader.
+
+### Issue 1b: a second, independent defect found while verifying "direct URL and hard refresh render it"
+
+Fixing the TDZ crash was not sufficient on its own -- re-testing against the disposable instance
+with a REAL session cookie (not just checking for the absence of a 500) revealed the entity's own
+title/body never actually appeared; the page silently rendered its own graceful "no entity" fallback
+(`<h1>Entity</h1>`, an "entity"/"no-slug" chip) instead of the real data, for a direct URL load of
+*every* entity tested (both freshly created and pre-existing). Traced to this page's own `entity`
+fetch: `useAsyncData(key, () => $fetch(url), { watch })`, as opposed to `world`'s (and every other
+fetch on this same page's) `useFetch(url)`. Nuxt's automatic SSR header-forwarding is not symmetric
+between the two -- `useAsyncData` wrapping a bare `$fetch` call does not forward the incoming
+request's cookies to that internal call, so the SSR-side self-fetch to
+`/api/worlds/:id/entities/:id` ran unauthenticated and the blanket `server/middleware/authorize.ts`
+correctly, if unhelpfully, 401'd it ("Authentication required") -- confirmed directly from the
+server's own logged error for this exact internal request. This is pre-existing (unrelated to the
+TDZ fix; nothing about the reordering touches async control flow), and distinct from, but just as
+real as, Issue 1 -- it was simply invisible before, since the TDZ crash always fired first.
+
+**Fixed**: added `headers: useRequestHeaders(['cookie'])` to the entity fetch's own `$fetch` call --
+the documented Nuxt remedy for exactly this gap. Re-verified against the same disposable instance:
+all three test Locations (bare, with a summary, with an image) now render their real title, real
+summary/image, and (for the bare one) the correct "No article content yet." empty state, via a
+direct authenticated request carrying only the original request's own cookie -- not inferred from
+source reading.
+
+### Issue 2: optional image on Create Location
+
+Traced which field the Location card, context rail, and article actually read for an image before
+writing anything: `entities.image` (a plain nullable `varchar` column on the `entities` table) takes
+priority in `extractImageUrl()`/`entityImageUrl()` in BOTH
+`server/api/worlds/[id]/entities/[entityId].get.ts` (single-entity, used by the article page) and
+`server/api/worlds/[id]/entities.get.ts` (the list route the card/context-rail read), with a
+block-data `image` key as the only fallback. No parallel image field was invented -- Create Location
+now writes to this exact, already-load-bearing column.
+
+**Client** (`WorldEntityInteractivePage.vue`): added `imageFileId`/`imageUrl` to the existing
+`newLocationForm` draft object (never a separate field/model), plus a square image-selector button
+("Choose image" empty state; thumbnail + "Change image" hover state once selected; a separate
+"Remove" link-button that clears only the draft, never calls any delete endpoint) and a
+`<WorldMediaPicker>` scoped to this World, reusing the exact same nested-modal integration
+`WorldPagePresentationPanel.vue` already established and this document's own earlier pass confirmed
+production-accepted (`a7da8bd`): the outer `UModal`'s `:dismissible` is toggled off for exactly as
+long as the picker is open (`locationImagePickerOpen`), and focus returns to the selector button on
+close (`watch(locationImagePickerOpen, ...)` + `nextTick(() => ...).focus()`) -- `WorldMediaPicker`
+itself already owns its own Escape-closes-only-itself and pointer-events handling, confirmed by
+reading it, not re-implemented here. The preview reads
+`buildCardThumbnailUrl(newLocationForm.imageUrl)`; the stored draft field (`imageFileId`) is always
+the ORIGINAL asset id, never a thumbnail URL -- matching `WorldPagePresentationPanel.vue`'s own
+established comment on this exact point. Browsing or cancelling the picker never calls
+`createLocationArticle` -- only the picker's own "Use This Image" action (`@select`) ever touches
+the draft. `newLocationFormDirty` (the route-navigation guard added in the prior pass) now also
+treats a selected image as dirty.
+
+**Server** (`server/api/worlds/[id]/locations.post.ts`): a new optional `imageFileId` is validated
+BEFORE the entity is created (never create-then-patch, so an invalid selection can never leave a
+half-created Location behind) -- reusing `fileBelongsToWorld` from
+`server/utils/world-page-presentation.ts` (the exact same cross-World-asset check the
+page-background picker already established, not reimplemented), plus a `type` check
+(`startsWith('image/')`) for "not actually an image." On success, `image: imageFileId || null` is
+passed straight into the SAME `/items/entities` create call -- satisfying "prefer including the
+image in the existing create operation" directly, by construction. Existing callers that omit
+`imageFileId` entirely are unaffected (`|| null`, same as every other already-optional field on this
+route).
+
+**Verified against the real disposable instance, via the real HTTP routes** (not simulated, not only
+read from source): a bare Location (no image); a Location created with an existing Media-Gallery
+file (uploaded through the real `/api/worlds/:id/media/upload` route first, exactly as the browser
+flow would); the resulting `image`/`imageUrl` fields correct on both the list route and the
+single-entity route; the image actually rendering in the article hero (`<img src="/api/assets/...">`)
+on a direct, authenticated request; a cross-World file id correctly rejected (`403 "That image does
+not belong to this World."`, with the real Directus data confirming NO entity row was created); a
+non-image file type correctly rejected (`400 "Selected file is not a supported image type."`); an
+observer-role account (no `world.entity.create`) correctly rejected (`403 "Missing capability
+'world.entity.create'"`) attempting the same create call. Full suite: 328 files / 6563 tests passing
+(up from 326/6553 -- the two new regression-test files below). Lint/typecheck: compared every touched
+file's signature set against `git show HEAD:<file> | eslint --stdin` and the full `pnpm run
+typecheck` count (902, unchanged from the long-established baseline every prior pass in this document
+has confirmed) -- zero new findings in any of the three touched files. Production build: clean.
+`git diff --check`: clean.
+
+**New regression tests** (source-text assertions, matching this document's own established
+precedent for a page/component with no SFC-mounting harness -- `tests/app/pages/worlds/maps.test.ts`'s
+own header explains why): `tests/app/pages/worlds/entities/entity-article-page.test.ts`
+(buildDrawerOpen declared before authoringActive; declared exactly once; the entity fetch forwards
+the request cookie) and `tests/components/world/WorldEntityInteractivePage.test.ts` (the image
+picker's wiring, dirty-check inclusion, and that removing a draft image never calls a delete
+endpoint).
+
+### Remaining limitations
+
+- No browser tool was available this session (confirmed via `ToolSearch`, as in every prior pass in
+  this document) -- every claim above is real HTTP/module-level evidence against a disposable
+  instance, explicitly NOT a claim that this was clicked through in an actual browser. Outstanding:
+  the picker's own keyboard/focus/Escape behavior as actually experienced (its underlying mechanism
+  is shared, already-accepted code, not new, but this specific new call site has not been clicked
+  through); mobile layout (~390x844) for the new image selector square; the "Choose image" empty
+  state's exact visual appearance.
+- The three Directus collections created on the disposable instance to unblock this verification
+  (`entity_statblocks`, `entity_actions`, `monster_profiles` -- minimal `id`/`entity_id` shape only,
+  no real schema) are specific to that disposable instance's own incomplete provisioning history from
+  earlier sessions, not a code change, and not something this pass's commit touches. Flagging in case
+  a future pass on this same disposable instance expects a fuller schema for those three collections.
+- `SheetInventoryTab.vue`'s own "Switch to Build mode" instruction and `enemies.vue`'s missing
+  creation workflow (both reported in the prior section) remain unchanged, out of this pass's scope.
+
+### Deployment requirements
+
+None -- the blank-article fix is a pure ordering/header-forwarding correction with no behavioral,
+schema, or capability change. The image feature reuses the already-existing `entities.image` column,
+the already-existing `world.entity.create` capability, and the already-existing `fileBelongsToWorld`
+check -- no schema, environment variable, or credential change.
 
 ### Status
 

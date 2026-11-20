@@ -227,17 +227,32 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const canAuthorArticle = computed(() => canEditWorldEntities(world.value?.capabilities))
 const canEditPageSettings = computed(() => canEditWorldSettings(world.value?.capabilities))
 
+// BLANK ARTICLE + QUICK-CREATE IMAGE -- buildDrawerOpen must be declared
+// BEFORE authoringActive references it, not "further down" as the
+// previous version of this comment claimed. That assumption was wrong:
+// watch()'s source getter (resolveArticleSidebarMentions' watch, below)
+// runs synchronously the instant watch() is called, regardless of its
+// `immediate` option, to seed its own initial tracked value -- and that
+// getter reads visibleArticleSidebarItems.value, which chains through
+// activeArticleSidebarEnabled -> authoringActive -> buildDrawerOpen well
+// before this file's own buildDrawerOpen declaration used to run. That
+// is a genuine TDZ violation ("Cannot access 'buildDrawerOpen' before
+// initialization"), not merely lazy-evaluation-is-fine as claimed --
+// confirmed by reproducing it for real (a 500 on every single entity
+// article page, every load, not only freshly created ones).
+const buildDrawerOpen = ref(false)
+
 // The one combined "is the article-authoring UI actually showing" check
 // every former `mode === 'build'` site below now uses: Page Builder is
-// open (buildDrawerOpen, declared further down) AND the viewer actually
-// holds world.entity.edit. Referencing buildDrawerOpen before its own
-// declaration is safe here -- this is a lazy computed getter, not read
-// until render, by which point the whole script setup has already run.
+// open (buildDrawerOpen, above) AND the viewer actually holds
+// world.entity.edit.
 const authoringActive = computed(() => buildDrawerOpen.value && canAuthorArticle.value)
 
 const { data: entity, refresh: refreshEntity } = await useAsyncData(
   `entity-${worldId.value}-${entityId.value}`,
-  () => $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}`),
+  () => $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}`, {
+    headers: useRequestHeaders(['cookie'])
+  }),
   {
     watch: [worldId, entityId]
   }
@@ -1143,7 +1158,8 @@ const detailSections = computed(() => {
   return sections.filter((section) => section.lines.length)
 })
 
-const buildDrawerOpen = ref(false)
+// buildDrawerOpen now declared earlier (see BLANK ARTICLE + QUICK-CREATE
+// IMAGE above) -- moved to fix a TDZ crash, not duplicated here.
 const contextDrawerOpen = ref(false)
 const contextDrawerEntity = ref<any | null>(null)
 

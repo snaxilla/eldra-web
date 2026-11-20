@@ -1,4 +1,5 @@
 import { requireCapability } from '../../../utils/authorization'
+import { fileBelongsToWorld } from '../../../utils/world-page-presentation'
 
 function directusBaseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
@@ -82,6 +83,7 @@ export default defineEventHandler(async (event) => {
   const population = normalizedPopulation(body?.population)
   const linkedMapId = normalizedNullableString(body?.linkedMapId ?? body?.linked_map_id)
   const parentLocationId = normalizedNullableString(body?.parentLocationId ?? body?.parent_location_id)
+  const imageFileId = normalizedNullableString(body?.imageFileId ?? body?.image_file_id)
 
   if (!worldId || !title) {
     throw createError({
@@ -96,6 +98,38 @@ export default defineEventHandler(async (event) => {
   }
   requireCapability(principal, 'world.entity.create', { kind: 'world', worldId: String(worldId) })
 
+  // BLANK ARTICLE + QUICK-CREATE IMAGE -- an optional, EXISTING Media
+  // Gallery file reference, validated BEFORE any entity is created (so an
+  // invalid/cross-World selection never leaves a half-created location
+  // behind) using the exact same ownership check the page-presentation
+  // background picker already established
+  // (server/utils/world-page-presentation.ts's fileBelongsToWorld) --
+  // reused, not reimplemented. Stores the ORIGINAL file id directly on
+  // entities.image, the same field extractImageUrl() in both
+  // server/api/worlds/[id]/entities.get.ts and
+  // server/api/worlds/[id]/entities.get.ts (list route) already read
+  // with top priority for every other entity type -- no parallel image
+  // field invented for Locations specifically.
+  if (imageFileId) {
+    const fileCheck = await dxFetch(
+      `/files/${encodeURIComponent(imageFileId)}?fields[]=id&fields[]=world_id&fields[]=type`
+    )
+
+    if (!fileCheck?.data?.id || !fileBelongsToWorld(fileCheck.data.world_id, worldId)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'That image does not belong to this World.'
+      })
+    }
+
+    if (!String(fileCheck.data.type || '').startsWith('image/')) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Selected file is not a supported image type.'
+      })
+    }
+  }
+
   const slugBase = slugify(body?.slug || title) || `location-${Date.now()}`
   const systemKey = buildSystemKey(worldId, title)
 
@@ -108,7 +142,8 @@ export default defineEventHandler(async (event) => {
       system_key: systemKey,
       entity_type: 'location',
       status: 'draft',
-      summary: summary || null
+      summary: summary || null,
+      image: imageFileId || null
     })
   })
 

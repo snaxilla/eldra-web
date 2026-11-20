@@ -11,6 +11,8 @@ import { canCreateWorldEntities, canDeleteWorldEntities, canEditWorldEntities, s
 import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 import { isSafeCollectionReturnPath, writeDraftTransfer } from '~/lib/world-entity-collection/direct-edit-navigation'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
+import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 
 const props = defineProps<{
@@ -123,7 +125,51 @@ const newLocationForm = reactive({
   population: '',
   linkedMapId: '',
   parentLocationId: '',
-  summary: ''
+  summary: '',
+  imageFileId: '',
+  imageUrl: ''
+})
+
+// BLANK ARTICLE + QUICK-CREATE IMAGE -- Create Location's own image
+// picker state. Mirrors WorldPagePresentationPanel.vue's established
+// WorldMediaPicker integration (nested-modal dismissible toggle, focus
+// restore on close) exactly, but stays a DRAFT field on newLocationForm
+// -- nothing is saved/persisted until createLocationArticle's own POST,
+// since (unlike a page background) there is no existing Location row to
+// save against yet.
+const locationImagePickerOpen = ref(false)
+const locationImagePreviewButtonRef = ref<HTMLButtonElement | null>(null)
+const locationImageThumbnailUrl = computed(() =>
+  newLocationForm.imageUrl ? buildCardThumbnailUrl(newLocationForm.imageUrl) : ''
+)
+
+function openLocationImagePicker() {
+  locationImagePickerOpen.value = true
+}
+
+// Browsing/highlighting files in the picker never calls this -- only its
+// own "Use This Image" action emits `select`, so opening the gallery and
+// looking around, or cancelling it, can never change the draft.
+function onLocationImageSelected(file: { id?: string | number; url?: string; imageUrl?: string } | null) {
+  if (!file?.id) return
+
+  newLocationForm.imageFileId = String(file.id)
+  newLocationForm.imageUrl = String(file.url || file.imageUrl || `/api/assets/${file.id}`)
+  locationImagePickerOpen.value = false
+}
+
+// Clears only the DRAFT's reference to the file -- the underlying Media
+// Gallery asset is never deleted, exactly like clearBackground() in
+// WorldPagePresentationPanel.vue never deletes the file it unlinks.
+function removeLocationImage() {
+  newLocationForm.imageFileId = ''
+  newLocationForm.imageUrl = ''
+}
+
+watch(locationImagePickerOpen, (isOpen, wasOpen) => {
+  if (!isOpen && wasOpen) {
+    nextTick(() => locationImagePreviewButtonRef.value?.focus())
+  }
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
@@ -1223,6 +1269,8 @@ function resetNewLocationForm() {
   newLocationForm.linkedMapId = ''
   newLocationForm.parentLocationId = ''
   newLocationForm.summary = ''
+  newLocationForm.imageFileId = ''
+  newLocationForm.imageUrl = ''
   newLocationError.value = ''
 }
 
@@ -1239,7 +1287,8 @@ const newLocationFormDirty = computed(() =>
     newLocationForm.linkedMapId ||
     newLocationForm.parentLocationId ||
     String(newLocationForm.summary || '').trim() ||
-    newLocationForm.locationType !== 'location'
+    newLocationForm.locationType !== 'location' ||
+    newLocationForm.imageFileId
   )
 )
 
@@ -1272,7 +1321,8 @@ async function createLocationArticle() {
         population: newLocationForm.population || null,
         linkedMapId: newLocationForm.linkedMapId || null,
         parentLocationId: newLocationForm.parentLocationId || null,
-        summary: String(newLocationForm.summary || '').trim() || null
+        summary: String(newLocationForm.summary || '').trim() || null,
+        imageFileId: newLocationForm.imageFileId || null
       }
     })
 
@@ -1613,6 +1663,7 @@ async function createLocationArticle() {
       v-model:open="showNewLocationForm"
       title="Create Location"
       description="Create a location article manually, independent of the World Map."
+      :dismissible="!locationImagePickerOpen"
       :ui="{ content: 'max-w-xl' }"
     >
       <template #body>
@@ -1628,6 +1679,58 @@ async function createLocationArticle() {
               placeholder="e.g. Old Market District"
             >
           </label>
+
+          <div class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Image (optional)</span>
+            <button
+              ref="locationImagePreviewButtonRef"
+              type="button"
+              class="group relative block aspect-video w-full cursor-pointer overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-well/54 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-eldra-accent/58 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eldra-accent/70"
+              :aria-label="locationImageThumbnailUrl ? 'Change location image' : 'Choose image'"
+              @click="openLocationImagePicker"
+            >
+              <img
+                v-if="locationImageThumbnailUrl"
+                :src="locationImageThumbnailUrl"
+                alt=""
+                class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+              >
+
+              <div
+                v-else
+                class="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center"
+              >
+                <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-eldra-text-faint" />
+                <div class="text-sm font-semibold text-eldra-text-strong">Choose image</div>
+              </div>
+
+              <div
+                v-if="locationImageThumbnailUrl"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/55 group-hover:opacity-100 group-focus-visible:bg-black/55 group-focus-visible:opacity-100"
+              >
+                <span class="rounded-none border border-eldra-accent/42 bg-black/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                  Change image
+                </span>
+              </div>
+            </button>
+
+            <button
+              v-if="locationImageThumbnailUrl"
+              type="button"
+              class="mt-2 text-xs uppercase tracking-[0.16em] text-eldra-text-faint underline-offset-2 hover:text-eldra-text-soft hover:underline"
+              @click="removeLocationImage"
+            >
+              Remove
+            </button>
+
+            <WorldMediaPicker
+              v-model:open="locationImagePickerOpen"
+              :world-id="worldId"
+              title="Choose Location Image"
+              select-label="Use This Image"
+              @select="onLocationImageSelected"
+            />
+          </div>
 
           <label class="block">
             <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-eldra-text-faint">Type</span>

@@ -53,9 +53,35 @@ import {
 } from '~/lib/item-mechanics'
 
 const props = defineProps<{
-  workspaceId: string
-  contentEntityId: string
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- workspaceId/contentEntityId
+  // are now OPTIONAL: absent (with `needsPreparation` set instead) means
+  // this entity has never been customized before, and this component
+  // itself drives the first save (see `needsPreparation` below and
+  // `activeWorkspaceId`/`activeContentEntityId`). Still always provided,
+  // unchanged, by this component's two pre-existing wide-canvas callers
+  // and by WorldEntityDirectEditDialog once an entity IS already prepared.
+  workspaceId?: string
+  contentEntityId?: string
   worldId: string | number
+  // Required (with entityType/slug) only when `needsPreparation` is set --
+  // the URL for the first-save POST, which has no workspaceId/contentEntityId
+  // to address yet. Harmless, unused, when workspaceId/contentEntityId are
+  // already provided.
+  entityType?: string
+  slug?: string
+  // A never-yet-customized entity's read-only preview -- the EXACT same
+  // shape the already-prepared GET route returns (presentation +
+  // itemMechanicsEditing + metaLines), fetched ONCE by the caller
+  // (WorldEntityDirectEditDialog's own read-only edit-target resolver)
+  // and handed to this component directly so `load()` below can seed the
+  // SAME draft/mechanicsDraft fields with ZERO network call of its own --
+  // opening this editor in this state creates, imports, and binds
+  // nothing, exactly like the existing-workspace case always has.
+  needsPreparation?: {
+    presentation: PresentationEntry | null
+    itemMechanicsEditing: ItemMechanicsEditingPreview | null
+    metaLines: string[]
+  } | null
   // The fields/live-preview layout below is `lg:grid-cols-2`, a VIEWPORT
   // breakpoint -- correct for this component's two existing callers
   // (StudioCustomizeInWorkspaceDialog, AdminStudioWorkspacesPanel), both
@@ -170,6 +196,22 @@ const errorMessage = ref('')
 const entity = ref<EntityDetail | null>(null)
 const preview = ref<Preview | null>(null)
 const pickerOpen = ref(false)
+
+// ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- the REAL workspaceId/
+// contentEntityId this component instance is actually operating against,
+// distinct from the PROPS of the same name: for a never-yet-customized
+// entity, props.workspaceId/contentEntityId start absent, and the first
+// successful save (see `save()` below) sets these directly, in place,
+// WITHOUT unmounting/remounting this component -- so "permit a second
+// edit immediately" and "remain on the correct entity" both hold without
+// any caller-side remount or extra round trip. `isPreparing` is the one
+// signal load()/save()/revert*() below branch on.
+const activeWorkspaceId = ref<string | null>(props.workspaceId ?? null)
+const activeContentEntityId = ref<string | null>(props.contentEntityId ?? null)
+const isPreparing = computed(() => !activeContentEntityId.value)
+// Survives save()'s own internal state transition (preparing -> prepared)
+// without vanishing -- see save()'s own activation-failed branch.
+const notYetLiveWarning = ref('')
 
 type Draft = {
   name: string
@@ -321,41 +363,81 @@ let loadGeneration = 0
 let hasAutoOpenedPicker = false
 let hasAppliedSeedDraft = false
 
+// Shared tail of both load() branches below -- draft/mechanicsDraft
+// seeding, seedDraft transfer, auto-open-picker. Identical regardless of
+// which branch produced `entity.value`/`preview.value`.
+function finishLoad() {
+  const next = draftFromEffective(preview.value?.effectivePresentation, new Set((entity.value?.authoredPresentation ?? []).map((o) => o.path)))
+  applyDraft(draft, next)
+  applyDraft(baseline, next)
+
+  const nextMechanics = mechanicsDraftFromPreview(preview.value?.itemMechanicsEditing, new Set((entity.value?.authoredMechanics ?? []).map((o) => o.path)))
+  applyMechanicsDraft(mechanicsDraft, nextMechanics)
+  applyMechanicsDraft(mechanicsBaseline, nextMechanics)
+
+  if (props.seedDraft && !hasAppliedSeedDraft) {
+    hasAppliedSeedDraft = true
+    if (props.seedDraft.nameDirty) draft.name = props.seedDraft.name ?? ''
+    if (props.seedDraft.imageDirty) draft.image = props.seedDraft.image
+  }
+
+  state.value = 'ready'
+  if (props.autoOpenImagePicker && !hasAutoOpenedPicker) {
+    hasAutoOpenedPicker = true
+    pickerOpen.value = true
+  }
+}
+
 async function load() {
   const generation = ++loadGeneration
   state.value = 'loading'
   errorMessage.value = ''
   saveState.value = 'idle'
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- never-yet-customized:
+  // seed directly from the read-only preview the caller already fetched
+  // (edit-target.get.ts), with NO network call of its own. This is what
+  // makes "opening/cancelling creates, imports, and binds nothing" hold
+  // for this branch exactly as it already does for the existing-workspace
+  // one: nothing here can have a side effect.
+  if (isPreparing.value) {
+    if (!props.needsPreparation) {
+      state.value = 'error'
+      errorMessage.value = 'This entity could not be loaded.'
+      return
+    }
+    entity.value = {
+      contentEntityId: '',
+      title: props.needsPreparation.presentation?.name || props.slug || '',
+      slug: props.slug || '',
+      entityType: props.entityType || '',
+      origin: 'imported',
+      revision: 0,
+      baseSourceRef: null,
+      authoredPresentation: [],
+      authoredMechanics: []
+    }
+    preview.value = {
+      basePresentation: props.needsPreparation.presentation ?? null,
+      effectivePresentation: props.needsPreparation.presentation ?? null,
+      imageUnavailable: false,
+      metaLines: props.needsPreparation.metaLines,
+      itemMechanicsEditing: props.needsPreparation.itemMechanicsEditing ?? null
+    }
+    finishLoad()
+    return
+  }
+
   try {
     const response = await $fetch<{ entity: EntityDetail; preview: Preview }>(
-      `/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}`,
+      `/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}`,
       { query: { worldId: String(props.worldId) } }
     )
     if (generation !== loadGeneration) return // a newer load/navigation started -- discard this stale response
 
     entity.value = response.entity
     preview.value = response.preview
-
-    const next = draftFromEffective(response.preview.effectivePresentation, new Set((response.entity.authoredPresentation ?? []).map((o) => o.path)))
-    applyDraft(draft, next)
-    applyDraft(baseline, next)
-
-    const nextMechanics = mechanicsDraftFromPreview(response.preview.itemMechanicsEditing, new Set((response.entity.authoredMechanics ?? []).map((o) => o.path)))
-    applyMechanicsDraft(mechanicsDraft, nextMechanics)
-    applyMechanicsDraft(mechanicsBaseline, nextMechanics)
-
-    if (props.seedDraft && !hasAppliedSeedDraft) {
-      hasAppliedSeedDraft = true
-      if (props.seedDraft.nameDirty) draft.name = props.seedDraft.name ?? ''
-      if (props.seedDraft.imageDirty) draft.image = props.seedDraft.image
-    }
-
-    state.value = 'ready'
-    if (props.autoOpenImagePicker && !hasAutoOpenedPicker) {
-      hasAutoOpenedPicker = true
-      pickerOpen.value = true
-    }
+    finishLoad()
   } catch (error) {
     if (generation !== loadGeneration) return
     state.value = 'error'
@@ -368,7 +450,29 @@ function describeError(error: unknown): string | undefined {
   return failure?.data?.statusMessage || failure?.data?.message
 }
 
-watch([() => props.workspaceId, () => props.contentEntityId], load, { immediate: true })
+// Re-syncs active* from props only when a CALLER changes which
+// already-existing entity to edit (this component's two pre-existing
+// wide-canvas callers may reuse one instance across entities) -- never
+// when props simply catch up to what save() below ALREADY resolved
+// internally after a first save, which would otherwise trigger a
+// redundant extra load().
+// `immediate: true` means this ALWAYS fires once on mount -- that first
+// fire must always load(), even though activeWorkspaceId/activeContentEntityId
+// are seeded from these same props (making the "did anything actually
+// change" comparison below trivially true on that very first call). The
+// comparison only exists to skip a REDUNDANT reload on a LATER fire, where
+// the parent's props simply caught up to what save() already resolved
+// internally -- never to skip the initial load itself.
+let hasLoadedOnce = false
+watch([() => props.workspaceId, () => props.contentEntityId], ([workspaceId, contentEntityId]) => {
+  const nextWorkspaceId = workspaceId ?? null
+  const nextContentEntityId = contentEntityId ?? null
+  if (hasLoadedOnce && nextWorkspaceId === activeWorkspaceId.value && nextContentEntityId === activeContentEntityId.value) return
+  hasLoadedOnce = true
+  activeWorkspaceId.value = nextWorkspaceId
+  activeContentEntityId.value = nextContentEntityId
+  load()
+}, { immediate: true })
 watch(isDirty, (dirty) => emit('dirty-change', dirty))
 
 // The conflict banner's own "Reload" -- an EXPLICIT user action (never
@@ -463,9 +567,51 @@ async function save() {
     edits.push({ channel: 'mechanics', path: 'property', value: buildPropertyOverrideArray(preview.value?.itemMechanicsEditing?.property ?? [], mechanicsDraft.property) })
   }
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- never-yet-customized:
+  // the SAME `edits` array built above (presentation AND mechanics,
+  // whichever actually went dirty), but through the first-save route
+  // (prepare -> import -> save -> activate last), which this entity has
+  // no workspaceId/contentEntityId to address any other way yet.
+  // expectedRevision is explicitly null here, never entity.value.revision
+  // (always 0 in this branch) -- `null` is this route's own, distinct
+  // signal for "no prior revision exists to protect."
+  if (isPreparing.value) {
+    try {
+      const response = await $fetch<{ workspaceId: string; contentEntityId: string; entity: EntityDetail }>(
+        `/api/worlds/${props.worldId}/entities/${encodeURIComponent(props.entityType || '')}/${encodeURIComponent(props.slug || '')}/customize`,
+        { method: 'POST', body: { edits, expectedRevision: null } }
+      )
+      if (generation !== saveGeneration) return
+
+      activeWorkspaceId.value = response.workspaceId
+      activeContentEntityId.value = response.contentEntityId
+      saveState.value = 'saved'
+      emit('saved', response.entity)
+      await load() // isPreparing is now false -- this re-seeds everything from the just-saved, now-real entity
+    } catch (error) {
+      if (generation !== saveGeneration) return
+      const failure = error as { data?: { code?: string; workspaceId?: string; contentEntityId?: string; message?: string } }
+      if (failure?.data?.code === 'direct-edit-activation-failed') {
+        // The save genuinely succeeded and is durable -- only going live
+        // failed. Mirrors WorldEntityDirectEditDialog.vue's own PRE-EXISTING
+        // handling of this exact failure mode (unchanged behavior, just
+        // relocated here now that THIS component drives the first save).
+        activeWorkspaceId.value = failure.data.workspaceId ?? null
+        activeContentEntityId.value = failure.data.contentEntityId ?? null
+        notYetLiveWarning.value = 'Saved, but could not be made visible in this World yet. Save again (even with no further changes) to finish activating it.'
+        saveState.value = 'saved'
+        if (failure.data.contentEntityId) emit('saved', { contentEntityId: failure.data.contentEntityId } as EntityDetail)
+      } else {
+        saveState.value = 'error'
+        errorMessage.value = describeError(error) || 'The save failed. Your draft is kept below -- try again.'
+      }
+    }
+    return
+  }
+
   try {
     const response = await $fetch<{ entity: EntityDetail }>(
-      `/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}`,
+      `/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}`,
       { method: 'PATCH', body: { worldId: String(props.worldId), expectedRevision: entity.value.revision, edits } }
     )
     if (generation !== saveGeneration) return // a newer save/load started meanwhile -- never let a stale response win
@@ -508,7 +654,7 @@ async function revertPath(path: string) {
   if (isDirty.value && !window.confirm(`Revert ${path} to its inherited value? Your other unsaved changes are kept.`)) return
   saveState.value = 'saving'
   try {
-    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/presentation/${path}`, {
+    await $fetch(`/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}/overrides/presentation/${path}`, {
       method: 'DELETE',
       body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
     })
@@ -525,7 +671,7 @@ async function revertAll() {
   if (!window.confirm('Revert ALL customized fields on this entity to their inherited values?')) return
   saveState.value = 'saving'
   try {
-    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/presentation`, {
+    await $fetch(`/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}/overrides/presentation`, {
       method: 'DELETE',
       body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
     })
@@ -547,7 +693,7 @@ async function revertMechanicsPath(path: string) {
   if (isDirty.value && !window.confirm(`Revert ${path} to its inherited value? Your other unsaved changes are kept.`)) return
   saveState.value = 'saving'
   try {
-    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/mechanics/${path}`, {
+    await $fetch(`/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}/overrides/mechanics/${path}`, {
       method: 'DELETE',
       body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
     })
@@ -564,7 +710,7 @@ async function revertMechanicsAll() {
   if (!window.confirm('Revert ALL customized mechanics fields on this entity to their inherited values?')) return
   saveState.value = 'saving'
   try {
-    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/overrides/mechanics`, {
+    await $fetch(`/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}/overrides/mechanics`, {
       method: 'DELETE',
       body: { worldId: String(props.worldId), expectedRevision: entity.value.revision }
     })
@@ -583,7 +729,7 @@ async function createCheckpoint() {
   if (!checkpointLabel.value.trim()) return
   checkpointSaved.value = false
   try {
-    await $fetch(`/api/content/workspaces/${props.workspaceId}/entities/${props.contentEntityId}/checkpoints`, {
+    await $fetch(`/api/content/workspaces/${activeWorkspaceId.value}/entities/${activeContentEntityId.value}/checkpoints`, {
       method: 'POST',
       body: { worldId: String(props.worldId), label: checkpointLabel.value.trim() }
     })
@@ -643,6 +789,13 @@ async function createCheckpoint() {
         </button>
       </div>
     </div>
+
+    <p
+      v-if="notYetLiveWarning"
+      class="mt-4 rounded-none border border-amber-300/25 bg-amber-400/10 p-3 text-xs text-amber-100"
+    >
+      {{ notYetLiveWarning }}
+    </p>
 
     <p
       v-if="state === 'loading'"
@@ -1076,7 +1229,10 @@ async function createCheckpoint() {
         </div>
 
         <template v-if="!isQuickField">
-        <div class="border-t border-eldra-accent/24 pt-4">
+        <div
+          v-if="!isPreparing"
+          class="border-t border-eldra-accent/24 pt-4"
+        >
           <button
             type="button"
             class="min-h-9 rounded-none border border-red-400/30 px-3 text-xs text-red-200 hover:bg-red-500/10"
@@ -1101,7 +1257,14 @@ async function createCheckpoint() {
           </button>
         </div>
 
-        <div class="border-t border-eldra-accent/24 pt-4">
+        <!-- ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- a checkpoint
+             names an EXISTING revision; a never-yet-customized entity has
+             none yet (no workspaceId/contentEntityId to checkpoint
+             against), so this stays hidden until after the first save. -->
+        <div
+          v-if="!isPreparing"
+          class="border-t border-eldra-accent/24 pt-4"
+        >
           <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Save a checkpoint (separate from saving edits above)</label>
           <div class="mt-1 flex gap-2">
             <input

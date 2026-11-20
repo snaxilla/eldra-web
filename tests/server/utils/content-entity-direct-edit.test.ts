@@ -160,7 +160,7 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     worldId: WORLD_ID,
     entityType: 'item',
     slug: 'shortsword-xphb',
-    edits: [{ path: 'description', value: ['A fine blade.'] }],
+    edits: [{ channel: 'presentation' as const, path: 'description', value: ['A fine blade.'] }],
     actorAccountId: 'acct-1',
     expectedRevision: null
   }
@@ -182,8 +182,8 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
     listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_new', entityType: 'item', slug: 'shortsword-xphb' }])
     bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: true })
-    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0 })
-    applyPresentationEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
 
     const result = await customizeEntityForWorld(input, 'dnd5e')
 
@@ -192,13 +192,71 @@ describe('customizeEntityForWorld -- the one workflow', () => {
       dryRun: false
     }))
     expect(bindWorkspaceLiveToWorldMock).toHaveBeenCalledWith(WORLD_ID, 'ws-1')
-    expect(applyPresentationEditsMock).toHaveBeenCalledWith('ws-1', 'ce_new', 0, expect.any(Array), 'acct-1')
+    expect(applyEntityEditsMock).toHaveBeenCalledWith('ws-1', 'ce_new', 0, 'item', expect.any(Array), 'acct-1')
     expect(result).toEqual({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_new', entity: { revision: 1 } })
 
     // Ordering, not just presence: save must happen BEFORE bind.
-    const saveOrder = applyPresentationEditsMock.mock.invocationCallOrder[0]
+    const saveOrder = applyEntityEditsMock.mock.invocationCallOrder[0]
     const bindOrder = bindWorkspaceLiveToWorldMock.mock.invocationCallOrder[0]
     expect(saveOrder).toBeLessThan(bindOrder)
+  })
+
+  it('a mechanics-only first edit is accepted, serialized with a null baseValueHash (no prior presentation to hash)', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({
+      byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37' }] }
+    })
+    getContentWorkspaceByKeyMock.mockResolvedValue(null)
+    createContentWorkspaceMock.mockResolvedValue({ ok: true, workspace: WORKSPACE })
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_new', entityType: 'item', slug: 'shortsword-xphb' }])
+    bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: true })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+
+    const mechanicsInput = {
+      ...input,
+      edits: [{ channel: 'mechanics' as const, path: 'damage', value: { dice: '2d12', damageType: 'P' } }]
+    }
+    const result = await customizeEntityForWorld(mechanicsInput, 'dnd5e')
+
+    expect(applyEntityEditsMock).toHaveBeenCalledWith(
+      'ws-1', 'ce_new', 0, 'item',
+      [{ channel: 'mechanics', path: 'damage', value: { dice: '2d12', damageType: 'P' }, baseValueHash: null }],
+      'acct-1'
+    )
+    expect(result).toMatchObject({ ok: true })
+  })
+
+  it('a mixed presentation + mechanics first edit saves BOTH in one combined call', async () => {
+    resolveEffectiveContentMock.mockResolvedValue({
+      byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'eldra.solaris.xphb', packageVersion: '1.0.37' }] }
+    })
+    getContentWorkspaceByKeyMock.mockResolvedValue(null)
+    createContentWorkspaceMock.mockResolvedValue({ ok: true, workspace: WORKSPACE })
+    importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
+    listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_new', entityType: 'item', slug: 'shortsword-xphb' }])
+    bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: true })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1 } })
+
+    const mixedInput = {
+      ...input,
+      edits: [
+        { channel: 'presentation' as const, path: 'description', value: ['A fine blade.'] },
+        { channel: 'mechanics' as const, path: 'rarity', value: 'rare' }
+      ]
+    }
+    await customizeEntityForWorld(mixedInput, 'dnd5e')
+
+    expect(applyEntityEditsMock).toHaveBeenCalledTimes(1)
+    expect(applyEntityEditsMock).toHaveBeenCalledWith(
+      'ws-1', 'ce_new', 0, 'item',
+      [
+        { channel: 'presentation', path: 'description', value: ['A fine blade.'], baseValueHash: 'hash-1' },
+        { channel: 'mechanics', path: 'rarity', value: 'rare', baseValueHash: null }
+      ],
+      'acct-1'
+    )
   })
 
   it('save succeeds, activation (bind) fails: reported as "saved but not yet live," never a false success, and the saved entity is returned', async () => {
@@ -208,8 +266,8 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     getContentWorkspaceByKeyMock.mockResolvedValue(WORKSPACE)
     importIntoWorkspaceMock.mockResolvedValue({ ok: true, applied: true, progress: { entitiesCreated: 1 } })
     listWorkspaceEntityIdentitiesMock.mockResolvedValue([{ contentEntityId: 'ce_new', entityType: 'item', slug: 'shortsword-xphb' }])
-    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0 })
-    applyPresentationEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1, contentEntityId: 'ce_new' } })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 0, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 1, contentEntityId: 'ce_new' } })
     bindWorkspaceLiveToWorldMock.mockResolvedValue({ bound: false, stage: 'workspace-not-found' })
 
     const result = await customizeEntityForWorld(input, 'dnd5e')
@@ -225,7 +283,7 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     })
     // The save genuinely happened -- this is not reported as import-failed
     // or conflict, which would wrongly suggest the edit itself was lost.
-    expect(applyPresentationEditsMock).toHaveBeenCalled()
+    expect(applyEntityEditsMock).toHaveBeenCalled()
   })
 
   it('existing-workspace (already local): reuses it, never re-imports or re-binds', async () => {
@@ -233,15 +291,15 @@ describe('customizeEntityForWorld -- the one workflow', () => {
       byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-1', contentEntityId: 'ce_existing' }] }
     })
     listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID)])
-    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 2 })
-    applyPresentationEditsMock.mockResolvedValue({ ok: true, entity: { revision: 3 } })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 2, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: true, entity: { revision: 3 } })
 
     const result = await customizeEntityForWorld({ ...input, expectedRevision: 2 }, 'dnd5e')
 
     expect(createContentWorkspaceMock).not.toHaveBeenCalled()
     expect(importIntoWorkspaceMock).not.toHaveBeenCalled()
     expect(bindWorkspaceLiveToWorldMock).not.toHaveBeenCalled()
-    expect(applyPresentationEditsMock).toHaveBeenCalledWith('ws-1', 'ce_existing', 2, expect.any(Array), 'acct-1')
+    expect(applyEntityEditsMock).toHaveBeenCalledWith('ws-1', 'ce_existing', 2, 'item', expect.any(Array), 'acct-1')
     expect(result).toMatchObject({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_existing' })
   })
 
@@ -254,7 +312,7 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     const result = await customizeEntityForWorld(input, 'dnd5e') // expectedRevision: null
 
     expect(result).toMatchObject({ ok: false, stage: 'conflict' })
-    expect(applyPresentationEditsMock).not.toHaveBeenCalled()
+    expect(applyEntityEditsMock).not.toHaveBeenCalled()
   })
 
   it('an import failure is reported, never silently treated as success', async () => {
@@ -267,7 +325,7 @@ describe('customizeEntityForWorld -- the one workflow', () => {
     const result = await customizeEntityForWorld(input, 'dnd5e')
 
     expect(result).toEqual({ ok: false, stage: 'import-failed', message: 'connection reset', retrySafe: true })
-    expect(applyPresentationEditsMock).not.toHaveBeenCalled()
+    expect(applyEntityEditsMock).not.toHaveBeenCalled()
   })
 
   it('a save conflict from the atomic module is surfaced as a conflict, not a generic failure', async () => {
@@ -275,8 +333,8 @@ describe('customizeEntityForWorld -- the one workflow', () => {
       byEntityType: { item: [{ slug: 'shortsword-xphb', packageId: 'workspace.ws-1', contentEntityId: 'ce_existing' }] }
     })
     listWorldsBoundToWorkspaceMock.mockResolvedValue([String(WORLD_ID)])
-    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 2 })
-    applyPresentationEditsMock.mockResolvedValue({ ok: false, stage: 'conflict', current: { revision: 5 } })
+    getWorkspaceEntityDetailMock.mockResolvedValue({ revision: 2, entityType: 'item' })
+    applyEntityEditsMock.mockResolvedValue({ ok: false, stage: 'conflict', current: { revision: 5 } })
 
     const result = await customizeEntityForWorld({ ...input, expectedRevision: 2 }, 'dnd5e')
 

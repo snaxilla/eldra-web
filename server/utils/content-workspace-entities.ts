@@ -239,7 +239,13 @@ export type EditOutcome =
 // above, which is universal across entity types -- so this lives here,
 // where `entityType` is already in hand, rather than in the generic,
 // entity-type-unaware content-authoring/overrides.ts.
-function isValidMechanicsOverridePath(entityType: string, path: string): boolean {
+//
+// ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- exported so
+// server/api/worlds/[id]/entities/[entityId]/[slug]/customize.post.ts (the
+// first-ever-save route) can validate a mechanics path the exact same way
+// applyEntityEdits itself will, before ever importing/binding anything,
+// rather than duplicating this check.
+export function isValidMechanicsOverridePath(entityType: string, path: string): boolean {
   return entityType === 'item' && isItemMechanicsOverridePath(path)
 }
 

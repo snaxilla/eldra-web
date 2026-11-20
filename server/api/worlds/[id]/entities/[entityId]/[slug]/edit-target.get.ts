@@ -11,6 +11,8 @@ import { requireCapability } from '../../../../../../utils/authorization'
 import { resolveDirectEditTarget } from '../../../../../../utils/content-entity-direct-edit'
 import { catalogueEntryToBlocks } from '../../../../../../utils/catalogue-entity-bridge'
 import { collectionSummaryMetaLines } from '../../../../../../utils/entity-collection-summary'
+import { getWorldSystemKey } from '../../../../../../utils/entity-factory'
+import { effectiveAttunementValue, effectiveDamageValue, resolveItemMechanics } from '../../../../../../../app/lib/item-mechanics'
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -76,11 +78,43 @@ export default defineEventHandler(async (event) => {
     metaLines = []
   }
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- the SAME
+  // itemMechanicsEditing shape the already-prepared editor's own GET route
+  // returns (server/api/content/workspaces/[workspaceId]/entities/[contentEntityId]/index.get.ts),
+  // computed here from the RAW catalogue data directly rather than an
+  // "effective" merge: a never-yet-customized entity has no authored_mechanics
+  // override at all, so base data and effective data are the same thing
+  // (resolveEffectiveItemData's own no-op guarantee for an empty override
+  // list), making that extra round trip unnecessary. This is what lets the
+  // full editor expose rarity/weight/attunement/damage/property on the
+  // FIRST open, not only after a first save and reopen.
+  let itemMechanicsEditing: {
+    rarity: string | null
+    weight: number | null
+    attunement: ReturnType<typeof effectiveAttunementValue>
+    damage: ReturnType<typeof effectiveDamageValue>
+    property: unknown[]
+    isWeapon: boolean
+  } | null = null
+  if (entityType === 'item') {
+    const systemKey = await getWorldSystemKey(worldId)
+    const record = target.data && typeof target.data === 'object' ? target.data as Record<string, unknown> : {}
+    itemMechanicsEditing = {
+      rarity: typeof record.rarity === 'string' ? record.rarity : null,
+      weight: typeof record.weight === 'number' ? record.weight : null,
+      attunement: effectiveAttunementValue(target.data),
+      damage: effectiveDamageValue(target.data),
+      property: Array.isArray(record.property) ? record.property : [],
+      isWeapon: resolveItemMechanics(systemKey, target.data) !== null
+    }
+  }
+
   return {
     mode: 'needs-preparation',
     packageId: target.packageId,
     packageVersion: target.packageVersion,
     presentation: target.presentation,
-    metaLines
+    metaLines,
+    itemMechanicsEditing
   }
 })

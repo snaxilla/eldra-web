@@ -1488,7 +1488,7 @@ check -- no schema, environment variable, or credential change.
 
 **Committed** (`f61a151`).
 
-## Restore a clear, consistent full-editor entry point (not yet committed)
+## Restore a clear, consistent full-editor entry point (COMMITTED)
 
 Owner report, after `f61a151` fixed the blank article: the article now renders, but its existing
 full editor is still undiscoverable -- a floating "Page Builder" button instead of a clear "Edit"
@@ -1696,4 +1696,235 @@ worth doing explicitly, not assumed from this fix alone.
 
 ### Status
 
-**NOT committed.** Stopped here for review.
+**Committed** (`7ad1b2e`).
+
+## Trace note: missing item mechanics controls on `+1 Rod of the Pact Keeper` (read-only, not implemented)
+
+Owner report: the Rod's editor shows presentation fields then "Mechanics (not editable here)," even
+though Shortsword's damage was successfully edited to `2d12` before and a character's real rolls used
+it. Read-only trace, no code changed.
+
+**Root cause: an entry-point/workflow gap, not a coverage limit for rods specifically.** Item
+mechanics editing (`0531335`, `app/lib/item-mechanics/dnd5e-editing.ts`) was added ONLY to
+`StudioEntityEditor.vue` (`app/components/admin/studio/StudioEntityEditor.vue:859` gates the whole
+mechanics block on `!isQuickField && isItemEntity`). That component mounts only once an entity has an
+existing content workspace (`WorldEntityDirectEditDialog.vue:369`,
+`v-else-if="resolvedWorkspaceId && resolvedContentEntityId"`, set only when `resolveDirectEditTarget`
+returns `mode: 'existing-workspace'` -- `content-entity-direct-edit.ts:116-122`). An entity that has
+NEVER been customized before resolves to `mode: 'needs-preparation'`
+(`content-entity-direct-edit.ts:125-133`) and instead renders `WorldEntityDirectEditDialog.vue`'s own
+separate, older first-save ad-hoc form (`:431`, `v-else-if="needsPreparation"`), whose own
+`saveFirstEdit()` (`:206-227`) only ever sends `name`/`description`/`notes`/`sourceBook`/`sourcePage`/
+`image` -- never a mechanics field -- and whose read-only summary (`:545-558`) still carries the
+pre-`0531335` literal label "Mechanics (not editable here)," which commit never touched. Shortsword
+had evidently already been through one first save (creating its workspace) before the owner edited
+its damage; the Rod has not, so it is still showing the OLDER, mechanics-blind form. The SAME
+`openFullEditorFromFirstSave()` escape hatch exists on this ad-hoc form (`:270`) and navigates to the
+dedicated Full-Page Editor route, but that route renders the exact same `WorldEntityDirectEditDialog`
+component with the exact same `needsPreparation` branch for an entity in this state -- it does not
+bypass to `StudioEntityEditor` early. Saving once (any field, even just a no-op image choice) via
+either surface transitions the entity to `existing-workspace` on the NEXT open, at which point
+`StudioEntityEditor`'s mechanics section becomes available for every field this release supports.
+
+**Does Shortsword still reach the working editor?** Yes -- nothing in this trace, or any pass since
+`0531335`, touched `StudioEntityEditor.vue`'s own mechanics block or `isWeapon`/`isItemEntity`
+gating. An already-prepared weapon (`existing-workspace`) still shows the full damage-dice/type +
+property editor exactly as before.
+
+**Supported fields (release one), by item category:**
+
+| Field | Any item | Weapon only | Where |
+| --- | --- | --- | --- |
+| Rarity | editable | -- | `dnd5e-editing.ts:28`, UI at `StudioEntityEditor.vue:871-902` |
+| Weight | editable | -- | `dnd5e-editing.ts:28`, UI at `:905-926` |
+| Attunement (+ restriction text) | editable | -- | `dnd5e-editing.ts:28`, UI at `:929-965` |
+| Damage dice + type | -- | editable | `dnd5e-editing.ts:28`, UI at `:968-989`, gated `v-if="isWeapon"` |
+| Weapon properties (9 named) | -- | editable | `dnd5e-editing.ts:57-67`, UI inside the same `isWeapon` block |
+| Type/category, weaponCategory, mastery, range, versatile/secondary damage, AC, **attack/damage/spell-attack/spell-save-DC bonuses**, monetary value, charges/recharge | read-only | read-only | explicitly excluded, `dnd5e-editing.ts:12-17`; surfaced only via `metaLines` (`StudioEntityEditor.vue:1158-1171`), and ONLY for Type/Rarity/Damage/Weight/Value/Source (`entity-collection-summary.ts:187-198` -- spell-attack/DC bonus and charges are not in this summary either, so they are invisible in the editor entirely, not merely non-editable) |
+
+**For the rod specifically (verified against the real 5etools record,
+`/opt/eldra/datasets/5etools-src/data/items.json`, "+1 Rod of the Pact Keeper"):**
+- `bonusSpellAttack: "+1"` / `bonusSpellSaveDc: "+1"` are RAW STRUCTURED FIELDS on this exact entity,
+  successfully extracted by `server/utils/dnd5e-items.ts:387-410`'s `modifiers()` into
+  `{type:'spell_attack_bonus'}`/`{type:'spell_save_dc_bonus'}`, and ALREADY CONSUMED by real gameplay:
+  `app/pages/worlds/[id]/entities/[entityId]/sheet.vue:6343-6351` adds
+  `activeSpellAttackItemBonus`/`activeSpellSaveDcItemBonus` directly into the character's actual spell
+  attack/save-DC formulas. **Category: structured, already consumed by gameplay** -- and explicitly
+  NOT editable in this release regardless of item category (see table above).
+- "Regain one spell slot... until you finish a long rest" exists ONLY in `entries` prose (no
+  dedicated raw field on this entity, e.g. no `charges`). `dnd5e-items.ts:432-465`'s `resources()` text
+  pattern-matches recharge language like this into a generic `{key:'uses', max:1, recharge:'Long
+  Rest'}` shell, and `grantedActions()` (`:478-509`) would produce one generic timed action card from
+  the SAME combined entry text (both `entries` strings are joined by `entriesToText`, `:20-38`, before
+  either function runs) -- confirmed these DO feed `app/pages/worlds/[id]/entities/[entityId]/sheet.vue`'s
+  own Action Center cards (`:3949-3993`, generic "N uses / Long Rest" tracking). **But using that
+  tracked charge does not itself grant a spell slot back** -- nothing in this codebase increments a
+  spell-slot-remaining counter from an item action; the card's own `detail` is just the prose,
+  for a human to read and apply by hand. **Category: the generic "limited use, resets on Long Rest"
+  shell is structured and tracked; the SPECIFIC effect ("regain a spell slot") exists only as
+  description text, not as executable mechanics** -- not designed or assumed otherwise here, per this
+  trace's own scope.
+
+**Smallest justified next fix** (not implemented, for a future task's own scoping):
+restoring existing functionality -- extend `WorldEntityDirectEditDialog.vue`'s `needs-preparation`
+branch to ALSO expose `StudioEntityEditor`'s mechanics fields (rarity/weight/attunement/damage/
+property) once the entity is prepared, OR simply auto-save-and-transition into `StudioEntityEditor`
+immediately after the first save completes instead of staying on the ad-hoc form, so a never-before-
+customized item reaches the SAME mechanics editor a once-saved one already does, without a second
+manual reopen. Both are "restore the entry point," not new mechanics support. Genuinely NEW work
+(out of this trace's scope, not recommended here) would be: editing attack/damage/spell-attack/spell-
+save-DC bonuses or charges (all explicitly excluded by `0531335`'s own release-one decision), or any
+mechanism that executes "regain a spell slot" as a real effect rather than prose.
+
+**What could not be proven from fixture data**: the disposable Directus instance available in this
+environment has no `content_workspace_entities` row for either "shortsword" or
+"rod-of-the-pact-keeper" (checked directly), so the OWNER's OWN real deployment's exact workspace
+state for these two specific items could not be directly inspected here -- the conclusion above rests
+on the code's own deterministic branching logic (which fully answers the question on its own), not on
+a fixture reproducing the owner's exact screenshots.
+
+## Item mechanics available on the first edit (pending review)
+
+Implements the fix the trace above established. A never-before-customized item (`needs-preparation`)
+now exposes the SAME supported mechanics controls (rarity/weight/attunement for any item, damage/
+property for weapons) on its FIRST full edit -- no preliminary save, no manual "open full editor and
+save once" workaround, no reopen required.
+
+### Approach: unify the two forms inside the shared editor, not a second copy of the controls
+
+`StudioEntityEditor.vue` is now dual-mode instead of always requiring an existing
+`workspaceId`/`contentEntityId`:
+- Both props are now optional; a new `needsPreparation` prop carries the exact read-only preview
+  `edit-target.get.ts` already resolves (`presentation`, `metaLines`, and a new `itemMechanicsEditing`
+  block mirroring the already-prepared GET route's own shape).
+- An internal `isPreparing` computed (`!activeContentEntityId.value`) drives both halves of the
+  component:
+  - `load()` gains a preparation branch that seeds `entity`/`preview` SYNTHETICALLY from
+    `props.needsPreparation`, with NO network call of its own -- opening/cancelling still creates,
+    imports, and binds nothing, exactly as before.
+  - `save()` gains a preparation branch that POSTs to the EXISTING first-save route
+    (`customize.post.ts`), using the SAME combined `edits` array (presentation + mechanics together)
+    the already-prepared PATCH path builds, then flips `isPreparing` to `false` in place (no remount,
+    no component swap, no extra reload) by setting internal `activeWorkspaceId`/`activeContentEntityId`
+    refs and re-running `load()`, which now takes the normal fetch branch against the just-created
+    entity.
+- `WorldEntityDirectEditDialog.vue`'s old presentation-only ad-hoc first-save form (`saveFirstEdit()`,
+  its own `Draft` type, its own image picker, its own stale "Mechanics (not editable here)" label) is
+  deleted outright. Its `needs-preparation` branch now renders `<StudioEntityEditor>` directly, passing
+  the resolved preview straight through -- one editor, one validation path, one save path, for every
+  state an entity can be in.
+
+### Server-side: one combined, channel-aware write, reused instead of forked
+
+- `customizeEntityForWorld` (`content-entity-direct-edit.ts`) now accepts a `channel` on each edit
+  (`'presentation' | 'mechanics'`) and calls `applyEntityEdits` -- the SAME atomic, combined-channel
+  primitive the already-prepared PATCH route and `splitSharedEntityToLocalWorkspace` already use --
+  instead of the presentation-only `applyPresentationEdits` it called before. A mechanics-only edit, or
+  a mixed presentation+mechanics edit, is therefore one request, one revision check, one write; never
+  two separate saves that could partially apply.
+- `customize.post.ts` validates each edit per its channel before anything runs: presentation paths
+  through the existing `isValidOverridePath`, mechanics paths through `isValidMechanicsOverridePath`
+  (now exported from `content-workspace-entities.ts` instead of module-private) plus
+  `validateItemMechanicsOverrideValue` for the value itself (e.g. a damage-dice expression shape) --
+  the same mechanics validation primitives the already-prepared PATCH route already enforces, reused
+  rather than reimplemented. An invalid edit rejects the WHOLE request with 4xx before any import,
+  write, or activation happens.
+- `edit-target.get.ts` now computes and returns `itemMechanicsEditing` for the `needs-preparation`
+  case, from the RAW catalogue `data` directly (no "effective" merge needed -- a never-customized
+  entity has no `authored_mechanics` override yet, so base and effective are the same thing), using
+  the identical `effectiveAttunementValue`/`effectiveDamageValue`/`resolveItemMechanics` helpers the
+  already-prepared route already uses -- never a second parser.
+
+Supported fields are UNCHANGED from release one (see the table above this section): rarity, weight,
+attunement (+ restriction text) for any item; damage dice/type and weapon properties for weapons only.
+Spell-attack/spell-save-DC bonuses, charges, AC, monetary value, item type/category/weaponCategory/
+mastery/range, and any new effect-execution mechanism remain explicitly out of scope for this change,
+exactly as the trace above found them.
+
+### Verification
+
+**Source tracing**: confirmed the `needsPreparation` branch's `load()`/`save()` reuse the identical
+draft/baseline/mechanicsDraft model, `isDirty`/`mechanicsDirtyPaths` computation, and Save button the
+already-prepared branch uses -- there is no second copy of the mechanics controls anywhere in the tree.
+
+**Real disposable instance, non-mocked, via `customizeEntityForWorld`/`publishContentPack`/
+`createWorld`/`bindContentPackToWorld` directly (jiti + the repo's own runtime shim)** -- a pristine
+"Rod of the Pact Keeper +1" (rarity/weight/attunement, not a weapon) and a pristine "Shortsword"
+(weaponCategory `martial` + a real `mastery` entry, so it resolves as a weapon), neither customized by
+setup, published fresh and bound to a disposable World: 37/37 checks passed, covering --
+- the first-edit preview exposes rarity/weight/attunement (rod) and damage/property with `isWeapon:
+  true` (sword), with ZERO workspace created by merely opening/cancelling;
+- a mechanics-only first save (rarity + attunement, no presentation edit) persists correctly, verified
+  against the SAME saved-state effective-mechanics read (`resolveEffectiveItemData` +
+  `effectiveAttunementValue`/`effectiveDamageValue`) the already-prepared GET route itself uses --
+  weight stayed unchanged (not turned into an unintended default) by the unrelated edit;
+- a combined presentation + mechanics first save (sword) persists BOTH in the one save, confirmed via
+  the real gameplay catalogue (`getWorldContentCatalogue`) for presentation and the saved-state
+  mechanics read for damage;
+- the already-prepared path still works unchanged (a second edit on the now-prepared rod, reusing the
+  same entity, no duplicate);
+- validation failure (an invalid damage-dice expression), run through the REAL HTTP `customize.post.ts`
+  route (this is where value validation lives, not in the bare `customizeEntityForWorld` call): rejected
+  with 4xx, no entity imported/activated, a corrected retry on the same item then succeeds;
+- a resent identical first-save request (simulating a client that does not know whether its earlier
+  request landed) is correctly refused as a conflict rather than silently reapplied, and creates no
+  duplicate entity or workspace;
+- for the weapon: an existing character's stored legacy inventory reference (`{packageId, slug}`)
+  resolves to the NEW damage after the edit, with quantity/equipped/attuned/notes on that inventory
+  entry completely untouched.
+
+**Real browser (cached headless Chromium via `playwright-core`, no network/install), against the
+running app pointed at the same disposable instance**, a genuinely pristine item (never touched by any
+other script in the same run): opened the full-page editor cold, confirmed Rarity/Weight/Attunement/
+Damage mechanics controls render on the very FIRST open (no "Mechanics (not editable here)" text
+anywhere on this path), filled the damage-dice override, clicked Save -- the Items collection card
+updated live to show the new damage and a "Customized for this World" badge; hard-refreshed that
+collection page (cold load, not SPA navigation) and it still showed the saved value; reopened the
+dedicated editor URL directly and it showed the persisted `1d8` as an actual authored value (no longer
+just a placeholder), confirming the entity is now on the ordinary already-prepared path; made and saved
+a SECOND edit (`1d8` -> `1d10`) immediately, which also landed. Repeated the cold-open check at a
+390x844 viewport -- the editor renders correctly with no layout breakage and the same mechanics
+controls present.
+
+**A real client-side regression was found and fixed during this verification, not by static review**:
+an early version of the `isPreparing` plumbing added a `watch(..., {immediate: true})` whose "skip a
+redundant reload" guard compared the incoming props against `activeWorkspaceId`/`activeContentEntityId`
+refs that were themselves SEEDED from those same props -- making the comparison trivially true on the
+very first (immediate) invocation, so `load()` was never called on initial mount for either branch, and
+the editor hung on "Loading…" forever. Only surfaced by actually loading the page in a browser; neither
+the unit tests nor the disposable-instance script above exercise the Vue component's own mount
+lifecycle. Fixed with a `hasLoadedOnce` flag so the guard only skips a LATER, genuinely redundant
+re-fire, never the first one.
+
+**Full regression suite**: `pnpm vitest run` -- 328 files, 6578 tests, all passing (including 2 new
+tests on `customizeEntityForWorld`'s mechanics-only/mixed-channel edits and 2 new tests on
+`edit-target.get.ts`'s `itemMechanicsEditing` for a pristine weapon and a non-item entity).
+`pnpm run lint` / `pnpm run typecheck`: clean against the existing baseline (typecheck: 902
+pre-existing errors, identical count, none in any file this change touched -- confirmed by name, not
+just by count). `pnpm build`: succeeds. `git diff --check`: clean.
+
+### Remaining limitations / acceptance gaps
+
+- Quick Edit (`fieldSet: 'quick'`) was confirmed by source tracing to still show only name/image in
+  BOTH branches (the mechanics block is gated `v-if="!isQuickField && isItemEntity"`, unconditional on
+  `isPreparing`) -- not separately re-verified against a pristine fixture in the browser this pass, for
+  time; the gating logic itself did not change.
+- Unauthorized/shared-source boundaries (a caller lacking `world.entity.edit`, or a shared workspace's
+  explicit-choice UI) were confirmed unchanged by reading the diff -- this pass did not touch
+  `requireCapability`, `resolveDirectEditTarget`'s shared-workspace detection, or
+  `splitSharedEntityToLocalWorkspace` -- but were not independently re-exercised against a live shared
+  fixture this pass, for the same reason.
+- The real production "+1 Rod of the Pact Keeper" / "Shortsword" entities themselves were never opened,
+  edited, or touched by any part of this verification -- every fixture above was freshly published
+  under a disposable-run-unique package id, against the disposable instance only.
+
+### Deployment requirements
+
+None. No Directus schema change -- this reuses the existing `authored_mechanics`/`authored_presentation`
+columns and the existing mechanics-override vocabulary unchanged. An ordinary application deploy is
+sufficient.
+
+### Status
+
+**Implemented, verified (source trace + real disposable-instance integration run + real browser
+walkthrough), not yet committed** -- awaiting review.

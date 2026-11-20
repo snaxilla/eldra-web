@@ -3,14 +3,23 @@
 // ELDRA Direct Content Editing consolidation pass. THE entry point
 // behind "Items -> Shortsword -> Edit -> change picture/description ->
 // Save." Reuses the SAME shared editor Content Studio uses
-// (StudioEntityEditor.vue) for everything AFTER the first save; this
-// wrapper's own job is only the FIRST save of a never-yet-customized
-// entity, where there is no workspaceId/contentEntityId yet to hand that
-// editor.
+// (StudioEntityEditor.vue) for BOTH an already-prepared entity AND a
+// never-yet-customized one -- ITEM MECHANICS AVAILABLE ON THE FIRST EDIT
+// moved the first-save-specific ad-hoc form (previously owned by this
+// wrapper, presentation fields only, no mechanics editing) INTO
+// StudioEntityEditor itself (its own `needsPreparation` prop), so every
+// already-supported field is available on the first full edit too, not
+// only after a first save and reopen. This wrapper's remaining job is
+// resolving WHICH of the three states applies (resolver-disabled,
+// needs-preparation, existing-workspace, incl. the shared-workspace
+// explicit choice) and handing StudioEntityEditor the right props for
+// whichever one it is -- never a second, duplicated set of controls.
 //
 // NOTHING HAPPENS UNTIL SAVE. Opening this dialog calls ONLY the
-// read-only edit-target resolver. Cancelling here, or simply closing the
-// dialog, leaves no workspace, no import, and no binding behind --
+// read-only edit-target resolver; StudioEntityEditor's own `load()` in
+// its `needsPreparation` branch seeds entirely from that same response,
+// with no network call of its own. Cancelling here, or simply closing
+// the dialog, leaves no workspace, no import, and no binding behind --
 // exactly section 3's own requirement.
 //
 // SHARED WORKSPACES. When the effective entity is ALREADY a workspace
@@ -28,8 +37,8 @@
 
 import { computed, ref, watch } from 'vue'
 import StudioEntityEditor from '~/components/admin/studio/StudioEntityEditor.vue'
-import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
-import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
+import type { ItemAttunementOverrideValue, ItemDamageOverrideValue } from '~/lib/item-mechanics'
+import type { PresentationEntry } from '~/lib/content-presentation'
 
 const props = withDefaults(defineProps<{
   worldId: string | number
@@ -38,16 +47,14 @@ const props = withDefaults(defineProps<{
   title: string
   // Quick Edit Rail (default) vs. the dedicated Full-Page Editor route --
   // see StudioEntityEditor.vue's own `fieldSet` for what this actually
-  // changes (field visibility only, same draft/save contract either
-  // way). 'full' also renders the first-save draft's notes/source-book/
-  // page/mechanics fields, which 'quick' hides.
+  // changes (field visibility only, same draft/save contract either way,
+  // for BOTH an already-prepared entity and a never-yet-customized one).
   surface?: 'quick' | 'full'
   // Card "Change image" action -- opens straight into the image picker.
   focusImage?: boolean
   // Draft transfer FROM Quick Edit, received by the full-page editor.
-  // Passed straight through to StudioEntityEditor's own `seedDraft`;
-  // applied to the first-save draft here too, for the needs-preparation
-  // case StudioEntityEditor never reaches.
+  // Passed straight through to StudioEntityEditor's own `seedDraft` --
+  // it alone owns applying this now, for either of its two branches.
   seedDraft?: {
     name?: string
     nameDirty?: boolean
@@ -73,10 +80,8 @@ const emit = defineEmits<{
   // has to guess.
   (e: 'saved', contentEntityId: string): void
   // Quick Edit's "Open full editor" -- re-emitted (with worldId/
-  // entityType/slug attached) from whichever internal surface raised it
-  // (the first-save draft form below, or StudioEntityEditor's own
-  // `open-full-editor`), so the parent never needs to know which one was
-  // actually active.
+  // entityType/slug attached) from StudioEntityEditor's own
+  // `open-full-editor`, whichever of its two branches raised it.
   (e: 'open-full-editor', payload: {
     worldId: string | number
     entityType: string
@@ -86,19 +91,41 @@ const emit = defineEmits<{
     image: { fileId: string; url: string } | null | undefined
     imageDirty: boolean
   }): void
-  // Relayed from StudioEntityEditor's own `dirty-change` (once a
-  // workspace/entity exists), or from the first-save draft's own
-  // `isDraftDirty` otherwise -- the full-page editor route uses this to
-  // guard router navigation (Back link, browser back) the same way
-  // StudioEntityEditor's own beforeunload listener already guards a
-  // hard refresh/tab close.
+  // Relayed from StudioEntityEditor's own `dirty-change` -- the full-page
+  // editor route uses this to guard router navigation (Back link,
+  // browser back) the same way StudioEntityEditor's own beforeunload
+  // listener already guards a hard refresh/tab close.
   (e: 'dirty-change', dirty: boolean): void
 }>()
+
+// ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- the SAME itemMechanicsEditing
+// shape edit-target.get.ts now returns, matching StudioEntityEditor.vue's
+// own (unexported, local) ItemMechanicsEditingPreview exactly.
+type ItemMechanicsEditingPreview = {
+  rarity: string | null
+  weight: number | null
+  attunement: ItemAttunementOverrideValue
+  damage: ItemDamageOverrideValue | null
+  property: unknown[]
+  isWeapon: boolean
+}
 
 type EditTarget =
   | { mode: 'resolver-disabled'; message: string }
   | { mode: 'existing-workspace'; workspaceId: string; contentEntityId: string; scope: 'local' | 'shared'; sharedWithWorldCount: number }
-  | { mode: 'needs-preparation'; packageId: string; packageVersion: string; presentation: { name?: string; description?: string[]; notes?: string[]; sourceBook?: string; sourcePage?: string; image?: { url: string } | null } | null; metaLines: string[] }
+  | {
+      mode: 'needs-preparation'
+      packageId: string
+      packageVersion: string
+      // The REAL canonical shape (matches server/utils/world-effective-content.ts's
+      // own EffectiveEntity.presentation exactly) -- was previously a
+      // smaller, hand-rolled, looser shape here; widened to the real type
+      // so it can be handed to StudioEntityEditor's own `needsPreparation`
+      // prop directly, with no cast or reshaping.
+      presentation: PresentationEntry | null
+      metaLines: string[]
+      itemMechanicsEditing: ItemMechanicsEditingPreview | null
+    }
 
 type ResolveState = 'loading' | 'ready' | 'error'
 
@@ -152,106 +179,16 @@ const sharedChoicePending = computed(() =>
   target.value?.mode === 'existing-workspace' && target.value.scope === 'shared' && !editingSharedDirectly.value
 )
 
-// First-save draft -- the SAME field set StudioEntityEditor edits, but
-// with no backing entity yet. Seeded from the INHERITED presentation
-// edit-target already returned (never a second fetch).
-type Draft = { name: string; description: string; notes: string; sourceBook: string; sourcePage: string; image: { fileId: string; url: string } | null | undefined }
-const draft = ref<Draft>({ name: '', description: '', notes: '', sourceBook: '', sourcePage: '', image: undefined })
-const pickerOpen = ref(false)
-const saving = ref(false)
-const saveError = ref('')
 const editingSharedDirectly = ref(false)
 
-let hasAppliedSeedDraftToFirstSave = false
-
-watch(needsPreparation, (prep) => {
-  if (!prep) return
-  draft.value = { name: '', description: '', notes: '', sourceBook: '', sourcePage: '', image: undefined }
-
-  // Draft transfer from Quick Edit (see direct-edit-navigation.ts) --
-  // applied once, only to the two fields Quick Edit could have actually
-  // touched. `expectedRevision` for a needs-preparation first save is
-  // always `null` regardless (nothing exists yet to conflict with).
-  if (props.seedDraft && !hasAppliedSeedDraftToFirstSave) {
-    hasAppliedSeedDraftToFirstSave = true
-    if (props.seedDraft.nameDirty) draft.value.name = props.seedDraft.name ?? ''
-    if (props.seedDraft.imageDirty) draft.value.image = props.seedDraft.image
-  }
-
-  if (props.focusImage) pickerOpen.value = true
-})
-
-function linesToArray(text: string): string[] {
-  return text.split('\n').map((line) => line.trim()).filter(Boolean)
-}
-
-function onImageSelected(file: { id: string; url: string }) {
-  draft.value.image = { fileId: file.id, url: file.url }
-  pickerOpen.value = false
-}
-
-const isDraftDirty = computed(() =>
-  Boolean(draft.value.name.trim() || draft.value.description.trim() || draft.value.notes.trim()
-    || draft.value.sourceBook.trim() || draft.value.sourcePage.trim() || draft.value.image !== undefined)
-)
-
-watch(isDraftDirty, (dirty) => {
-  // Only while the first-save draft is actually the active surface --
-  // once resolvedWorkspaceId/ContentEntityId exist, StudioEntityEditor's
-  // OWN dirty-change (relayed by onEditorOpenFullEditor's sibling
-  // listener below) is the real signal.
-  if (!resolvedWorkspaceId.value) emit('dirty-change', dirty)
-})
-
-async function saveFirstEdit() {
-  if (!isDraftDirty.value) return
-  saving.value = true
-  saveError.value = ''
-
-  const edits: { path: string; value: unknown }[] = []
-  if (draft.value.name.trim()) edits.push({ path: 'name', value: draft.value.name.trim() })
-  if (draft.value.description.trim()) edits.push({ path: 'description', value: linesToArray(draft.value.description) })
-  if (draft.value.notes.trim()) edits.push({ path: 'notes', value: linesToArray(draft.value.notes) })
-  if (draft.value.sourceBook.trim() || draft.value.sourcePage.trim()) {
-    edits.push({ path: 'sourceBook', value: draft.value.sourceBook.trim() || null })
-    edits.push({ path: 'sourcePage', value: draft.value.sourcePage.trim() || null })
-  }
-  if (draft.value.image !== undefined) {
-    edits.push({ path: 'image', value: draft.value.image === null ? null : { kind: 'media', fileId: draft.value.image.fileId } })
-  }
-
-  try {
-    const response = await $fetch<{ workspaceId: string; contentEntityId: string }>(
-      `/api/worlds/${props.worldId}/entities/${encodeURIComponent(props.entityType)}/${encodeURIComponent(props.slug)}/customize`,
-      { method: 'POST', body: { edits, expectedRevision: null } }
-    )
-    resolvedWorkspaceId.value = response.workspaceId
-    resolvedContentEntityId.value = response.contentEntityId
-    emit('saved', response.contentEntityId)
-  } catch (error) {
-    const failure = error as { data?: { code?: string; workspaceId?: string; contentEntityId?: string; message?: string } }
-    if (failure?.data?.code === 'direct-edit-activation-failed') {
-      // The save genuinely succeeded and is durable -- only going live
-      // failed. Transition into the real editor (where the saved draft
-      // is visible) rather than showing a plain error that would wrongly
-      // imply the edit was lost; the editor itself shows this World's
-      // own content as not-yet-live until a retry (opening Edit again
-      // and saving once more) succeeds in activating it.
-      resolvedWorkspaceId.value = failure.data.workspaceId ?? null
-      resolvedContentEntityId.value = failure.data.contentEntityId ?? null
-      notYetLiveWarning.value = 'Saved, but could not be made visible in this World yet. Save again (even with no further changes) to finish activating it.'
-      // Not yet the effective winner (activation didn't complete), so the
-      // caller may find no matching row to re-select -- that's fine, a
-      // best-effort id is still better than none.
-      if (failure.data.contentEntityId) emit('saved', failure.data.contentEntityId)
-    } else {
-      saveError.value = describeError(error) || 'The save failed. Nothing was lost -- your draft is still here.'
-    }
-  } finally {
-    saving.value = false
-  }
-}
-
+// ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- the first-save-specific
+// draft/save logic that used to live here (name/description/notes/source/
+// image only, no mechanics) moved into StudioEntityEditor.vue's own
+// `needsPreparation` branch, which now drives the first save directly
+// through the SAME customize.post.ts route this used to call. This
+// wrapper has no draft of its own left to own; `seedDraft`/`focusImage`
+// are passed straight through as props (StudioEntityEditor's own `load()`
+// already applies them, for both branches, unchanged).
 function onEditorSaved(entity: { contentEntityId: string }) {
   emit('saved', entity.contentEntityId)
 }
@@ -262,21 +199,6 @@ function onEditorSaved(entity: { contentEntityId: string }) {
 // contentEntityId, so it can't build this payload alone.
 function onEditorOpenFullEditor(payload: { name: string; nameDirty: boolean; image: { fileId: string; url: string } | null | undefined; imageDirty: boolean }) {
   emit('open-full-editor', { worldId: props.worldId, entityType: props.entityType, slug: props.slug, ...payload })
-}
-
-// The first-save draft form's own "Open full editor" -- same payload
-// shape, read directly from `draft` since there is no StudioEntityEditor
-// instance yet to relay from.
-function openFullEditorFromFirstSave() {
-  emit('open-full-editor', {
-    worldId: props.worldId,
-    entityType: props.entityType,
-    slug: props.slug,
-    name: draft.value.name,
-    nameDirty: Boolean(draft.value.name.trim()),
-    image: draft.value.image,
-    imageDirty: draft.value.image !== undefined
-  })
 }
 
 const splitting = ref(false)
@@ -313,27 +235,16 @@ function editSharedDirectly() {
   editingSharedDirectly.value = true
 }
 
+// StudioEntityEditor (both branches, mounted below) always confirms its
+// own dirty draft internally before ever emitting 'close' -- this wrapper
+// has no draft of its own left to protect.
 function requestClose() {
-  if (isDraftDirty.value && resolvedWorkspaceId.value === null && !window.confirm('Discard unsaved changes?')) return
   emit('close')
 }
-
-// Survives the needs-preparation -> StudioEntityEditor template switch
-// (an activation failure sets resolvedWorkspaceId/ContentEntityId, which
-// immediately swaps the template -- a message set on `saveError` alone
-// would disappear with it).
-const notYetLiveWarning = ref('')
 </script>
 
 <template>
   <section class="mt-3 eldra-ornate-panel rounded-none border border-eldra-accent/24 bg-eldra-panel p-4">
-    <p
-      v-if="notYetLiveWarning"
-      class="mb-3 rounded-none border border-amber-300/25 bg-amber-400/10 p-2 text-xs text-amber-100"
-    >
-      {{ notYetLiveWarning }}
-    </p>
-
     <div
       v-if="resolveState === 'loading'"
       class="text-sm text-eldra-text-soft"
@@ -427,178 +338,34 @@ const notYetLiveWarning = ref('')
       </button>
     </template>
 
-    <!-- Never customized yet -- the first-save draft. -->
-    <template v-else-if="needsPreparation">
-      <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
-        {{ surface === 'quick' ? 'Quick edit' : 'Editing' }}
-      </div>
-      <p class="mt-2 rounded-none border border-sky-300/25 bg-sky-400/10 p-2 text-xs text-sky-100">
-        Changes apply to this World.
-      </p>
-
-      <div class="mt-3 grid gap-4">
-        <div>
-          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">{{ surface === 'quick' ? 'Display name' : 'Title' }}</label>
-          <input
-            v-model="draft.name"
-            type="text"
-            :placeholder="title"
-            class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
-          >
-          <p
-            v-if="surface === 'quick'"
-            class="mt-1 text-xs text-eldra-text-faint"
-          >
-            Changes how this entity's name displays. Does not rename its slug or canonical identity.
-          </p>
-        </div>
-
-        <div v-if="surface === 'full'">
-          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Description (one paragraph per line)</label>
-          <textarea
-            v-model="draft.description"
-            rows="5"
-            :placeholder="(needsPreparation.presentation?.description ?? []).join('\n')"
-            class="mt-1 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 py-2 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
-          />
-        </div>
-
-        <div v-if="surface === 'full'">
-          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Notes (one per line)</label>
-          <textarea
-            v-model="draft.notes"
-            rows="3"
-            class="mt-1 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 py-2 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
-          />
-        </div>
-
-        <div
-          v-if="surface === 'full'"
-          class="grid grid-cols-2 gap-3"
-        >
-          <div>
-            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Source book</label>
-            <input
-              v-model="draft.sourceBook"
-              type="text"
-              class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
-            >
-          </div>
-          <div>
-            <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Page</label>
-            <input
-              v-model="draft.sourcePage"
-              type="text"
-              class="mt-1 min-h-11 w-full rounded-none border border-eldra-accent/24 bg-eldra-well px-3 text-sm text-eldra-text-strong focus:border-eldra-accent focus:outline-none"
-            >
-          </div>
-        </div>
-
-        <div>
-          <label class="text-[11px] uppercase tracking-[0.2em] text-eldra-text-faint">Image</label>
-          <div class="mt-1 flex items-center gap-3">
-            <img
-              v-if="draft.image?.url"
-              :src="buildCardThumbnailUrl(draft.image.url)"
-              alt=""
-              class="h-16 w-16 rounded-none border border-eldra-accent/24 object-cover"
-            >
-            <img
-              v-else-if="draft.image === undefined && needsPreparation.presentation?.image?.url"
-              :src="buildCardThumbnailUrl(needsPreparation.presentation.image.url)"
-              alt=""
-              class="h-16 w-16 rounded-none border border-eldra-accent/24 object-cover"
-            >
-            <span
-              v-else
-              class="flex h-16 w-16 items-center justify-center rounded-none border border-dashed border-eldra-accent/24 text-[10px] uppercase tracking-[0.12em] text-eldra-text-ghost"
-            >
-              No art
-            </span>
-            <div class="flex flex-col gap-1">
-              <button
-                type="button"
-                class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
-                @click="pickerOpen = true"
-              >
-                Choose/replace image…
-              </button>
-              <button
-                type="button"
-                class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
-                @click="draft.image = null"
-              >
-                Remove image (show no art)
-              </button>
-              <button
-                v-if="draft.image !== undefined"
-                type="button"
-                class="min-h-9 rounded-none border border-eldra-accent/24 px-3 text-xs text-eldra-text-soft hover:border-eldra-accent"
-                @click="draft.image = undefined"
-              >
-                Restore inherited image
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div
-          v-if="surface === 'full' && needsPreparation.metaLines.length"
-          class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-3 text-sm leading-7 text-slate-200"
-        >
-          <div class="mb-1 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">
-            Mechanics (not editable here)
-          </div>
-          <div
-            v-for="line in needsPreparation.metaLines"
-            :key="line"
-          >
-            {{ line }}
-          </div>
-        </div>
-
-        <p
-          v-if="saveError"
-          class="text-sm text-red-300"
-        >
-          {{ saveError }}
-        </p>
-
-        <div class="flex items-center gap-3">
-          <button
-            type="button"
-            class="min-h-10 rounded-none border border-eldra-accent bg-eldra-accent/10 px-4 text-sm font-medium text-eldra-text-strong hover:bg-eldra-accent/20 disabled:opacity-50"
-            :disabled="!isDraftDirty || saving"
-            @click="saveFirstEdit"
-          >
-            {{ saving ? 'Saving…' : 'Save changes' }}
-          </button>
-          <button
-            type="button"
-            class="min-h-10 rounded-none border border-eldra-accent/24 px-4 text-sm text-eldra-text-soft hover:border-eldra-accent"
-            :disabled="saving"
-            @click="requestClose"
-          >
-            Cancel
-          </button>
-          <button
-            v-if="surface === 'quick'"
-            type="button"
-            class="min-h-10 rounded-none border border-eldra-accent/24 px-4 text-sm text-eldra-text-soft hover:border-eldra-accent"
-            :disabled="saving"
-            @click="openFullEditorFromFirstSave"
-          >
-            Open full editor
-          </button>
-        </div>
-      </div>
-
-      <WorldMediaPicker
-        v-model:open="pickerOpen"
-        :world-id="worldId"
-        title="Choose an image"
-        @select="onImageSelected"
-      />
-    </template>
+    <!-- ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- never customized yet.
+         Reuses StudioEntityEditor directly (the SAME editing contract an
+         already-prepared entity uses) instead of the old, separate,
+         presentation-only ad-hoc form: every already-supported field
+         (including rarity/weight/attunement/damage/property for Items) is
+         now available on the FIRST full edit, not only after a first save
+         and reopen. StudioEntityEditor's own `needsPreparation` prop drives
+         its first save through the first-save route internally and
+         transitions itself into normal existing-workspace behavior on
+         success -- no remount, no second component needed here. -->
+    <StudioEntityEditor
+      v-else-if="needsPreparation"
+      :world-id="worldId"
+      :entity-type="entityType"
+      :slug="slug"
+      :needs-preparation="{
+        presentation: needsPreparation.presentation,
+        itemMechanicsEditing: needsPreparation.itemMechanicsEditing,
+        metaLines: needsPreparation.metaLines
+      }"
+      :compact="surface === 'quick'"
+      :field-set="surface"
+      :auto-open-image-picker="focusImage"
+      :seed-draft="seedDraft"
+      @close="requestClose"
+      @saved="onEditorSaved"
+      @open-full-editor="onEditorOpenFullEditor"
+      @dirty-change="(dirty) => emit('dirty-change', dirty)"
+    />
   </section>
 </template>

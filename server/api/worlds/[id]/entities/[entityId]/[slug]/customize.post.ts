@@ -26,6 +26,8 @@ import { requireWorkspaceEntityAccess } from '../../../../../../utils/content-wo
 import { getWorldSystemKey } from '../../../../../../utils/entity-factory'
 import { customizeEntityForWorld, resolveDirectEditTarget, type CustomizeEntityFieldEdit } from '../../../../../../utils/content-entity-direct-edit'
 import { isValidOverridePath } from '../../../../../../../app/lib/content-authoring/overrides'
+import { isValidMechanicsOverridePath } from '../../../../../../utils/content-workspace-entities'
+import { validateItemMechanicsOverrideValue } from '../../../../../../../app/lib/item-mechanics'
 
 const MAX_EDITS = 10
 
@@ -52,15 +54,41 @@ export default defineEventHandler(async (event) => {
   if (!rawEdits || !rawEdits.length) throw createError({ statusCode: 400, statusMessage: 'edits must be a non-empty array' })
   if (rawEdits.length > MAX_EDITS) throw createError({ statusCode: 400, statusMessage: `edits must contain at most ${MAX_EDITS} entries` })
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- `channel` is OPTIONAL
+  // per edit and defaults to 'presentation', mirroring the SAME convention
+  // app/lib/content-workspaces/validation.ts's validateEntityPatchRequest
+  // already established for the PATCH route, so an existing caller's old
+  // body shape (edits with no `channel` at all) still validates and
+  // behaves exactly as before. Mechanics path/value validation reuses the
+  // SAME primitives the already-prepared editor's own PATCH route uses
+  // (isValidMechanicsOverridePath, validateItemMechanicsOverrideValue) --
+  // never a second, duplicated mechanics rulebook. "Reject the whole
+  // request if any operation is invalid": the first invalid edit throws
+  // before customizeEntityForWorld ever runs, so a request mixing one
+  // good and one bad edit never imports/binds anything.
   const edits: CustomizeEntityFieldEdit[] = []
   for (const raw of rawEdits) {
     if (!raw || typeof raw !== 'object' || typeof raw.path !== 'string') {
       throw createError({ statusCode: 400, statusMessage: 'each edit must be an object with a string path' })
     }
-    if (!isValidOverridePath('presentation', raw.path)) {
-      throw createError({ statusCode: 400, statusMessage: `'${raw.path}' is not an editable presentation field` })
+    const channel = raw.channel === undefined ? 'presentation' : raw.channel
+    if (channel !== 'presentation' && channel !== 'mechanics') {
+      throw createError({ statusCode: 400, statusMessage: `'${raw.path}': channel must be 'presentation' or 'mechanics'` })
     }
-    edits.push({ path: raw.path, value: raw.value })
+    if (channel === 'presentation') {
+      if (!isValidOverridePath('presentation', raw.path)) {
+        throw createError({ statusCode: 400, statusMessage: `'${raw.path}' is not an editable presentation field` })
+      }
+    } else {
+      if (!isValidMechanicsOverridePath(entityType, raw.path)) {
+        throw createError({ statusCode: 400, statusMessage: `'${raw.path}' is not an editable mechanics field for this entity` })
+      }
+      const validation = validateItemMechanicsOverrideValue(raw.path, raw.value)
+      if (!validation.ok) {
+        throw createError({ statusCode: 400, statusMessage: `'${raw.path}': ${validation.problems.join('; ')}` })
+      }
+    }
+    edits.push({ channel, path: raw.path, value: raw.value })
   }
 
   const rawExpectedRevision = body?.expectedRevision

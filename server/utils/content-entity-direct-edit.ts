@@ -46,7 +46,7 @@ import {
 } from './content-workspaces'
 import type { ContentWorkspace } from '../../app/lib/content-workspaces/types'
 import { importIntoWorkspace } from './content-workspace-import'
-import { applyEntityEdits, applyPresentationEdits, getWorkspaceEntityDetail, type EntityChannelEdit, type WorkspaceEntityDetail } from './content-workspace-entities'
+import { applyEntityEdits, getWorkspaceEntityDetail, type EntityChannelEdit, type WorkspaceEntityDetail } from './content-workspace-entities'
 import { computePresentationBaseValueHash, resolveBasePresentation } from './content-workspace-presentation'
 
 const WORKSPACE_PREFIX = 'workspace.'
@@ -159,7 +159,12 @@ export async function prepareWorldLocalWorkspace(
   throw new Error(`Could not create or find the local workspace for World ${worldId}`)
 }
 
-export type CustomizeEntityFieldEdit = { path: string; value: unknown }
+// ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- `channel` added so a
+// never-yet-customized entity's FIRST save can carry mechanics edits too,
+// not only presentation ones. Mirrors EntityChannelEdit
+// (content-workspace-entities.ts) exactly; this is the caller-facing input
+// shape BEFORE a baseValueHash is computed, not a duplicate concept.
+export type CustomizeEntityFieldEdit = { channel: 'presentation' | 'mechanics'; path: string; value: unknown }
 
 export type CustomizeEntityInput = {
   worldId: string | number
@@ -284,14 +289,23 @@ export async function customizeEntityForWorld(input: CustomizeEntityInput, syste
   // already required a real `input.expectedRevision` above.
   const expectedRevision = target.mode === 'existing-workspace' ? (input.expectedRevision as number) : detail.revision
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- ONE combined,
+  // channel-aware write (applyEntityEdits), the SAME atomic primitive
+  // StudioEntityEditor's own Save button and splitSharedEntityToLocalWorkspace's
+  // own seed-both-channels write already use, rather than the
+  // presentation-only applyPresentationEdits this call used before. A
+  // mechanics-only first edit, or a mixed presentation+mechanics one, is
+  // therefore one request, one revision check, one write -- never two
+  // separate saves that could partially apply.
   const basePresentation = resolveBasePresentation(detail)
-  const edits = input.edits.map((edit) => ({
+  const edits: EntityChannelEdit[] = input.edits.map((edit) => ({
+    channel: edit.channel,
     path: edit.path,
     value: edit.value,
-    baseValueHash: computePresentationBaseValueHash(basePresentation, edit.path)
+    baseValueHash: edit.channel === 'presentation' ? computePresentationBaseValueHash(basePresentation, edit.path) : null
   }))
 
-  const outcome = await applyPresentationEdits(workspaceId, contentEntityId, expectedRevision, edits, input.actorAccountId)
+  const outcome = await applyEntityEdits(workspaceId, contentEntityId, expectedRevision, detail.entityType, edits, input.actorAccountId)
 
   if (!outcome.ok) {
     if (outcome.stage === 'not-found') return { ok: false, stage: 'not-found', message: 'The entity could not be found in its workspace.' }

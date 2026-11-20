@@ -92,6 +92,52 @@ describe('GET edit-target', () => {
     await expect(editTargetRoute(event(principal(['world.read'])))).rejects.toMatchObject({ statusCode: 403 })
   })
 
+  // ITEM MECHANICS AVAILABLE ON THE FIRST EDIT -- a never-yet-customized
+  // ITEM's needs-preparation response must carry the SAME itemMechanicsEditing
+  // shape the already-prepared editor's own GET route returns, computed
+  // directly from the raw catalogue data (no authored_mechanics override
+  // exists yet to merge), so the full editor can expose
+  // rarity/weight/attunement/damage/property on the FIRST open.
+  it('a never-customized WEAPON carries itemMechanicsEditing with isWeapon true and real damage/rarity', async () => {
+    resolveDirectEditTargetMock.mockResolvedValue({
+      mode: 'needs-preparation',
+      packageId: 'eldra.solaris.xphb',
+      packageVersion: '1.0.37',
+      entityType: 'item',
+      slug: 'shortsword-xphb',
+      presentation: null,
+      data: { name: 'Shortsword', rarity: 'none', weight: 2, dmg1: '1d6', dmgType: 'P', weaponCategory: 'martial', mastery: ['Vex|XPHB'], property: ['F|XPHB', 'L|XPHB'] }
+    })
+    const result = await editTargetRoute(event(principal(['world.entity.edit'])))
+    expect(result).toMatchObject({
+      mode: 'needs-preparation',
+      itemMechanicsEditing: {
+        rarity: 'none',
+        weight: 2,
+        damage: { dice: '1d6', damageType: 'P' },
+        isWeapon: true
+      }
+    })
+  })
+
+  it('a never-customized NON-item entity carries no itemMechanicsEditing at all', async () => {
+    // The route reads entityType through the router param (shared
+    // beforeEach sets it to 'item'), not from the resolver's own response
+    // -- override it here to exercise the actual non-item branch.
+    h3Mocks.routerParams = { ...h3Mocks.routerParams, entityId: 'spell', slug: 'fireball-xphb' }
+    resolveDirectEditTargetMock.mockResolvedValue({
+      mode: 'needs-preparation',
+      packageId: 'eldra.solaris.xphb',
+      packageVersion: '1.0.37',
+      entityType: 'spell',
+      slug: 'fireball-xphb',
+      presentation: null,
+      data: { name: 'Fireball' }
+    })
+    const result = await editTargetRoute(event(principal(['world.entity.edit'])))
+    expect(result).toMatchObject({ mode: 'needs-preparation', itemMechanicsEditing: null })
+  })
+
   it('denies an unauthenticated request', async () => {
     await expect(editTargetRoute(event(null))).rejects.toMatchObject({ statusCode: 401 })
   })

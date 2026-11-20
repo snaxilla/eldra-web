@@ -2,8 +2,9 @@
 // imported explicitly (see server/api/worlds/[id]/media/upload.post.ts)
 // so this route is directly unit-testable under plain Vitest -- media
 // ownership policy follow-up.
-import { createError, defineEventHandler, getRouterParam, readMultipartFormData } from 'h3'
+import { createError, defineEventHandler, getRequestHeader, getRouterParam, readBody, readMultipartFormData } from 'h3'
 import { requireCapability } from '../../../../../utils/authorization'
+import { fileBelongsToWorld } from '../../../../../utils/world-page-presentation'
 
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
@@ -56,6 +57,74 @@ export default defineEventHandler(async (event) => {
   }
   requireCapability(principal, 'world.entity.edit', { kind: 'world', worldId: String(worldId) })
 
+  const entityJson = await dxFetch(`/items/entities/${entityId}?fields=*`)
+  const entity = entityJson?.data || null
+
+  if (!entity || String(entity.world_id) !== String(worldId)) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Entity not found in this world'
+    })
+  }
+
+  // RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- the Article
+  // Image control now opens WorldMediaPicker (an EXISTING asset, or a
+  // fresh upload through the Gallery's own upload action) instead of a
+  // bare OS file input, so this route must also accept an EXISTING file
+  // reference, not only a brand-new multipart upload. Branches on
+  // content-type rather than a second endpoint -- both are "apply this
+  // image to this entity," the same action with two possible sources,
+  // exactly like server/api/worlds/[id]/maps.vue's own upload-vs-gallery
+  // treatment.
+  const isMultipart = String(getRequestHeader(event, 'content-type') || '').includes('multipart/form-data')
+
+  if (!isMultipart) {
+    const body = await readBody(event)
+    const imageFileId = String(body?.imageFileId || '').trim()
+
+    if (!imageFileId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'No file uploaded'
+      })
+    }
+
+    const fileCheck = await dxFetch(
+      `/files/${encodeURIComponent(imageFileId)}?fields[]=id&fields[]=world_id&fields[]=type`
+    )
+
+    if (!fileCheck?.data?.id || !fileBelongsToWorld(fileCheck.data.world_id, worldId)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'That image does not belong to this World.'
+      })
+    }
+
+    if (!String(fileCheck.data.type || '').startsWith('image/')) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Selected file is not a supported image type.'
+      })
+    }
+
+    const patchJson = await dxFetch(`/items/entities/${entityId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        image: imageFileId
+      })
+    })
+
+    return {
+      success: true,
+      fileId: imageFileId,
+      imageUrl: `/api/assets/${imageFileId}`,
+      entity: patchJson?.data || null
+    }
+  }
+
   const parts = await readMultipartFormData(event)
 
   if (!parts?.length) {
@@ -71,16 +140,6 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'No image file found in upload'
-    })
-  }
-
-  const entityJson = await dxFetch(`/items/entities/${entityId}?fields=*`)
-  const entity = entityJson?.data || null
-
-  if (!entity || String(entity.world_id) !== String(worldId)) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Entity not found in this world'
     })
   }
 

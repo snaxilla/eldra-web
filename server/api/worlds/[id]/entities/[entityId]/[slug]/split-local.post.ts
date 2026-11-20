@@ -22,7 +22,13 @@ import { splitSharedEntityToLocalWorkspace } from '../../../../../../utils/conte
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
-  const entityType = String(getRouterParam(event, 'entityType') || '')
+  // RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- read through
+  // 'entityId' because this folder was merged out of a sibling
+  // `[entityType]/` into `[entityId]/`, fixing a real Nitro routing
+  // collision (two differently-named dynamic folders under one `entities/`
+  // parent). This route's own URL/behavior/callers are unchanged -- see
+  // the sibling edit-target.get.ts's own comment for the full trace.
+  const entityType = String(getRouterParam(event, 'entityId') || '')
   const slug = String(getRouterParam(event, 'slug') || '')
   if (!worldId || !entityType || !slug) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id, entity type, or slug' })

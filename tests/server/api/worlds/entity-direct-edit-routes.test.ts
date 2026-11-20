@@ -12,8 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 import type { PlatformCapability, Principal, WorldCapability } from '../../../../server/utils/authorization'
 import { ALL_WORLD_CAPABILITIES } from '../../../../server/utils/authorization'
-import editTargetRoute from '../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/edit-target.get'
-import customizeRoute from '../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/customize.post'
+import editTargetRoute from '../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/edit-target.get'
+import customizeRoute from '../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/customize.post'
 
 const h3Mocks = vi.hoisted(() => ({ routerParams: {} as Record<string, string>, body: null as unknown }))
 
@@ -67,7 +67,13 @@ function event(p: Principal | null): H3Event {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h3Mocks.routerParams = { id: WORLD_ID, entityType: 'item', slug: 'shortsword-xphb' }
+  // RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- the handler
+  // now reads this value through the 'entityId' router param key (the
+  // routes moved from a sibling `[entityType]/` folder into `[entityId]/`
+  // to fix a real Nitro routing collision; see edit-target.get.ts's own
+  // comment). The VALUE is still the catalogue entity-type string, as
+  // every other test in this file still calls it.
+  h3Mocks.routerParams = { id: WORLD_ID, entityId: 'item', slug: 'shortsword-xphb' }
   h3Mocks.body = null
   getWorldSystemKeyMock.mockResolvedValue('dnd5e')
   catalogueEntryToBlocksMock.mockReturnValue([])
@@ -203,25 +209,25 @@ describe('POST customize', () => {
 
 describe('POST split-local', () => {
   it('requires world.entity.edit only -- never the escalated bind_workspace capability', async () => {
-    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/split-local.post')).default
+    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/split-local.post')).default
     splitSharedEntityToLocalWorkspaceMock.mockResolvedValue({ ok: true, workspaceId: 'ws-1', contentEntityId: 'ce_1', entity: { revision: 0 } })
     await expect(splitRoute(event(principal(['world.entity.edit'])))).resolves.toMatchObject({ workspaceId: 'ws-1' })
   })
 
   it('denies a principal without world.entity.edit', async () => {
-    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/split-local.post')).default
+    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/split-local.post')).default
     await expect(splitRoute(event(principal(['world.read'])))).rejects.toMatchObject({ statusCode: 403 })
     expect(splitSharedEntityToLocalWorkspaceMock).not.toHaveBeenCalled()
   })
 
   it('a not-shared refusal is a 400, never silently treated as success', async () => {
-    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/split-local.post')).default
+    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/split-local.post')).default
     splitSharedEntityToLocalWorkspaceMock.mockResolvedValue({ ok: false, stage: 'not-shared', message: 'not shared' })
     await expect(splitRoute(event(principal(['world.entity.edit'])))).rejects.toMatchObject({ statusCode: 400 })
   })
 
   it('a no-base-reference refusal is reported with its own distinct code', async () => {
-    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityType]/[slug]/split-local.post')).default
+    const splitRoute = (await import('../../../../server/api/worlds/[id]/entities/[entityId]/[slug]/split-local.post')).default
     splitSharedEntityToLocalWorkspaceMock.mockResolvedValue({ ok: false, stage: 'no-base-reference', message: 'authored, no base' })
     const error = await splitRoute(event(principal(['world.entity.edit']))).catch((e: unknown) => e)
     expect(error).toMatchObject({ statusCode: 409, data: { code: 'split-no-base-reference' } })

@@ -1324,7 +1324,7 @@ already-existing save/list routes unchanged. No schema, environment variable, or
 pass against this same work: a real post-deployment regression it introduced, and an optional image
 field added to Create Location.
 
-## Blank Location article + Quick-Create image (not yet committed)
+## Blank Location article + Quick-Create image (COMMITTED)
 
 Two owner-reported issues after deploying `207aae6`: (1) Create Location succeeds, but "Open
 Article" navigates to a real entity URL that renders only the World workspace shell -- the article
@@ -1486,4 +1486,214 @@ check -- no schema, environment variable, or credential change.
 
 ### Status
 
-**NOT committed.** Stopped here for review per this task's own closing instruction.
+**Committed** (`f61a151`).
+
+## Restore a clear, consistent full-editor entry point (not yet committed)
+
+Owner report, after `f61a151` fixed the blank article: the article now renders, but its existing
+full editor is still undiscoverable -- a floating "Page Builder" button instead of a clear "Edit"
+action, and no consistent convention across entity/article pages.
+
+### Trace: which editor each surface actually opens
+
+Before changing anything, traced the ACTUAL relationships (not assumed):
+
+- **World-authored entities (Locations, Characters' own article, NPCs, any non-catalogue entity
+  type)** -- `app/pages/worlds/[id]/entities/[entityId]/index.vue` IS the only editor. There is no
+  separate full-page edit ROUTE for this category; "Page Builder" toggling `buildDrawerOpen` reveals
+  the SAME page's own inline sections (Header Editor, Location Details, Article Image, Body
+  rich-text/Markdown via `EldraRichTextEditor.vue`, Sidebar Notes, Article Style) directly in the
+  main content column. Confirmed by directory listing: `app/pages/worlds/[id]/entities/` has only
+  `index.vue` (this), `sheet.vue` (Characters' SEPARATE stat sheet, untouched by this pass), and the
+  catalogue `[entityType]/[slug]/` tree (below) -- no fourth, separate "full editor" route exists for
+  this category to redirect to.
+- **Catalogue/workspace entities (items, spells, species, classes, backgrounds, feats, races)** --
+  `WorldEntityInteractivePage.vue`'s own card/rail "Edit" opens the Quick Edit Rail
+  (`StudioEntityEditor.vue` with `fieldSet: 'quick'`, name/image only); "Open full editor" navigates to
+  the dedicated `app/pages/worlds/[id]/entities/[entityType]/[slug]/edit.vue` route (`fieldSet: 'full'`
+  -- Title, Description, Notes, Source book/page, Image, mechanics preview, Save/Cancel). Confirmed
+  these are COMPLETELY SEPARATE from the World-authored path: `WorldEntityInteractivePage.vue`'s own
+  "Open Article" button is explicitly hidden for catalogue-sourced entities
+  (`v-if="entity.__source !== 'catalogue'"`), and `supportsDirectEdit()`
+  (`worldEntityDirectEditEligibility.ts`) explicitly documents that `location`/`character`/`npc`/
+  `feat`/`enemy` have no catalogue editor at all. Neither this trace nor this pass's own changes touch
+  `StudioEntityEditor.vue`, the Quick Edit Rail, or the Full-Page Editor route.
+- **Character sheets, Maps, Timelines** -- untouched; each keeps its own specialized editor
+  (`sheet.vue`, `maps.vue`, `timelines/**`), confirmed by this pass's own inventory, not merely
+  assumed from the brief.
+
+Conclusion: "Page Builder" genuinely IS the full editor the owner means for Locations/Characters'
+article/NPCs -- there was no missed, separate full-page route to redirect to instead. The task is
+entry-point discoverability and de-duplication, not building a new editor.
+
+### A second problem found while tracing: one flag, two unrelated features
+
+`buildDrawerOpen` gated TWO completely different, independently-permissioned things at once:
+1. The inline content-authoring sections above (gated further by `canAuthorArticle`).
+2. A SEPARATE right-side slide-in `<aside>` ("Page Build" / "Article Setup") containing
+   `WorldPagePresentationPanel` (background/theme), gated by `canEditPageSettings`.
+
+Clicking "Page Builder" opened BOTH simultaneously -- a caller with only `world.settings.edit` (no
+`world.entity.edit`) could open the SAME button to reach presentation settings, while a caller with
+only `world.entity.edit` saw the aside too (with an explicit "you do not have permission" message if
+they lacked settings access). This is exactly the "two actions competing / misleadingly exposing
+different halves of editing" the owner described, not a separate bug.
+
+### Changes
+
+**Header Edit entry point** (`entities/[entityId]/index.vue`): removed the floating fixed "Page
+Builder" button entirely. Added a header-card row (`World name` eyebrow + a right-aligned button
+group) containing:
+- **"Edit" / "Close"** (toggles `buildDrawerOpen`, gated on `canAuthorArticle` only) -- opens the
+  SAME existing inline sections, now with the EXACT SAME semantics as before (nothing about
+  `authoringActive`'s own gating logic changed), just reachable from a clearly labeled, correctly
+  positioned button instead of a floating one.
+- **The shared `WorldPageCustomizeButton`** (gated on `canEditPageSettings`, `page-key="entity-article"`)
+  -- replaces the bespoke right-side aside entirely, reusing the EXACT same
+  button+UModal+WorldPagePresentationPanel pattern already established and production-accepted
+  (`a7da8bd`) for every other collection/listing page in this app. The two actions are now visually
+  and functionally independent: each shows only when its own capability allows it, and neither opens
+  the other's surface.
+
+`articleRightRailOpen` (the computed reserving right-margin space for a 404px rail) no longer
+includes `buildDrawerOpen` -- that reservation existed only for the now-removed presentation aside;
+the inline content editor's own sections render full-width in the main column already (never a rail),
+and removing this coupling means opening Edit no longer squeezes that width for no reason.
+
+**Article Image control** (same file): replaced the raw `<input type="file">` with a square
+preview/selector button opening `WorldMediaPicker` (an EXISTING World-scoped asset, or a fresh upload
+through the Gallery's own upload action) -- matching the same control already built for Create
+Location's own optional image, and matching this task's own "use WorldMediaPicker for image
+selection" instruction literally, not just the create-time flow. Browsing/cancelling the picker never
+calls the apply function; only its "Use This Image" action does, which immediately applies the
+selected image (unchanged, pre-existing **immediate-save** semantics -- there is no separate "Save"
+step for the image, same as the native-upload flow it replaces). The preview reads
+`buildCardThumbnailUrl(entityImageUrl)`; the field actually persisted (`entities.image`, via
+`apply-image`) is always the ORIGINAL asset id, never a thumbnail URL.
+
+**Server** (`apply-image.post.ts`): extended to accept EITHER a multipart upload (unchanged,
+pre-existing path) OR a JSON body naming an existing `imageFileId` (new), branching on
+`content-type`. The new path validates the file's World ownership (`fileBelongsToWorld`, reused from
+`world-page-presentation.ts` -- the SAME check `locations.post.ts`'s own image field already uses,
+not reimplemented) and mime type before patching `entities.image` directly -- no redundant re-upload
+of an already-existing asset, unlike `maps.vue`'s own blob-reupload pattern for a different reason
+(Maps needs tiles regenerated from the raw bytes regardless of source; a plain entity image does not).
+
+### A major, unrelated, pre-existing defect found and fixed while verifying Save
+
+Verifying "Save Header"/"Save Article" against a real disposable instance (not just checking for a
+200) found both calls 404ing -- `PUT .../blocks/location_core` and `PUT .../blocks/article_override`
+both returned Nitro's own generic "Page not found," not a thrown application error. Traced further:
+`GET .../entities/:entityId/sheet`, `.../class-features`, and `POST .../apply-image` ALSO 404'd the
+same way, while the catalogue `GET .../entities/:entityType/:slug/edit-target` route answered
+correctly. Root cause: `server/api/worlds/[id]/entities/` had TWO sibling dynamically-named
+directories -- `[entityId]` (this pass's own World-authored entity routes) and `[entityType]` (the
+pre-existing catalogue `[slug]/{edit-target,customize,split-local}` routes). Nitro's router (radix3)
+can only resolve ONE differently-named dynamic child per tree position; whichever folder "won" that
+slot left every nested route under the OTHER one unreachable for any path beyond the first dynamic
+segment -- silently, with a generic 404, not a loud error. This broke **the entire character sheet
+backend** (`sheet.get/patch/post.ts` and all of `sheet/**`: inventory, notes, resources, subclass
+options, realtime transfer events), `blocks/:blockKey` (both of this pass's own Save actions), and
+`apply-image` -- in whichever direction this particular build's folder-scan order happened to resolve
+it. Confirmed directly, not theorized: reproduced the 404 on all of these in the SAME build where the
+catalogue route answered normally, then reproduced the EXACT INVERSE after merging the two folders.
+
+**Fixed** by moving the three catalogue routes (`edit-target.get.ts`, `customize.post.ts`,
+`split-local.post.ts`) from the sibling `server/api/worlds/[id]/entities/[entityType]/[slug]/` into
+`server/api/worlds/[id]/entities/[entityId]/[slug]/` -- one merged dynamic directory, so there is only
+ever one name claiming that tree position. Each moved file's own `getRouterParam(event, 'entityType')`
+call becomes `getRouterParam(event, 'entityId')` (the local variable name inside each file is
+unchanged, still `entityType`, since the VALUE is still a catalogue entity-type string) -- the actual
+URL path, request/response shape, and every caller are completely unchanged; only which event-context
+key the SAME path segment is read through differs. The CLIENT-side page route
+(`app/pages/worlds/[id]/entities/[entityType]/[slug]/edit.vue`) is a separate Nuxt page router with
+no such collision and was not touched. `tests/server/api/worlds/entity-direct-edit-routes.test.ts`'s
+own import paths and fake-event `routerParams` key updated to match (19/19 still passing).
+
+This is well outside this task's own stated scope (a header Edit button), but fixing it was
+unavoidable: the "Edit" button this task adds calls exactly two of the routes this bug broke
+(`blocks/:blockKey` for Header/Article saves, `apply-image` for the new picker), so without this fix
+the new entry point would open a visibly nicer editor whose own Save actions silently failed. Flagged
+here plainly as the most significant finding of this pass, separate from the entry-point work itself.
+
+### Permissions, data paths, and specialized editors -- preserved
+
+- `canAuthorArticle` (`world.entity.edit`) and `canEditPageSettings` (`world.settings.edit`) remain
+  two distinct capabilities, exactly as the prior pass established -- confirmed directly in the
+  browser with a worldbuilder account (has `world.entity.edit`, NOT `world.settings.edit`): the Edit
+  button shows, Customize Page does not. No built-in World role grants `world.settings.edit` WITHOUT
+  also granting `world.entity.edit` (owner/gm have both; worldbuilder/player/observer have neither --
+  confirmed by reading `server/utils/authorization.ts`'s own role bundles), so the literal
+  "settings-only, no entity-edit" caller the brief describes cannot be constructed through the real
+  role system; the inverse combination above proves the same "never conflated" property the only way
+  the real system allows.
+- Catalogue/workspace identity, World-local vs. shared-source permissions, and the Quick Edit
+  Rail/Full-Page Editor's own draft/save contract are completely untouched -- confirmed by re-running
+  a representative catalogue customization (a real "Shortbow" item in a content-pack-bound disposable
+  World) end to end through its own correct Full-Page Editor route after this pass's routing fix,
+  showing its full field set (Title, Description, Notes, Source book/page, Image, mechanics,
+  Save/Cancel) exactly as before, plus its own separate Quick Edit Rail (name/image only) from the
+  Items listing card.
+- Map Play/Build (`mode`) has zero remaining references anywhere in `entities/[entityId]/index.vue`
+  (confirmed by grep -- only historical comments mention it) and never influenced any of this pass's
+  new gating, which is entirely capability-based.
+- Character Sheet, Maps, and Timelines keep their own specialized editors; nothing routes through the
+  article editor that didn't already.
+
+### Draft/save behavior, verified end to end against a real disposable instance
+
+Using the same disposable Directus instance, forged real session, and jiti/runtime-shim technique
+established in the prior pass, plus (newly available this pass) a real headless Chromium via a
+cached `playwright-core` install found on this host (`/root/.cache/ms-playwright`,
+`playwright-core@1.64.1` cached under an npx hash) -- a REAL rendered-DOM verification, not only
+HTTP/module-level evidence:
+
+- Opened a real Location article, clicked header "Edit" without ever visiting the World Map, reached
+  Header/Image/Body/Sidebar sections immediately (no further nested click).
+- Changed the title, typed Markdown body content (`## heading` + `**bold**`), selected an existing
+  Gallery image through the new picker -- each of the three independent save actions (Save Header,
+  Save Article, immediate-save Article Image) persisted correctly; closed Edit, confirmed the view
+  showed the saved title; **hard-refreshed** the page and confirmed the title, Markdown-rendered body,
+  and image all still showed from a fresh SSR load; reopened Edit and confirmed the form showed the
+  persisted values, not stale ones.
+- Closing Edit without saving, then reopening it, showed the SAME untouched draft (nothing resets on
+  close).
+- Clicking an in-app link (Locations, in the sidebar) with an unsaved Header draft triggered the
+  existing `window.confirm('Discard unsaved changes?')` guard; dismissing it kept the draft and the
+  current page; a raw `page.goto()` (address-bar-style navigation, bypassing Vue Router) does NOT
+  trigger this guard, as expected -- `onBeforeRouteLeave`/`onBeforeRouteUpdate` only intercept
+  router-mediated navigation, the same behavior a real browser's own back/forward or a typed URL would
+  have.
+- A client-validated failure (a non-numeric Population value) showed its existing error message and
+  left both the title and the invalid population input exactly as typed -- nothing was reset or lost.
+- An observer account (`world.read` only) saw neither Edit nor Customize Page.
+- Mobile (390x844): Edit button visible and within the viewport, Header Editor section reachable
+  after tapping it.
+
+### Remaining limitations
+
+- A true "settings-only, no entity-edit" role does not exist in the real system (see above) -- proven
+  via the only real inverse combination instead; flagged rather than silently assumed equivalent.
+- No browser tool covered: an actual Tab-order/keyboard-only walkthrough of the new Article Image
+  picker (the underlying picker mechanism is shared, already-accepted code; this specific call site's
+  own keyboard path was not separately scripted); a genuine save CONFLICT (409) through the Header/
+  Article save actions specifically (pre-existing, unmodified machinery, not re-proven here).
+- The `[entityType]`/`[entityId]` routing fix is scoped to the one actual collision found
+  (`server/api/worlds/[id]/entities/**`); this pass did not audit the rest of the `server/api` tree
+  for a similar sibling-dynamic-folder pattern elsewhere, since none of this task's own changes touch
+  anywhere else.
+
+### Deployment requirements
+
+None for the entry-point/image changes -- pure client-side + the `apply-image` route's own JSON-body
+extension, reusing already-existing capabilities and the already-existing `entities.image` column. The
+routing fix is also schema/credential-free, but it IS a behavior-restoring change for a production
+deployment already running with the two-sibling-folder structure: if this build's own folder-scan
+order happened to have been resolving in the OTHER direction in production (i.e. the opposite of what
+this disposable instance's build showed), the character sheet system could already be silently broken
+there today. Verifying the actual character sheet loads correctly in production after this deploys is
+worth doing explicitly, not assumed from this fix alone.
+
+### Status
+
+**NOT committed.** Stopped here for review.

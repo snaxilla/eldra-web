@@ -6,6 +6,7 @@
 import { canEditWorldEntities } from '~/components/world/worldEntityDirectEditEligibility'
 import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -1163,8 +1164,16 @@ const detailSections = computed(() => {
 const contextDrawerOpen = ref(false)
 const contextDrawerEntity = ref<any | null>(null)
 
+// RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- no longer
+// includes buildDrawerOpen: the bespoke right-side "Page Build" aside
+// this margin reservation existed for is gone (see the removed-aside
+// comment near the end of the template), and the inline content
+// editor's own sections render full-width in the main column, never in
+// a rail -- per this task's own "do not squeeze the full editor into
+// the context rail or a small drawer" instruction. Only the mention
+// context drawer still reserves this margin.
 const articleRightRailOpen = computed(() =>
-  Boolean(contextDrawerOpen.value || buildDrawerOpen.value)
+  Boolean(contextDrawerOpen.value)
 )
 
 const articleBaselineMarkdown = computed(() =>
@@ -1290,23 +1299,29 @@ onBeforeRouteLeave(() => confirmDiscardIfDirty())
 onBeforeRouteUpdate(() => confirmDiscardIfDirty())
 
 
-async function onImageSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input?.files?.[0]
+// RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- the Article
+// Image control now opens WorldMediaPicker (an EXISTING asset, or a
+// fresh upload through the Gallery's own upload action) rather than a
+// bare OS file input, matching the same Media Gallery convention
+// established for Create Location/the page background picker. Browsing
+// or cancelling the picker never calls this -- only its own "Use This
+// Image" action (@select) does, so opening it writes nothing. This
+// remains an IMMEDIATE-save control, exactly like the native-upload flow
+// it replaces: there is no separate "Save" step for the image.
+const articleImagePickerOpen = ref(false)
 
-  if (!file) return
+async function onArticleImageSelected(file: { id?: string | number } | null) {
+  if (!file?.id) return
 
+  articleImagePickerOpen.value = false
   imageError.value = ''
   imageSuccess.value = ''
   uploadingImage.value = true
 
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-
     await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/apply-image`, {
       method: 'POST',
-      body: formData
+      body: { imageFileId: String(file.id) }
     })
 
     await refreshEntity()
@@ -1316,25 +1331,15 @@ async function onImageSelected(event: Event) {
       error?.data?.statusMessage ||
       error?.data?.message ||
       error?.message ||
-      'Failed to upload image.'
+      'Failed to apply image.'
   } finally {
     uploadingImage.value = false
-    if (input) input.value = ''
   }
 }
 </script>
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <button
-      v-if="canAuthorArticle || canEditPageSettings"
-      type="button"
-      class="fixed right-6 top-24 z-30 rounded-none border border-[rgba(201,164,90,0.36)] bg-[rgba(20,17,12,0.92)] px-4 py-2 text-sm font-semibold text-[#fff7df] shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur transition hover:border-[rgba(201,164,90,0.58)] hover:bg-[rgba(201,164,90,0.14)]"
-      @click="openArticleBuildDrawer"
-    >
-      Page Builder
-    </button>
-
     <div :class="pageContentClass">
       <nav
         v-if="authoringActive"
@@ -1342,7 +1347,7 @@ async function onImageSelected(event: Event) {
         class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.66)] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)] backdrop-blur-xl"
       >
         <div>
-          <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Build Editor</div>
+          <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Editing Article</div>
           <div class="mt-1 text-sm text-[#d8ceb8]">Edit article metadata, body content, and player-facing sidebar notes.</div>
         </div>
 
@@ -1390,22 +1395,80 @@ async function onImageSelected(event: Event) {
                 Article Image
               </label>
 
-              <input
-                type="file"
-                accept="image/*"
-                class="block w-full text-sm text-zinc-300 file:mr-4 file:rounded-none file:border file:border-stone-500/20 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
-                @change="onImageSelected"
+              <button
+                type="button"
+                class="group relative block aspect-video w-full cursor-pointer overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-well/54 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-eldra-accent/58 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eldra-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="uploadingImage"
+                :aria-label="entityImageUrl ? 'Change article image' : 'Choose image'"
+                @click="articleImagePickerOpen = true"
               >
+                <img
+                  v-if="entityImageUrl"
+                  :src="buildCardThumbnailUrl(entityImageUrl)"
+                  alt=""
+                  class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                >
 
-              <div v-if="uploadingImage" class="mt-2 text-sm text-zinc-300">Uploading image...</div>
+                <div
+                  v-else
+                  class="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center"
+                >
+                  <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-eldra-text-faint" />
+                  <div class="text-sm font-semibold text-eldra-text-strong">Choose image</div>
+                </div>
+
+                <div
+                  v-if="entityImageUrl"
+                  class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/55 group-hover:opacity-100 group-focus-visible:bg-black/55 group-focus-visible:opacity-100"
+                >
+                  <span class="rounded-none border border-eldra-accent/42 bg-black/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                    {{ uploadingImage ? 'Saving…' : 'Change image' }}
+                  </span>
+                </div>
+              </button>
+
+              <WorldMediaPicker
+                v-model:open="articleImagePickerOpen"
+                :world-id="worldId"
+                title="Choose Article Image"
+                select-label="Use This Image"
+                @select="onArticleImageSelected"
+              />
+
+              <div v-if="uploadingImage" class="mt-2 text-sm text-zinc-300">Applying image...</div>
               <div v-if="imageSuccess" class="mt-2 text-sm text-emerald-300">{{ imageSuccess }}</div>
               <div v-if="imageError" class="mt-2 text-sm text-red-300">{{ imageError }}</div>
             </div>
           </div>
 
           <div class="p-7">
-            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-              {{ world?.name || 'World' }}
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+                {{ world?.name || 'World' }}
+              </div>
+
+              <div
+                v-if="canAuthorArticle || canEditPageSettings"
+                class="flex flex-wrap items-center gap-2"
+              >
+                <WorldPageCustomizeButton
+                  v-if="canEditPageSettings"
+                  :world-id="worldId"
+                  page-key="entity-article"
+                  title="Entity Article"
+                  :can-edit="canEditPageSettings"
+                  scope-note="Background and presentation for this article page only. This does not affect the article's own content."
+                />
+
+                <button
+                  v-if="canAuthorArticle"
+                  type="button"
+                  class="eldra-button rounded-none px-4 py-2 text-sm font-semibold"
+                  @click="buildDrawerOpen ? closeArticleBuildDrawer() : openArticleBuildDrawer()"
+                >
+                  {{ buildDrawerOpen ? 'Close' : 'Edit' }}
+                </button>
+              </div>
             </div>
 
             <div
@@ -2006,52 +2069,12 @@ async function onImageSelected(event: Event) {
     </div>
 
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
-      <aside
-        v-if="buildDrawerOpen"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
-      >
-        <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
-            <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Page Build</div>
-              <h2 class="mt-3 text-2xl font-semibold text-white">Article Setup</h2>
-            </div>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-              @click="closeArticleBuildDrawer"
-            >
-              <UIcon name="i-lucide-x" class="h-5 w-5" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto p-5">
-            <WorldPagePresentationPanel
-              v-if="canEditPageSettings"
-              embedded
-              :world-id="worldId"
-              page-key="entity-article"
-              title="Entity Article"
-              description="Controls the article page presentation and background."
-            />
-
-            <div
-              v-else
-              class="rounded-none border border-amber-400/22 bg-amber-400/8 px-3 py-2 text-xs text-amber-100"
-            >
-              You do not have permission to edit this page's presentation.
-            </div>
-          </div>
-        </div>
-      </aside>
-    </Transition>
+    <!-- RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- page
+         presentation/background now reuses the shared WorldPageCustomizeButton
+         (header row above, next to "Edit") instead of this bespoke aside,
+         consolidating onto the same UModal-based pattern every other
+         collection/listing page already uses, so content authoring and
+         page presentation never again share one ambiguous entry point. -->
 
     
     <section

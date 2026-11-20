@@ -7,11 +7,19 @@
 // multipart create request as the file, and that the existing
 // cross-World rejection and authorization behavior are unchanged.
 //
-// h3's own `readMultipartFormData` is mocked here (not re-exercised
-// against real multipart bytes) -- this route's parser is pre-existing,
-// untouched behavior, and real multipart parsing is already covered
-// elsewhere (tests/server/utils/streaming-multipart.test.ts); mocking it
-// is "Directus transport" in spirit -- it is the boundary between this
+// RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- this route now
+// also accepts a JSON body naming an EXISTING Media Gallery file
+// (WorldMediaPicker's own selection, as opposed to a fresh multipart
+// upload); the tests below for that path mirror the exact cross-World/
+// type-rejection checks server/api/worlds/[id]/locations.post.ts's own
+// tests already established for the identical fileBelongsToWorld reuse.
+//
+// h3's own `readMultipartFormData`/`readBody` are mocked here (not
+// re-exercised against real multipart bytes/body streams) -- this
+// route's parser is pre-existing, untouched behavior, and real multipart
+// parsing is already covered elsewhere
+// (tests/server/utils/streaming-multipart.test.ts); mocking it is
+// "Directus transport" in spirit -- it is the boundary between this
 // route's own logic and h3's request-parsing internals, which this task
 // does not touch.
 import type { H3Event } from 'h3'
@@ -19,9 +27,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Principal } from '../../../../../../../server/utils/authorization'
 
-const { requireCapabilityMock, readMultipartFormDataMock } = vi.hoisted(() => ({
+const { requireCapabilityMock, readMultipartFormDataMock, readBodyMock } = vi.hoisted(() => ({
   requireCapabilityMock: vi.fn(),
-  readMultipartFormDataMock: vi.fn()
+  readMultipartFormDataMock: vi.fn(),
+  readBodyMock: vi.fn()
 }))
 
 vi.mock('../../../../../../../server/utils/authorization', async () => {
@@ -33,7 +42,7 @@ vi.mock('../../../../../../../server/utils/authorization', async () => {
 
 vi.mock('h3', async () => {
   const actual = await vi.importActual<typeof import('h3')>('h3')
-  return { ...actual, readMultipartFormData: readMultipartFormDataMock }
+  return { ...actual, readMultipartFormData: readMultipartFormDataMock, readBody: readBodyMock }
 })
 
 const fetchMock = vi.fn()
@@ -50,9 +59,15 @@ function principal(worldId: string): Principal {
   }
 }
 
-function fakeEvent(worldId: string, entityId: string, principalValue: Principal | null): H3Event {
+function fakeEvent(
+  worldId: string,
+  entityId: string,
+  principalValue: Principal | null,
+  contentType = 'multipart/form-data; boundary=x'
+): H3Event {
   return {
-    context: { principal: principalValue, params: { id: worldId, entityId } }
+    context: { principal: principalValue, params: { id: worldId, entityId } },
+    node: { req: { headers: { 'content-type': contentType } } }
   } as unknown as H3Event
 }
 
@@ -63,6 +78,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 beforeEach(() => {
   requireCapabilityMock.mockReset()
   readMultipartFormDataMock.mockReset()
+  readBodyMock.mockReset()
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   readMultipartFormDataMock.mockResolvedValue([
@@ -114,5 +130,52 @@ describe('POST /api/worlds/:id/entities/:entityId/apply-image', () => {
 
     await expect(handler(fakeEvent('6', '5', principal('6')))).rejects.toMatchObject({ statusCode: 403 })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  describe('existing Media Gallery file (WorldMediaPicker JSON body, not multipart)', () => {
+    it('applies an existing, same-World image file by patching entities.image directly -- no re-upload', async () => {
+      readBodyMock.mockResolvedValue({ imageFileId: 'file-42' })
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 5, world_id: 6 } })) // entity lookup -- matches
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 'file-42', world_id: 6, type: 'image/png' } })) // file lookup
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 5, image: 'file-42' } })) // entity PATCH
+
+      const result = await handler(fakeEvent('6', '5', principal('6'), 'application/json'))
+
+      expect(result).toMatchObject({ success: true, fileId: 'file-42', imageUrl: '/api/assets/file-42' })
+      // Exactly 3 Directus calls -- entity lookup, file lookup, PATCH --
+      // never a 4th /files upload call; the original asset is reused.
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('rejects a file belonging to a different World, before ever patching the entity', async () => {
+      readBodyMock.mockResolvedValue({ imageFileId: 'file-other-world' })
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 5, world_id: 6 } })) // entity lookup -- matches
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 'file-other-world', world_id: 9, type: 'image/png' } })) // file lookup -- a DIFFERENT World
+
+      await expect(handler(fakeEvent('6', '5', principal('6'), 'application/json')))
+        .rejects.toMatchObject({ statusCode: 403 })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('rejects a non-image file type', async () => {
+      readBodyMock.mockResolvedValue({ imageFileId: 'file-txt' })
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 5, world_id: 6 } })) // entity lookup -- matches
+        .mockResolvedValueOnce(jsonResponse({ data: { id: 'file-txt', world_id: 6, type: 'text/plain' } })) // file lookup
+
+      await expect(handler(fakeEvent('6', '5', principal('6'), 'application/json')))
+        .rejects.toMatchObject({ statusCode: 400 })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('fails with 400 when no imageFileId is present in the JSON body', async () => {
+      readBodyMock.mockResolvedValue({})
+      fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 5, world_id: 6 } })) // entity lookup -- matches
+
+      await expect(handler(fakeEvent('6', '5', principal('6'), 'application/json')))
+        .rejects.toMatchObject({ statusCode: 400 })
+    })
   })
 })

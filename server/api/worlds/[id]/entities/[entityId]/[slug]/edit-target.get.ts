@@ -14,7 +14,25 @@ import { collectionSummaryMetaLines } from '../../../../../../utils/entity-colle
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
-  const entityType = String(getRouterParam(event, 'entityType') || '')
+  // RESTORE A CLEAR, CONSISTENT FULL-EDITOR ENTRY POINT -- this route's
+  // own URL segment is still :entityType (unchanged, see the GET comment
+  // above); the ROUTER PARAM NAME it is read through is 'entityId' only
+  // because this directory was moved from a sibling `[entityType]/`
+  // folder into `[entityId]/` to fix a real, confirmed-in-production-build
+  // routing collision: two dynamically-named sibling folders under the
+  // same `entities/` parent (`[entityId]` and the old `[entityType]`)
+  // made Nitro's router correctly resolve only ONE of them, silently
+  // 404ing every nested route under the other for any path beyond the
+  // first dynamic segment -- including the ENTIRE character sheet system
+  // (`sheet.get/patch/post.ts` and all of `sheet/**`), `blocks/:blockKey`,
+  // `apply-image`, and `class-features`. Reproduced directly: with the
+  // folders as siblings, `GET /entities/4/sheet` 404'd while THIS route
+  // (under `[entityType]`) answered normally, and vice versa after
+  // swapping which folder existed. Merging them into one dynamically-named
+  // folder removes the ambiguity; nothing about this route's own URL,
+  // behavior, or callers changes -- only which event-context key this one
+  // `getRouterParam` call reads the SAME path segment through.
+  const entityType = String(getRouterParam(event, 'entityId') || '')
   const slug = String(getRouterParam(event, 'slug') || '')
   if (!worldId || !entityType || !slug) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id, entity type, or slug' })

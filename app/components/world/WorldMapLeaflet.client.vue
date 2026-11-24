@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import 'leaflet/dist/leaflet.css'
 import type { LayerObject, SceneLayer, SceneModel } from '~/lib/eldra/scene'
+import { computeCoverZoom, computeZoomFraction, pinReferenceZoom, shouldRefitOnResize } from './worldMapViewport'
 
 type Pin = {
   id: string
@@ -27,9 +28,12 @@ const LINE_RENDER_QUALITY = {
 
 // Canonical renderer-wide zoom scaling. A renderer concern only -- never
 // touches persisted/authoring size, never touches the Scene Graph. Given
-// an authoring-time size (marker scale, ...) and the current Leaflet
-// zoom, returns the on-screen size to actually draw at, so a point
-// object scales smoothly instead of staying a fixed pixel size
+// an authoring-time size (marker scale, ...) and a ZOOM ALREADY EXPRESSED
+// IN THIS FUNCTION'S OWN REFERENCE FRAME (see pinReferenceZoom in
+// worldMapViewport.ts -- never a raw `map.getZoom()` directly; that was
+// the Map Starting View / Pin Scaling trace's own root cause, see the
+// Pins section below), returns the on-screen size to actually draw at, so
+// a point object scales smoothly instead of staying a fixed pixel size
 // regardless of zoom. Used by Pins (PIN_ZOOM_TUNING below). Roads use a
 // different, dedicated policy (see roadVisualProminence further down) --
 // scaledSize()'s floor-based model preserves a minimum of visual
@@ -72,19 +76,17 @@ const ROAD_STYLE_DEFAULTS = {
 // Zoom fraction is computed against the CURRENT map's actual min/max
 // zoom (not a fixed absolute zoom number), so this behaves consistently
 // whether the underlying map is a small raster image or a large tiled
-// one with a completely different zoom range.
+// one with a completely different zoom range. The actual 0..1 fraction
+// math now lives in worldMapViewport.ts's computeZoomFraction -- Pins
+// reuse the IDENTICAL function (see PIN_ZOOM_TUNING/renderPins below)
+// rather than a second, parallel implementation; this stays a thin
+// wrapper that only supplies this component's own live `map` state.
 const ROAD_VISIBILITY_HIDDEN_FRACTION = 0.32
 const ROAD_VISIBILITY_FULL_FRACTION = 0.5
 
 function roadZoomFraction(zoom: number) {
   if (!map) return 1
-
-  const minZoom = map.getMinZoom()
-  const maxZoom = map.getMaxZoom()
-
-  if (!Number.isFinite(minZoom) || !Number.isFinite(maxZoom) || maxZoom <= minZoom) return 1
-
-  return Math.max(0, Math.min(1, (zoom - minZoom) / (maxZoom - minZoom)))
+  return computeZoomFraction(zoom, map.getMinZoom(), map.getMaxZoom())
 }
 
 function smoothstep(t: number) {
@@ -125,6 +127,23 @@ const ROAD_DISPLAY_OPACITY_FLOOR = 0.02
 // billboards, but still need enough damping to actually shrink away from
 // their base size at continent scale rather than dominating the map; the
 // floor stays large enough to remain a comfortable click target.
+//
+// Map Starting View / Pin Scaling fix: these three numbers are UNCHANGED
+// from before this fix (same configured ceiling/floor/damping) -- what
+// changed is what ZOOM VALUE they're applied to. Before, `map.getZoom()`
+// (an absolute number) was fed straight into zoomScaleFactor, calibrated
+// only against the untiled path's own fixed -5..5 range; on a tiled map
+// (an unrelated absolute range, commonly 0..7) the cover-fit starting
+// zoom already sat past where this saturates at `max`, so pins rendered
+// at their ceiling size across nearly a tiled map's entire practical
+// range (the reproduced defect, see the trace doc's own §3). renderPins()
+// now computes a map-RELATIVE zoom fraction first (computeZoomFraction,
+// the SAME function Roads already use) and converts it back into this
+// function's own reference frame via pinReferenceZoom -- see that
+// function's own header in worldMapViewport.ts for the algebra proving
+// this is an EXACT no-op on every existing untiled map (same pixel size
+// at every zoom, provably, not just approximately) while finally letting
+// a tiled map's own pins shrink across its own real range too.
 const PIN_ZOOM_TUNING = {
   damping: 0.5,
   min: 0.35,
@@ -222,6 +241,39 @@ let roadRubberBandLine: any = null
 let roadDraftLastVertex: any = null
 let roadSnapHighlightMarker: any = null
 let currentBounds: any = null
+
+// Viewport Fit / Resize fix -- see the trace doc's own §2/§4 for why these
+// exist. All plain `let`s here, exactly like `map`/`L`/`currentBounds`
+// above: `<script setup>` compiles to this component instance's own
+// `setup()` body, so these are fresh per mount, not shared module state --
+// switching maps (the parent's own `:key` forces a full remount) already
+// resets them for free, with no explicit reset needed here.
+//
+// True once a genuine USER gesture (wheel zoom, drag, double-click zoom,
+// the +/- control) has changed the view -- never set by this component's
+// OWN programmatic setView/panBy/setMaxBounds calls (see
+// withProgrammaticViewChange). Read by shouldRefitOnResize to decide
+// whether a later container resize may still refit to cover, or must
+// instead preserve whatever view the user already chose.
+let hasUserInteracted = false
+
+// A nesting-safe guard (counter, not a boolean) around every view change
+// THIS component itself initiates, so the zoomend/moveend listener below
+// can tell "I just did that" apart from "the user just did that" even
+// when one internal call (e.g. attemptInitialFit) makes several nested
+// programmatic calls (setMaxBounds, then setView) in the same tick.
+let programmaticViewDepth = 0
+
+function withProgrammaticViewChange(fn: () => void) {
+  programmaticViewDepth++
+  try {
+    fn()
+  } finally {
+    programmaticViewDepth--
+  }
+}
+
+let resizeObserver: ResizeObserver | null = null
 
 const inputLayers = computed(() => {
   if (Array.isArray(props.scene?.layers)) return props.scene?.layers || []
@@ -637,6 +689,21 @@ async function ensureMap() {
     if (hasViewportInsets()) applyMaxBounds()
   })
 
+  // Viewport Fit / Resize fix -- the ONE place a genuine user view change
+  // (wheel zoom, drag, double-click zoom, the +/- control) is told apart
+  // from this component's OWN programmatic setView/panBy/setMaxBounds
+  // calls (see withProgrammaticViewChange, every one of which wraps the
+  // view change that fires these same two events). `moveend` alone
+  // already covers a pure pan with no zoom change; `zoomend` additionally
+  // fires when zoom changed -- listening to both (Leaflet accepts a
+  // space-separated event list) means a combined zoom+pan correctly
+  // marks interaction exactly once effectively (setting an already-true
+  // boolean twice is harmless).
+  map.on('zoomend moveend', () => {
+    if (programmaticViewDepth > 0) return
+    hasUserInteracted = true
+  })
+
   markerLayer = L.layerGroup().addTo(map)
 }
 
@@ -888,8 +955,14 @@ function renderPins() {
   markerLayer.clearLayers()
 
   // Authoring size stays the base 20x28 icon -- only the on-screen scale
-  // multiplier is zoom-driven, same scaledSize() helper roads use.
-  const pinScale = scaledSize(1, map.getZoom(), PIN_ZOOM_TUNING.damping, PIN_ZOOM_TUNING.min, PIN_ZOOM_TUNING.max)
+  // multiplier is zoom-driven, same scaledSize() helper roads use. The
+  // INPUT to that helper is now this map's own relative zoom fraction,
+  // re-expressed in the untiled path's original reference frame -- never
+  // the raw, map-type-dependent `map.getZoom()` -- see PIN_ZOOM_TUNING's
+  // own comment above for why.
+  const zoomFraction = computeZoomFraction(map.getZoom(), map.getMinZoom(), map.getMaxZoom())
+  const referenceZoom = pinReferenceZoom(zoomFraction)
+  const pinScale = scaledSize(1, referenceZoom, PIN_ZOOM_TUNING.damping, PIN_ZOOM_TUNING.min, PIN_ZOOM_TUNING.max)
   const width = 20 * pinScale
   const height = 28 * pinScale
 
@@ -954,9 +1027,14 @@ function applyMaxBounds() {
   const bounds = insetMaxBounds()
   // setMaxBounds() corrects the view with an animated pan; under reduced
   // motion, settle it instantly first (inset path only -- no-inset
-  // behavior is unchanged).
-  if (hasViewportInsets() && prefersReducedMotion()) map.panInsideBounds(bounds, { animate: false })
-  map.setMaxBounds(bounds)
+  // behavior is unchanged). Both of these are THIS component correcting
+  // its own padding, never a user's own choice -- wrapped so the
+  // zoomend/moveend listener above never mistakes either for user
+  // interaction.
+  withProgrammaticViewChange(() => {
+    if (hasViewportInsets() && prefersReducedMotion()) map.panInsideBounds(bounds, { animate: false })
+    map.setMaxBounds(bounds)
+  })
 }
 
 // The view center that puts `center` in the middle of the area not covered
@@ -1007,11 +1085,38 @@ function ensureSelectedPinVisible() {
   const dy = point.y < minY ? point.y - minY : point.y > maxY ? point.y - maxY : 0
   if (!dx && !dy) return
 
-  map.panBy([dx, dy], { animate: !prefersReducedMotion() })
+  // An automatic correction to keep the selection visible under a panel,
+  // never the user's own deliberate pan -- wrapped for the same reason as
+  // applyMaxBounds above.
+  withProgrammaticViewChange(() => {
+    map.panBy([dx, dy], { animate: !prefersReducedMotion() })
+  })
 }
 
-function getCoverZoom(bounds: any) {
-  if (!map) return 0
+// Cover-fit starting zoom -- "fill the viewport, crop the overflow axis"
+// (CSS background-size: cover's equivalent), the policy this component
+// already used and keeps unchanged (see the trace doc's own §4: a
+// contain/"show the whole map, letterboxed" alternative is a different,
+// undecided product policy, not a fix to this one). The actual math is
+// the pure computeCoverZoom in worldMapViewport.ts, directly
+// unit-testable; this stays a thin wrapper supplying this component's own
+// live `map`/viewport-inset state.
+//
+// Viewport Fit / Resize fix: `containerWidth` now subtracts the floating
+// sidebar's viewportInsets before computing cover scale -- insetMaxBounds/
+// visibleCenter already account for that covered width when panning/
+// centering (see those functions' own comments); before this fix,
+// getCoverZoom used the FULL, uninset container width, so zoom and
+// centering disagreed about what "visible" meant (the trace doc's own
+// §2.1 finding -- confirmed, but signed the opposite direction from the
+// reported "too far zoomed out" symptom, so this is a consistency fix,
+// not a claim that it resolves that symptom on its own).
+//
+// Returns `null` (never a numeric 0) when the container/image geometry
+// isn't usable yet -- the signal attemptInitialFit uses to wait rather
+// than apply a meaningless fit.
+function getCoverZoom(bounds: any): number | null {
+  if (!map) return null
 
   const size = map.getSize()
   const nw = map.project(bounds.getNorthWest(), 0)
@@ -1019,13 +1124,83 @@ function getCoverZoom(bounds: any) {
 
   const imageWidth = Math.abs(se.x - nw.x)
   const imageHeight = Math.abs(se.y - nw.y)
+  const containerWidth = size.x - viewportInset('left') - viewportInset('right')
 
-  if (!imageWidth || !imageHeight || !size.x || !size.y) return 0
+  return computeCoverZoom({
+    containerWidth,
+    containerHeight: size.y,
+    imageWidth,
+    imageHeight,
+    minZoom: map.getMinZoom(),
+    maxZoom: map.getMaxZoom()
+  })
+}
 
-  const coverScale = Math.max(size.x / imageWidth, size.y / imageHeight)
-  const zoom = Math.log2(coverScale)
+// Applies a resolved cover-fit zoom -- bounds padding, viscosity, and the
+// view itself, all as one programmatic unit (never mistaken for user
+// interaction by the zoomend/moveend listener in ensureMap).
+function applyFit(zoom: number) {
+  if (!map || !currentBounds) return
+  const center = currentBounds.getCenter()
 
-  return Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom))
+  withProgrammaticViewChange(() => {
+    // With insets, the padded bounds are computed for the starting zoom up
+    // front: applying the un-padded bounds first would start an animated
+    // correction that later undoes the visible-area centering. Without
+    // insets both calls are exactly what they were before.
+    map.setMaxBounds(insetMaxBounds(zoom))
+    map.options.maxBoundsViscosity = 1.0
+    map.setView(visibleCenter(center, zoom), zoom, { animate: false })
+  })
+}
+
+// The one place the "still in the initial automatic-fit state" policy
+// (shouldRefitOnResize) is actually exercised: computes a FRESH cover
+// zoom from whatever the container's CURRENT dimensions are (never a
+// stale, closed-over value -- the previous version of this component
+// reused a single `startZoom` computed once at mount even after a later
+// invalidateSize()) and applies it, but only for as long as the user
+// hasn't chosen their own view yet. Safe to call repeatedly: a no-op
+// whenever either condition isn't met.
+//
+// "Initial fitting must wait for valid map geometry and usable
+// dimensions": when getCoverZoom can't compute yet (container or image
+// not yet sized), this simply does nothing and waits for the next call --
+// from renderMap()'s own synchronous attempt, or from the ResizeObserver
+// below once the container's real size is observed. No bogus zoom is
+// ever applied in the meantime.
+function attemptInitialFit() {
+  if (!map || !currentBounds || !shouldRefitOnResize(hasUserInteracted)) return
+  const zoom = getCoverZoom(currentBounds)
+  if (zoom === null) return
+  applyFit(zoom)
+}
+
+// Container-resize handling -- the renderer's existing lifecycle
+// conventions (ResizeObserver set up in onMounted, torn down in
+// onBeforeUnmount, exactly like the map instance itself). Deliberately
+// cannot feedback-loop: nothing this function (or anything it calls) does
+// changes `rootEl`'s own box size -- it is sized by its PARENT (`h-full
+// w-full` inside an `absolute inset-0` wrapper), never by its own
+// content -- so observing it can never trigger another resize of itself.
+function handleContainerResize() {
+  if (!map || !currentBounds) return
+
+  withProgrammaticViewChange(() => {
+    map.invalidateSize()
+  })
+
+  if (shouldRefitOnResize(hasUserInteracted)) {
+    attemptInitialFit()
+  } else {
+    // After a deliberate user pan/zoom: preserve their chosen view as far
+    // as the current bounds allow (invalidateSize's own default
+    // within-bounds correction above already does this), never reset to
+    // cover-fit. Insets may have changed too (e.g. the sidebar collapsing
+    // alongside a narrower viewport) -- keep bounds padding in sync
+    // without ever touching zoom.
+    applyMaxBounds()
+  }
 }
 
 async function renderMap() {
@@ -1084,29 +1259,23 @@ async function renderMap() {
   renderImageOverlays()
   renderRoads()
 
-  const center = currentBounds.getCenter()
-  const startZoom = getCoverZoom(currentBounds)
+  // A fresh mount (or map switch -- the parent remounts this component
+  // entirely on switch, see index.vue's own `:key`) always starts over in
+  // the automatic-fit state; nothing from a previous map's view carries
+  // over.
+  hasUserInteracted = false
 
-  // With insets, the padded bounds are computed for the starting zoom up
-  // front: applying the un-padded bounds first would start an animated
-  // correction that later undoes the visible-area centering. Without
-  // insets both calls are exactly what they were before.
-  map.setMaxBounds(insetMaxBounds(startZoom))
-  map.options.maxBoundsViscosity = 1.0
-  map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
+  // Fast path: in the common case the container already has a valid,
+  // final size right now (confirmed by direct measurement in this
+  // component's own trace doc -- every reproduction there measured a
+  // correct container size at this exact point), so apply the fit
+  // immediately -- no visible delay, no flash of an unfit view. If the
+  // geometry isn't usable yet, this is a no-op and the ResizeObserver
+  // below (which also fires once with the container's initial observed
+  // size, asynchronously) performs the real first fit once it is.
+  attemptInitialFit()
 
   renderPins()
-
-  requestAnimationFrame(() => {
-    if (!map) return
-    map.invalidateSize()
-    // The map has a zoom by now, so the (possibly inset-padded) bounds can
-    // be applied directly -- exactly currentBounds when there are no
-    // insets. Applying the un-padded bounds first would start an animated
-    // pan back to center that undoes the visible-area centering.
-    applyMaxBounds()
-    map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
-  })
 }
 
 watch(
@@ -1230,13 +1399,41 @@ watch(
 
 
 
+// Container-resize observation -- set up once per mount (never per
+// renderMap() call, so switching maps without a remount, if that ever
+// happens, cannot accumulate a second observer on the same element), torn
+// down in onBeforeUnmount below. `ResizeObserver` is absent only in
+// environments this app doesn't actually ship to (there is no such guard
+// anywhere else in this file either); checked defensively anyway so a
+// missing global degrades to "no resize correction" rather than throwing.
+function setupResizeObserver() {
+  const el = rootEl.value
+  if (typeof ResizeObserver === 'undefined' || !el) return
+  resizeObserver = new ResizeObserver(() => handleContainerResize())
+  // This project's own tsconfig includes both the `dom` and `webworker`
+  // lib sets together (.nuxt/tsconfig.app.json), which is a known
+  // TypeScript combination that produces a structurally-incompatible
+  // second `Element` ambient type project-wide -- unrelated to this
+  // change, already responsible for a share of this repo's existing
+  // typecheck baseline, and out of this task's own scope to fix. The
+  // `unknown` cast is a narrow, local escape of that pre-existing
+  // conflict, not a loosening of this function's own real DOM-element
+  // contract.
+  resizeObserver.observe(el as unknown as Element)
+}
+
 onMounted(async () => {
   await nextTick()
+  setupResizeObserver()
   await renderMap()
 })
 
 
 onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
   if (map) {
     map.remove()
     map = null

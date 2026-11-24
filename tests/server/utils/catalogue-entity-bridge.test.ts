@@ -215,6 +215,28 @@ describe('getCatalogueBackedEnemyRows', () => {
     expect(rows).toEqual([])
   })
 
+  // Species/Class Context Content pass -- "identically named entities from
+  // different packages are not confused" (verification requirement). Two
+  // enemies sharing the SAME title/slug but published under DIFFERENT
+  // packages must resolve to two distinct rows with distinct ids and their
+  // own, independent data -- catalogueTemplateId(packageId, slug) already
+  // embeds both, proving this is an identity guarantee, not a coincidence
+  // of this particular fixture.
+  it('does not confuse two identically-slugged enemies from different packages', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved([
+      entry({ entityType: 'enemy', title: 'Goblin', slug: 'goblin-mm', data: { name: 'Goblin', source: 'MM', ac: [15] }, packageId: 'eldra.pack-one' }),
+      entry({ entityType: 'enemy', title: 'Goblin', slug: 'goblin-mm', data: { name: 'Goblin', source: 'MM', ac: [21] }, packageId: 'eldra.pack-two' })
+    ]))
+
+    const rows = await getCatalogueBackedEnemyRows('5')
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0].id).not.toBe(rows[1].id)
+    expect(new Set(rows.map((r) => r.id)).size).toBe(2)
+    expect(rows[0].statblock?.armor_class).toBe(15)
+    expect(rows[1].statblock?.armor_class).toBe(21)
+  })
+
   it('does not let one malformed entry take down the whole roster -- the healthy entry alongside it still resolves fully', async () => {
     resolveWorldContentMock.mockResolvedValue(resolved([
       // preview5eToolsMonsters is defensive (optional-chains every field), so a

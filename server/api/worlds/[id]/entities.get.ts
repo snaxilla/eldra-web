@@ -4,6 +4,7 @@ import { directusServiceRequest } from '../../../utils/directus'
 import { getCatalogueBackedEntityRows } from '../../../utils/catalogue-entity-bridge'
 import { resolveDerivedImageUrl } from '../../../../app/lib/content-presentation/effective-image'
 import { collectionSummaryDisplayType, collectionSummaryFacet, collectionSummaryMetaLines } from '../../../utils/entity-collection-summary'
+import { buildClassArticleMarkdownFromBlocks, buildSpeciesArticleMarkdownFromBlocks } from '../../../../app/lib/world-entity-collection/catalogue-article-markdown'
 
 const CLASS_DATA_DIR = '/opt/eldra/datasets/5etools-src/data/class'
 const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
@@ -207,6 +208,41 @@ function extractCoreText(blocks: any[] = []) {
   return ''
 }
 
+// Species/Class Context Content pass (owner follow-up) -- ROOT CAUSE: the
+// rail's own "useful information" was limited to a handful of meta-line
+// facts (Size/Speed/a trait COUNT; Hit Die/Saves/Primary Ability). The
+// actual trait/feature NAMES and their own readable prose already existed
+// -- buildSpeciesArticleMarkdownFromBlocks/buildClassArticleMarkdownFromBlocks
+// (relocated from WorldEntityInteractivePage.vue, not rewritten) already
+// built them correctly from this exact route's own per-row `blocks` -- but
+// nothing ever put that text into the summary-mode response a
+// catalogue-sourced entity actually receives (extractCoreText above never
+// recognized species_core/class_core, and `.blocks` itself is never sent
+// in summary mode at all). This is the one additional read that makes the
+// already-correct content reachable; no new parsing, no new content.
+//
+// Deliberately NOT run through cleanPreviewText: that helper collapses all
+// whitespace to single spaces (`\s+` -> ' '), which is correct for a
+// one-line card teaser but would destroy this content's own `##` heading
+// lines and paragraph breaks -- exactly the structure "readable sections"
+// depends on. The 5etools {@tag ...} markup is already stripped during
+// building (clean5eText, inside the shared builders), so there is nothing
+// left here that cleanPreviewText's own stripping would still need to do;
+// only a trim.
+function extractCatalogueArticleText(entityType: string, blocks: any[] = []) {
+  const type = String(entityType || '').trim().toLowerCase()
+
+  if (type === 'species' || type === 'race') {
+    return buildSpeciesArticleMarkdownFromBlocks(blocks).trim()
+  }
+
+  if (type === 'class') {
+    return buildClassArticleMarkdownFromBlocks(blocks).trim()
+  }
+
+  return ''
+}
+
 function shouldUseSummaryMode(query: Record<string, any>) {
   const mode = String(query.mode || '').trim().toLowerCase()
   const summary = String(query.summary || '').trim().toLowerCase()
@@ -348,7 +384,14 @@ export default defineEventHandler(async (event) => {
 
     const overviewText = extractOverviewText(entityBlocks)
     const coreText = extractCoreText(entityBlocks)
-    const summary = cleanPreviewText(row?.summary || overviewText || coreText || '')
+    // Species/Class Context Content pass -- only reached when NONE of the
+    // flat sources above produced anything (today: every species/class
+    // row, since neither extractOverviewText nor extractCoreText
+    // recognizes those block keys). Never run through cleanPreviewText --
+    // see extractCatalogueArticleText's own comment for why its newlines/
+    // headings must survive.
+    const articleText = extractCatalogueArticleText(row.entity_type, entityBlocks)
+    const summary = cleanPreviewText(row?.summary || overviewText || coreText || '') || articleText
     const collectionDisplayType = collectionSummaryDisplayType(row, entityBlocks)
     const collectionFacet = collectionSummaryFacet(row, entityBlocks)
     const collectionMetaLines = collectionSummaryMetaLines(row, entityBlocks)
@@ -402,7 +445,7 @@ export default defineEventHandler(async (event) => {
       metaLines: collectionMetaLines,
       imageUrl: derivedImageUrl,
       image_url: derivedImageUrl,
-      summary: String(row?.summary || '').trim() || overviewText || coreText || ''
+      summary: String(row?.summary || '').trim() || overviewText || coreText || articleText
     }
   })
 })

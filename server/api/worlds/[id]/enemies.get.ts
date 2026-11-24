@@ -1,7 +1,12 @@
 import { directusServiceRequest } from '../../../utils/directus'
 import { getCatalogueBackedEnemyRows } from '../../../utils/catalogue-entity-bridge'
 
-function extractImageUrl(blocks: any[] = []) {
+// Exported for direct Vitest coverage (same convention as
+// server/api/worlds/[id]/maps/upload.post.ts's own MAX_MAP_UPLOAD_BYTES
+// re-export) -- route handlers stay thin, but their own helper functions
+// are directly unit-testable from here rather than only indirectly through
+// the full handler.
+export function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {
     const image = block?.data?.image
 
@@ -19,6 +24,37 @@ function extractImageUrl(blocks: any[] = []) {
   }
 
   return null
+}
+
+// Species/Class Context Content pass (Enemy image restoration) -- ROOT
+// CAUSE: catalogue-entity-bridge.ts's own CatalogueBridgeEnemyRow type
+// hardcodes `image: null, imageUrl: null, image_url: null` on every
+// catalogue-backed enemy row, unconditionally -- never computed from the
+// row's own `blocks`, which (per preview5eToolsMonsters, see
+// 5etools-monsters.ts) DO carry a real `overview` block's `data.image`
+// whenever the source monster has fluff art. The enemy roster CARD already
+// read this correctly via imageUrlForEnemy()'s own blocks-derived fallback
+// (app/pages/worlds/[id]/enemies.vue); only this route's own catalogue
+// rows -- the data every rail/card consumes -- never carried a populated
+// `imageUrl` to read in the first place. Fixed here, once, at the data
+// source, using the SAME `extractImageUrl` this route already applies to
+// legacy rows below -- not a second, competing image-resolution helper.
+//
+// Enemies are NOT currently wired into the effective-content/authored-
+// image-override system the generic entities.get.ts route already uses
+// for Items/Species/Classes/etc. (getCatalogueBackedEnemyRows calls plain
+// resolveWorldContent, never resolveEffectiveContent) -- there is no
+// authored-override or explicit-suppression mechanism for an Enemy image
+// to preserve here, because none exists yet for this entity type. This is
+// an honest, reported gap (see the architecture doc this pass updates),
+// not something this fix silently builds out: wiring a whole entity type
+// into that system is a materially larger change than restoring the
+// rail's already-existing image data.
+export function withResolvedCatalogueEnemyImages<T extends { blocks: Array<Record<string, unknown>>; imageUrl: unknown; image_url: unknown }>(rows: T[]): T[] {
+  return rows.map((row) => {
+    const derivedImageUrl = extractImageUrl(row.blocks)
+    return { ...row, imageUrl: derivedImageUrl, image_url: derivedImageUrl }
+  })
 }
 
 export default defineEventHandler(async (event) => {
@@ -56,7 +92,7 @@ export default defineEventHandler(async (event) => {
   // the root-cause trace and why `getCatalogueBackedEnemyRows` is safe to
   // call unconditionally (it resolves to an empty list, never an error,
   // for a World with no bound packs or no `enemy` entries in them).
-  const catalogueRows = await getCatalogueBackedEnemyRows(worldId)
+  const catalogueRows = withResolvedCatalogueEnemyImages(await getCatalogueBackedEnemyRows(worldId))
 
   if (!entityIds.length) {
     return catalogueRows

@@ -79,6 +79,95 @@ describe('preview5eToolsClasses', () => {
     expect(result.items).toEqual([])
     expect(result.warnings).toEqual(['No classes found'])
   })
+
+  // Species/Class Context Content pass -- regression fixtures for the
+  // actual reproduced failing structure (not a hypothetical one): the real
+  // XPHB Fighter's own `primaryAbility` is `[{str:true},{dex:true}]`, which
+  // the OLD normalizePrimaryAbility (plain `textify()`) serialized to
+  // literal JSON text because that shape matched none of textify's
+  // recognized object cases. Verified against the real dataset
+  // (/opt/eldra/datasets/5etools-src/data/class/class-fighter.json) before
+  // writing this fixture.
+  it('reads a real Fighter-shaped primaryAbility ([{str:true},{dex:true}]) as "Strength or Dexterity", never as JSON', () => {
+    const result = preview5eToolsClasses({
+      class: [{
+        name: 'Fixture Fighter',
+        source: 'TEST',
+        page: 1,
+        hd: { number: 1, faces: 10 },
+        proficiency: ['str', 'con'],
+        primaryAbility: [{ str: true }, { dex: true }]
+      }]
+    })
+
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'class_core')
+    expect(block?.data?.primary_ability).toBe('Strength or Dexterity')
+    expect(block?.data?.primary_ability).not.toMatch(/[{}]/)
+    expect(block?.data?.primary_ability).not.toContain('"str"')
+  })
+
+  it('reads a required-pair primaryAbility ([{dex:true, wis:true}]) as "Dexterity and Wisdom"', () => {
+    const result = preview5eToolsClasses({
+      class: [{
+        name: 'Fixture Monk',
+        source: 'TEST',
+        primaryAbility: [{ dex: true, wis: true }]
+      }]
+    })
+
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'class_core')
+    expect(block?.data?.primary_ability).toBe('Dexterity and Wisdom')
+  })
+
+  // The generic textify() fallback this field also used to route through
+  // for any OTHER unrecognized shape (previously JSON.stringify, now
+  // delegated to content-presentation/dnd5e.ts's own flattenEntries) --
+  // exercised here via a synthetic {type:'table', ...} node nested inside
+  // `entries` (real XPHB classes carry their tables in a separate
+  // `classTableGroups` field rather than top-level `entries`, so this
+  // fixture constructs the shape directly to prove the fallback itself,
+  // independent of whether any real class payload currently reaches it).
+  it('flattens an embedded 5etools table instead of ever emitting raw JSON for an unrecognized entries shape', () => {
+    const result = preview5eToolsClasses({
+      class: [{
+        name: 'Fixture Tabled Class',
+        source: 'TEST',
+        entries: [
+          'Some prose.',
+          {
+            type: 'table',
+            colLabels: ['Level', 'Feature'],
+            rows: [['1', 'Example Feature']]
+          }
+        ]
+      }]
+    })
+
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'class_core')
+    expect(block?.data?.description).toContain('Some prose.')
+    expect(block?.data?.description).toContain('Example Feature')
+    expect(block?.data?.description).not.toMatch(/[{}]/)
+  })
+
+  // Species/Class Context Content pass (owner follow-up, "useful content"
+  // gap): textify()'s own leaf-string branches used to return a raw
+  // 5etools string verbatim, {@tag ...} markup and all -- a real class's
+  // own top-level `entries` description can embed e.g. {@variantrule ...}
+  // tags. Now cleaned via clean5eText, same as the Class Features/Starting
+  // Equipment sections.
+  it('strips {@tag} markup from the class description text', () => {
+    const result = preview5eToolsClasses({
+      class: [{
+        name: 'Fixture Tagged Class',
+        source: 'TEST',
+        entries: ['You can finish a {@variantrule Long Rest|XPHB|long rest} in half the time.']
+      }]
+    })
+
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'class_core')
+    expect(block?.data?.description).toBe('You can finish a Long Rest in half the time.')
+    expect(block?.data?.description).not.toContain('{@')
+  })
 })
 
 describe('preview5eToolsSpecies', () => {
@@ -93,6 +182,60 @@ describe('preview5eToolsSpecies', () => {
 
     expect(block?.data?.traits).toContain('## Darkvision')
     expect(block?.data?.traits).not.toContain('non-trait flavor line')
+  })
+
+  // Species/Class Context Content pass -- the rail's own "Traits" meta
+  // line (server/utils/entity-collection-summary.ts) reads
+  // core.rawTraitCount || core.trait_count, a field this importer never
+  // actually set before this pass (always undefined, so the line was
+  // always silently blank). trait_count now mirrors the SAME named-section
+  // filter `traits` is built from.
+  it('sets trait_count to the number of named trait sections carried into traits', () => {
+    const result = preview5eToolsSpecies(speciesFixture)
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'species_core')
+
+    expect(block?.data?.trait_count).toBe(1)
+  })
+
+  // Regression fixture for the actual failing structure: a species'
+  // ability-score-increase field in the shape an older/legacy-style
+  // payload can carry it ({str:1, con:1}) matched none of textify()'s
+  // recognized object shapes, so it fell to JSON.stringify -- reproduced
+  // directly in the committed fixture (5etools-species.json's own
+  // `ability` field) and asserted explicitly here, not only via the
+  // snapshot above.
+  it('never emits raw JSON for an unrecognized ability-score-increase shape', () => {
+    const result = preview5eToolsSpecies(speciesFixture)
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'species_core')
+
+    expect(block?.data?.ability_score_increase).not.toMatch(/[{}]/)
+  })
+
+  // Species/Class Context Content pass (owner follow-up, "useful content"
+  // gap): discovered while verifying gap #2 (existing published content) --
+  // the real XPHB Elf's own Darkvision/Fey Ancestry/Keen Senses traits each
+  // embed at least one {@sense...}/{@condition...}/{@skill...} tag, and
+  // textify() never cleaned its own leaf-string branches before this fix.
+  it('strips {@tag} markup from named trait section text', () => {
+    const result = preview5eToolsSpecies({
+      race: [{
+        name: 'Fixture Elf',
+        source: 'TEST',
+        entries: [
+          {
+            type: 'entries',
+            name: 'Fey Ancestry',
+            entries: ['You have Advantage on saving throws to avoid or end the {@condition Charmed|XPHB} condition.']
+          }
+        ]
+      }]
+    })
+
+    const block = result.items[0].blocks.find((b) => b.blockKey === 'species_core')
+    expect(block?.data?.traits).toContain(
+      'You have Advantage on saving throws to avoid or end the Charmed condition.'
+    )
+    expect(block?.data?.traits).not.toContain('{@')
   })
 })
 

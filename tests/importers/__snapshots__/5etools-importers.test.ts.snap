@@ -221,7 +221,7 @@ Gains a bonus at 1st level.",
             "hit_die": "d10",
             "image": "",
             "name": "Test Vanguard",
-            "primary_ability": "str",
+            "primary_ability": "Strength",
             "saving_throws": "str, con",
             "tool_proficiencies": "thieves' tools",
             "weapon_proficiencies": "simple, martial",
@@ -813,14 +813,12 @@ exports[`preview5eToolsSpecies > matches the current preview result for a specie
         {
           "blockKey": "species_core",
           "data": {
-            "ability_score_increase": "{
-  "str": 1,
-  "con": 1
-}",
+            "ability_score_increase": "",
             "image": "",
             "name": "Testkin",
             "size": "M",
             "speed": "30",
+            "trait_count": 1,
             "traits": "## Darkvision
 
 You can see in the dark up to 60 feet, an original placeholder trait.",

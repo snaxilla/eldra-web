@@ -10,6 +10,10 @@ import {
 import { canCreateWorldEntities, canDeleteWorldEntities, canEditWorldEntities, supportsDirectEdit } from '~/components/world/worldEntityDirectEditEligibility'
 import { canEditWorldSettings } from '~/lib/eldra/world-settings-eligibility'
 import { isSafeCollectionReturnPath, writeDraftTransfer } from '~/lib/world-entity-collection/direct-edit-navigation'
+import {
+  buildClassArticleMarkdownFromBlocks,
+  buildSpeciesArticleMarkdownFromBlocks
+} from '~/lib/world-entity-collection/catalogue-article-markdown'
 import WorldEntityDirectEditDialog from '~/components/world/WorldEntityDirectEditDialog.vue'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 import { buildCardThumbnailUrl } from '~/lib/media/thumbnail-url'
@@ -365,135 +369,20 @@ function classCore(entity: any) {
 }
 
 
-function importSourceRawJson(entity: any) {
-  const sourceBlock = blockByKey(entity, 'import_source')
-  return sourceBlock?.data?.raw_json || null
-}
-
-function clean5eText(value: any): string {
-  return String(value || '')
-    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
-    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
-    .replace(/\{@[^}]+\}/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function formatEntriesAsMarkdown(entries: any): string {
-  if (!entries) return ''
-
-  if (typeof entries === 'string') return clean5eText(entries)
-
-  if (Array.isArray(entries)) {
-    return entries.map(formatEntriesAsMarkdown).filter(Boolean).join('\n\n')
-  }
-
-  if (typeof entries === 'object') {
-    const parts: string[] = []
-
-    if (entries.name) parts.push(`## ${clean5eText(entries.name)}`)
-    if (entries.entry) parts.push(clean5eText(entries.entry))
-    if (entries.entries) parts.push(formatEntriesAsMarkdown(entries.entries))
-    if (entries.items) parts.push(formatEntriesAsMarkdown(entries.items))
-
-    return parts.filter(Boolean).join('\n\n')
-  }
-
-  return ''
-}
-
-function formatClassFeatureRef(value: any): string {
-  if (!value) return ''
-
-  if (typeof value === 'string') {
-    const parts = value.split('|')
-    const name = parts[0] || value
-    const level = parts[3]
-    return level ? `Level ${level}: ${name}` : name
-  }
-
-  if (typeof value === 'object') {
-    return formatClassFeatureRef(value.classFeature || value.name || '')
-  }
-
-  return String(value)
-}
-
-function formatChoiceList(value: any): string {
-  if (!value) return ''
-
-  if (Array.isArray(value)) {
-    return value.map(formatChoiceList).filter(Boolean).join(', ')
-  }
-
-  if (typeof value === 'string') return value
-
-  if (typeof value === 'object') {
-    if (Array.isArray(value.from)) return value.from.join(', ')
-    if (value.choose) return formatChoiceList(value.choose)
-    return Object.values(value).map(formatChoiceList).filter(Boolean).join(', ')
-  }
-
-  return String(value)
-}
-
+// buildClassArticleMarkdown/buildSpeciesArticleMarkdown themselves (plus
+// their own private helpers) now live in
+// ~/lib/world-entity-collection/catalogue-article-markdown.ts -- relocated,
+// not rewritten (every helper copied verbatim), so the SAME logic can also
+// run server-side (entities.get.ts), which has `blocks` per row but could
+// never reach this client-only code before. These two wrappers keep every
+// existing call site in this file (`buildClassArticleMarkdown(entity)`)
+// unchanged -- they just unwrap `entity.blocks` and delegate.
 function buildClassArticleMarkdown(entity: any): string {
-  const raw = importSourceRawJson(entity)
-  if (!raw) return ''
-
-  const parts: string[] = []
-
-  if (raw.entries) {
-    const entriesText = formatEntriesAsMarkdown(raw.entries)
-    if (entriesText) parts.push(entriesText)
-  }
-
-  if (raw.startingProficiencies) {
-    const profs: string[] = []
-
-    if (raw.proficiency) profs.push(`**Saving Throw Proficiencies:** ${formatChoiceList(raw.proficiency).toUpperCase()}`)
-
-    const armor = formatChoiceList(raw.startingProficiencies.armor)
-    if (armor) profs.push(`**Armor Training:** ${armor}`)
-
-    const weapons = formatChoiceList(raw.startingProficiencies.weapons)
-    if (weapons) profs.push(`**Weapon Proficiencies:** ${weapons}`)
-
-    const tools = formatChoiceList(raw.startingProficiencies.tools)
-    if (tools) profs.push(`**Tool Proficiencies:** ${tools}`)
-
-    const skills = formatChoiceList(raw.startingProficiencies.skills)
-    if (skills) profs.push(`**Skill Proficiencies:** ${skills}`)
-
-    if (profs.length) parts.push(`## Proficiencies\n\n${profs.join('\n\n')}`)
-  }
-
-  if (raw.startingEquipment?.entries?.length) {
-    parts.push(`## Starting Equipment\n\n${formatEntriesAsMarkdown(raw.startingEquipment.entries)}`)
-  }
-
-  if (Array.isArray(raw.classFeatures) && raw.classFeatures.length) {
-    const features = raw.classFeatures
-      .map(formatClassFeatureRef)
-      .filter(Boolean)
-      .map((line: string) => `- ${clean5eText(line)}`)
-      .join('\n')
-
-    if (features) parts.push(`## Class Features\n\n${features}`)
-  }
-
-  return parts.filter(Boolean).join('\n\n')
+  return buildClassArticleMarkdownFromBlocks(entity?.blocks)
 }
 
 function buildSpeciesArticleMarkdown(entity: any): string {
-  const core = speciesCore(entity)
-  const raw = importSourceRawJson(entity)
-  const parts: string[] = []
-
-  if (core?.traits) parts.push(String(core.traits))
-  if (!parts.length && raw?.entries) parts.push(formatEntriesAsMarkdown(raw.entries))
-
-  return parts.filter(Boolean).join('\n\n')
+  return buildSpeciesArticleMarkdownFromBlocks(entity?.blocks)
 }
 
 
@@ -1899,19 +1788,25 @@ async function createLocationArticle() {
               </div>
 
               <div
-                v-if="entityType === 'species' && speciesCore(selectedEntityDetail || selectedEntity)"
+                v-if="entityType === 'species' && collectionMetaLines(selectedEntityDetail || selectedEntity).length"
                 class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Species Details</div>
-                <div v-for="line in speciesMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+                <!-- Same server-aware projection the Item rail above was
+                     already fixed to use (see its own comment): a
+                     catalogue-sourced species (summary=1 mode) never has
+                     `.blocks`, so gating on speciesCore()/speciesMetaLines()
+                     directly silently rendered nothing -- the identical
+                     card/rail mismatch bug, now fixed the same way. -->
+                <div v-for="line in collectionMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
-                v-if="entityType === 'class' && classCore(selectedEntityDetail || selectedEntity)"
+                v-if="entityType === 'class' && collectionMetaLines(selectedEntityDetail || selectedEntity).length"
                 class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Class Details</div>
-                <div v-for="line in classMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+                <div v-for="line in collectionMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div
@@ -1922,8 +1817,34 @@ async function createLocationArticle() {
                 <div v-for="line in backgroundMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
+              <!-- Species/Class Context Content pass -- species traits and
+                   class features/proficiencies (now reachable here for the
+                   first time, see extractCatalogueArticleText server-side)
+                   run noticeably longer than every other category's own
+                   summary text (which cleanPreviewText already truncates to
+                   420 chars): collapsible by default past that same length,
+                   using the identical native <details>/<summary> pattern
+                   already established elsewhere in this app
+                   (app/pages/worlds/[id]/importer.vue's own "Update Log"),
+                   rather than a new component. Anything short enough to
+                   already fit (every other existing category) renders
+                   exactly as it always has, always open, unchanged. -->
+              <details
+                v-if="selectedSummary && selectedSummary.length > 600"
+                class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
+                open
+              >
+                <summary class="mb-2 cursor-pointer text-xs uppercase tracking-[0.25em] text-eldra-text-faint">
+                  Summary
+                </summary>
+                <div
+                  class="markdown-content eldra-rich-content mt-3 text-[15px] leading-7 text-slate-200"
+                  v-html="renderMarkdown(selectedSummary)"
+                ></div>
+              </details>
+
               <div
-                v-if="selectedSummary"
+                v-else-if="selectedSummary"
                 class="eldra-corner-runes rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Summary</div>

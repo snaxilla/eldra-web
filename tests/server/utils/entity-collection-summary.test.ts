@@ -52,4 +52,38 @@ describe('collectionSummaryMetaLines', () => {
     const lines = collectionSummaryMetaLines({ entity_type: 'npc', slug: 'goblin-xmm' }, [])
     expect(lines).toEqual(['Npc', 'Source: XMM'])
   })
+
+  // Species/Class Context Content pass -- these two use block data shaped
+  // EXACTLY as app/lib/importers/5etools-species.ts / 5etools-classes.ts
+  // now actually produce it (post-fix: primary_ability already a clean
+  // label, trait_count populated), proving the full
+  // importer -> collectionSummaryMetaLines pipeline the rail actually
+  // consumes surfaces useful fields with no raw-JSON leakage, not just the
+  // importer's own output in isolation.
+  it('surfaces species size/speed/traits/source -- the rail\'s own "useful information"', () => {
+    const row = { entity_type: 'species', slug: 'elf-xphb' }
+    const blocks = [{ block_key: 'species_core', data: { size: 'M', speed: '30', trait_count: 3 } }]
+    const lines = collectionSummaryMetaLines(row, blocks)
+
+    expect(lines).toContain('Size: M')
+    expect(lines).toContain('Speed: 30')
+    expect(lines).toContain('Traits: 3')
+    expect(lines).toContain('Source: XPHB')
+    expect(lines.join(' ')).not.toMatch(/[{}]/)
+  })
+
+  it('surfaces class hit die/saves/primary ability/source, with primary ability already a clean label (not JSON)', () => {
+    const row = { entity_type: 'class', slug: 'fighter-xphb' }
+    const blocks = [{
+      block_key: 'class_core',
+      data: { hit_die: 'd10', saving_throws: 'str, con', primary_ability: 'Strength or Dexterity' }
+    }]
+    const lines = collectionSummaryMetaLines(row, blocks)
+
+    expect(lines).toContain('Hit Die: d10')
+    expect(lines).toContain('Saves: str, con')
+    expect(lines).toContain('Primary: Strength or Dexterity')
+    expect(lines).toContain('Source: XPHB')
+    expect(lines.join(' ')).not.toMatch(/[{}]/)
+  })
 })

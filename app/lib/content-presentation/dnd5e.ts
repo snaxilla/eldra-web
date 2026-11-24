@@ -426,6 +426,34 @@ function abilityLabel(code: string): string {
   return ABILITY_LABELS[String(code).toLowerCase()] ?? titleCase(code)
 }
 
+// 5etools' own class `primaryAbility` shape: [{str:true},{dex:true}] ->
+// "Strength or Dexterity" (a choice between); [{str:true, dex:true}] ->
+// "Strength and Dexterity" (both required). This RESTATES the printed
+// grouping; it picks nothing. Exported (Species/Class Context Content pass)
+// so app/lib/importers/5etools-classes.ts's own class_core.primary_ability
+// block field is built from this SAME logic instead of a second,
+// independent reimplementation -- that duplicate's own generic object
+// fallback (JSON.stringify) is what previously made this exact field the
+// one real, reproduced case of a Class description showing raw JSON.
+export function describeClassPrimaryAbility(primaryAbility: unknown): string {
+  return asArray(primaryAbility)
+    .map((group) => {
+      // A bare ability code ("str"), rather than the usual {str:true} grouping
+      // object -- not a real published XPHB shape (every measured class uses
+      // the object form), but handled directly rather than let it reach
+      // Object.keys() on a string primitive (which enumerates character
+      // indices, not ability codes).
+      if (typeof group === 'string') return abilityLabel(group)
+
+      return Object.keys((group as Record<string, unknown>) || {})
+        .filter((key) => (group as Record<string, unknown>)[key])
+        .map(abilityLabel)
+        .join(' and ')
+    })
+    .filter(Boolean)
+    .join(' or ')
+}
+
 // Exported for app/lib/content-actions/ -- see flattenEntries' own note.
 export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
@@ -848,16 +876,7 @@ function resolveClass(raw: Record<string, unknown>): PresentationEntry {
     ? `${typeof hd.number === 'number' && hd.number > 1 ? hd.number : 1}d${hd.faces}`
     : ''
 
-  // [{str:true},{dex:true}] -> "Strength or Dexterity" (a choice between);
-  // [{str:true, dex:true}] -> "Strength and Dexterity" (both required).
-  // This RESTATES the printed grouping; it picks nothing.
-  const primaryAbility = asArray(raw.primaryAbility)
-    .map((group) => Object.keys((group as Record<string, unknown>) || {})
-      .filter((key) => (group as Record<string, unknown>)[key])
-      .map(abilityLabel)
-      .join(' and '))
-    .filter(Boolean)
-    .join(' or ')
+  const primaryAbility = describeClassPrimaryAbility(raw.primaryAbility)
 
   const savingThrows = asArray(raw.proficiency).map((code) => abilityLabel(String(code))).join(', ')
 

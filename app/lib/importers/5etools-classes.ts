@@ -1,4 +1,6 @@
 import { buildDefaultEntityData } from '../systems'
+import { describeClassPrimaryAbility, flattenEntries } from '../content-presentation/dnd5e'
+import { clean5eText } from '../world-entity-collection/catalogue-article-markdown'
 import type {
   EldraImportPreviewEntity,
   EldraImportPreviewResult
@@ -12,26 +14,57 @@ function slugify(input: string) {
     .replace(/^-+|-+$/g, '')
 }
 
+// Species/Class Context Content pass -- ROOT CAUSE of "Class descriptions
+// sometimes display raw JSON": this function's own generic-object branch
+// used to fall back to `JSON.stringify(value, null, 2)` for any shape it
+// didn't specifically recognize. Measured against the real XPHB Fighter:
+// `primaryAbility` is `[{str:true},{dex:true}]` -- an array of plain
+// `{abilityCode: true}` objects that matched NONE of the recognized
+// `.entry`/`.entries`/`.items`/`.name+.entries` shapes, so every class's
+// own primary-ability field was serialized to literal, visible JSON text
+// wherever this value reached a block/meta-line (not a theoretical risk --
+// reproduced with real data, see the fixture in this module's own tests).
+//
+// Fixed at the actual cause in two parts:
+// 1. `normalizePrimaryAbility` below no longer routes through this generic
+//    function at all for that one semantically-special field -- it reuses
+//    content-presentation/dnd5e.ts's own `describeClassPrimaryAbility`,
+//    the SAME already-correct, already-used-elsewhere ability-grouping
+//    logic the full article/Character Creator presentation already relies
+//    on, rather than a second, independent reimplementation of it here.
+// 2. This function's own generic fallback, for any OTHER shape neither
+//    this function nor a caller specifically recognizes, now delegates to
+//    that same module's `flattenEntries` (the established, tested 5etools
+//    entries-tree flattener -- handles tables, lists, and named sections;
+//    degrades to nothing rather than ever stringifying an object) instead
+//    of JSON.stringify. A shape with no recognizable text inside it
+//    therefore degrades to an empty contribution, never visible JSON.
+//
+// Species/Class Context Content pass (owner follow-up, "useful content"
+// gap): this function's leaf-string branches used to return a raw
+// 5etools string verbatim, `{@tag ...}` markup and all (e.g. a class's
+// own top-level `entries` description can embed `{@variantrule...}`/
+// `{@condition...}` tags). Now cleaned via the same clean5eText the
+// "Class Features"/"Starting Equipment" sections already use (via
+// formatEntriesAsMarkdown, in the same shared module) -- one tag-cleaning
+// behavior across the whole class description/features pipeline.
 function textify(value: any): string {
   if (value == null) return ''
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+  if (typeof value === 'string') return clean5eText(value)
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value)
   }
   if (Array.isArray(value)) {
     return value.map((item) => textify(item)).filter(Boolean).join('\n\n')
   }
   if (typeof value === 'object') {
-    if (typeof value.entry === 'string') return value.entry
-    if (typeof value.entries === 'string') return value.entries
+    if (typeof value.entry === 'string') return clean5eText(value.entry)
+    if (typeof value.entries === 'string') return clean5eText(value.entries)
     if (Array.isArray(value.entries)) return value.entries.map((item) => textify(item)).filter(Boolean).join('\n\n')
     if (Array.isArray(value.items)) return value.items.map((item) => `- ${textify(item)}`).filter(Boolean).join('\n')
-    if (value.name && value.entries) return `## ${value.name}\n\n${textify(value.entries)}`
+    if (value.name && value.entries) return `## ${clean5eText(value.name)}\n\n${textify(value.entries)}`
   }
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
+  return flattenEntries(value).join('\n\n')
 }
 
 function extractClasses(payload: any): any[] {
@@ -54,7 +87,7 @@ function normalizeHitDie(raw: any): string {
 }
 
 function normalizePrimaryAbility(raw: any): string {
-  return textify(raw?.primaryAbility)
+  return describeClassPrimaryAbility(raw?.primaryAbility)
 }
 
 function normalizeProficiencyList(value: any): string {

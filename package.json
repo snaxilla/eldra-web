@@ -25,6 +25,7 @@
     "directus:create-media-world-scope": "node scripts/directus/create-media-world-scope-schema.mjs",
     "directus:create-content-workspaces": "node scripts/directus/create-content-workspaces-schema.mjs",
     "directus:alter-binding-modes": "node scripts/directus/alter-world-content-pack-bindings-binding-modes.mjs",
+    "directus:alter-world-page-presentations-background-source": "node scripts/directus/alter-world-page-presentations-background-source.mjs",
     "directus:verify-content-workspaces": "node scripts/directus/verify-content-workspaces-schema.mjs",
     "directus:bootstrap-platform-admin": "node scripts/directus/bootstrap-eldra-platform-admin.mjs",
     "directus:bootstrap": "node scripts/directus/bootstrap.mjs",

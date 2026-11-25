@@ -5,6 +5,7 @@
 import WorldDiceOverlay from '~/components/world/WorldDiceOverlay.vue'
 import { resolveWorldWorkspacePageKey } from '~/lib/eldra/world-workspace-page-key'
 import { worldDataCacheKey } from '~/lib/eldra/world-cache-keys'
+import { canOfferShowBackground, shouldRestoreOnEscape } from '~/lib/eldra/world-show-background'
 
 const route = useRoute()
 
@@ -145,6 +146,7 @@ onBeforeUnmount(() => {
   if (!import.meta.client) return
   breakpointQuery?.removeEventListener('change', onBreakpointChange)
   window.removeEventListener('keydown', onMobileDrawerKeydown)
+  window.removeEventListener('keydown', onShowBackgroundKeydown)
   document.documentElement.classList.remove('overflow-hidden')
 })
 
@@ -255,26 +257,44 @@ const presentationState = useState<{
   presentationMode: string
   backgroundFileId: string | null
   backgroundImageUrl: string | null
+  backgroundSource: 'override' | 'inherit' | 'none'
 }>('world-page-presentation', () => ({
   worldKey: '',
   pageKey: '',
   presentationMode: 'neutral',
   backgroundFileId: null,
-  backgroundImageUrl: null
+  backgroundImageUrl: null,
+  backgroundSource: 'none'
 }))
 
 const presentationRefreshNonce = useState<number>('world-page-presentation-refresh-nonce', () => 0)
 
+// Explicit response shape: `useFetch` infers a type from every registered
+// route whose path PATTERN could structurally match this dynamic template
+// (e.g. this same directory's upload-background.post.ts), not only the
+// GET handler this actually calls, which otherwise produces a wider union
+// than the real response and spurious "property does not exist" errors
+// below.
+type FetchedPagePresentation = {
+  worldKey: string
+  pageKey: string
+  presentationMode: string
+  backgroundFileId: string | null
+  backgroundImageUrl: string | null
+  backgroundSource: 'override' | 'inherit' | 'none'
+}
+
 const {
   data: fetchedPresentation,
   refresh: refreshPresentation
-} = await useFetch(() => `/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
-  default: () => ({
+} = await useFetch<FetchedPagePresentation>(() => `/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
+  default: (): FetchedPagePresentation => ({
     worldKey: String(worldId.value || ''),
     pageKey: String(pageKey.value || 'world-map'),
     presentationMode: 'neutral',
     backgroundFileId: null,
-    backgroundImageUrl: null
+    backgroundImageUrl: null,
+    backgroundSource: 'none'
   }),
   watch: [worldId, pageKey, presentationRefreshNonce]
 })
@@ -288,7 +308,10 @@ watch(
       pageKey: String(value.pageKey || pageKey.value || ''),
       presentationMode: String(value.presentationMode || 'neutral'),
       backgroundFileId: value.backgroundFileId ? String(value.backgroundFileId) : null,
-      backgroundImageUrl: value.backgroundImageUrl ? String(value.backgroundImageUrl) : null
+      backgroundImageUrl: value.backgroundImageUrl ? String(value.backgroundImageUrl) : null,
+      backgroundSource: value.backgroundSource === 'override' || value.backgroundSource === 'inherit'
+        ? value.backgroundSource
+        : 'none'
     }
   },
   { immediate: true, deep: true }
@@ -337,6 +360,63 @@ watchEffect(() => {
 // The sidebar is glass wherever it sits over artwork: the map, a page
 // backdrop or the universe. Over the plain ground it keeps its solid binding.
 const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.value || usesUniverseBackdrop.value)
+
+// "Show Background" -- World Background Defaults pass. A personal,
+// temporary viewing toggle: fades/hides the page content column (which
+// already contains every context/secondary panel a page renders, so
+// hiding it there hides them too, with no per-page wiring needed) while
+// leaving the backdrop, the left navigation rail, and this one control
+// visible and usable. Nothing is unmounted -- see the template below --
+// so toggling back restores whatever the page's own state/selection/
+// draft already was, for free.
+const showBackgroundActive = useState<boolean>('world-show-background-active', () => false)
+
+const canShowBackground = computed(() => canOfferShowBackground(hasPageBackdrop.value, pageKey.value))
+
+// Resets whenever the current page stops having a backdrop to show (a
+// navigation already resets it below, but this also covers the backdrop
+// itself disappearing without a route change, e.g. Build mode clearing
+// it while Show Background is active).
+watchEffect(() => {
+  if (!canShowBackground.value) showBackgroundActive.value = false
+})
+
+// "Reset this temporary view when navigating to another page/World" --
+// route.path already encodes both.
+watch(() => route.path, () => {
+  showBackgroundActive.value = false
+})
+
+function toggleShowBackground() {
+  if (!canShowBackground.value) return
+  showBackgroundActive.value = !showBackgroundActive.value
+}
+
+function onShowBackgroundKeydown(event: KeyboardEvent) {
+  // Generic "is something else already claiming this" check rather than
+  // coordinating with every possible dialog: Reka UI's own DialogContentImpl
+  // renders `role="dialog"` (confirmed by reading node_modules/reka-ui's
+  // source directly), and this component's own mobile drawer already sets
+  // it explicitly above. A capture-phase Escape handler that stops
+  // propagation (e.g. WorldMediaPicker's own, while the Media Gallery picker
+  // is open over a Customize Page dialog) halts dispatch before this
+  // bubble-phase listener ever runs, so that case needs no explicit check
+  // here either.
+  const hasOpenDialog = typeof document !== 'undefined' && Boolean(document.querySelector('[role="dialog"]'))
+  if (shouldRestoreOnEscape(event.key, hasOpenDialog)) {
+    event.preventDefault()
+    showBackgroundActive.value = false
+  }
+}
+
+watch(showBackgroundActive, (active) => {
+  if (!import.meta.client) return
+  if (active) {
+    window.addEventListener('keydown', onShowBackgroundKeydown)
+  } else {
+    window.removeEventListener('keydown', onShowBackgroundKeydown)
+  }
+})
 </script>
 
 <template>
@@ -452,8 +532,32 @@ const sidebarGlass = computed(() => isFullBleedMap.value || hasPageBackdrop.valu
         <UIcon name="i-lucide-menu" class="h-5 w-5" />
       </button>
 
+      <!-- Show Background toggle: shell-owned (like the hamburger above)
+           so it works identically on every page that has a backdrop,
+           with no per-page wiring. Hidden while the mobile drawer is
+           open for the same reason the hamburger is -- avoids ever
+           sharing the same corner as the drawer's own close affordance. -->
+      <button
+        v-if="canShowBackground && !mobileDrawerOpen"
+        type="button"
+        data-show-background-toggle
+        class="fixed right-3 z-[90] inline-flex h-11 items-center gap-2 rounded-none border border-eldra-accent/32 bg-eldra-panel/86 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-eldra-text shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-eldra-accent/55"
+        style="top: calc(0.75rem + env(safe-area-inset-top));"
+        :aria-pressed="showBackgroundActive"
+        :aria-label="showBackgroundActive ? 'Restore page content' : 'Show background artwork'"
+        @click="toggleShowBackground"
+      >
+        <UIcon :name="showBackgroundActive ? 'i-lucide-panel-left-open' : 'i-lucide-image'" class="h-4 w-4" />
+        <span>{{ showBackgroundActive ? 'Restore Content' : 'Show Background' }}</span>
+      </button>
+
       <div class="min-w-0 overflow-hidden relative" :class="mapInsetClass">
-        <div class="relative h-full w-full overflow-hidden">
+        <div
+          class="relative h-full w-full overflow-hidden motion-safe:transition-opacity motion-safe:duration-300 motion-reduce:transition-none"
+          :class="showBackgroundActive ? 'pointer-events-none opacity-0' : 'opacity-100'"
+          :inert="showBackgroundActive"
+          :aria-hidden="showBackgroundActive ? 'true' : undefined"
+        >
           <slot />
         </div>
       </div>

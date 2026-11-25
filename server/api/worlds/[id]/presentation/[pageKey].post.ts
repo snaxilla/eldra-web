@@ -1,5 +1,5 @@
 import { requireCapability } from '../../../../utils/authorization'
-import { fileBelongsToWorld } from '../../../../utils/world-page-presentation'
+import { needsBackgroundFileLookup, resolveWriteBackgroundSource, validateBackgroundFile } from '../../../../utils/world-page-presentation'
 
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
@@ -74,15 +74,30 @@ export default defineEventHandler(async (event) => {
   // would then render (GET /api/assets/:id has no World-scoping of its
   // own) as if it belonged here. No new capability: still gated on the
   // SAME world.settings.edit check above.
-  if (backgroundFileId) {
+  //
+  // World Background Defaults follow-up -- image-type validation. The
+  // Gallery listing (media.get.ts) and upload (media/upload.post.ts)
+  // both only ever let an `image/*` file reach this far through NORMAL
+  // use of the picker, but neither one validates a direct save request:
+  // a client can submit any existing file id belonging to this World,
+  // including a non-image one (e.g. uploaded before World-scoping
+  // existed, or posted directly rather than through the picker).
+  // `validateBackgroundFile` checks both ownership and type together,
+  // in that order, and is skipped entirely (no lookup at all) whenever
+  // no new asset is being submitted -- mode-only saves, "Use World
+  // Default", "No Background", and the legacy "Clear" action never
+  // reach this block, since `needsBackgroundFileLookup` is false for
+  // all of them.
+  if (needsBackgroundFileLookup(backgroundFileId)) {
     const fileCheck = await dxFetch(
-      `/files/${encodeURIComponent(backgroundFileId)}?fields[]=id&fields[]=world_id`
+      `/files/${encodeURIComponent(backgroundFileId as string)}?fields[]=id&fields[]=world_id&fields[]=type`
     )
 
-    if (!fileCheck?.data?.id || !fileBelongsToWorld(fileCheck.data.world_id, worldId)) {
+    const validation = validateBackgroundFile(fileCheck?.data, worldId)
+    if (!validation.ok) {
       throw createError({
-        statusCode: 403,
-        statusMessage: 'That image does not belong to this World.'
+        statusCode: validation.statusCode,
+        statusMessage: validation.statusMessage
       })
     }
   }
@@ -96,15 +111,29 @@ export default defineEventHandler(async (event) => {
   const existing = await dxFetch(`/items/world_page_presentations?${checkParams.toString()}`)
   const existingItem = Array.isArray(existing?.data) && existing.data.length ? existing.data[0] : null
 
+  // World Background Defaults pass: `background_source` is only ever
+  // ADDED to the write body for the two new explicit actions ("Use World
+  // Default" / "No Background" -- see resolveWriteBackgroundSource's own
+  // header for why). Every pre-existing save (mode toggle, picking an
+  // image, the legacy single "Clear" still used by pages that don't
+  // support inheritance) sends the exact same body it always has, so
+  // none of them depend on whether
+  // scripts/directus/alter-world-page-presentations-background-source.mjs
+  // has been run against a given Directus instance yet.
+  const writeBackgroundSource = resolveWriteBackgroundSource(body?.backgroundSource, backgroundFileId)
+
+  const writeBody: Record<string, unknown> = {
+    presentation_mode: presentationMode,
+    background_file_id: backgroundFileId
+  }
+  if (writeBackgroundSource) writeBody.background_source = writeBackgroundSource
+
   let saved: any = null
 
   if (existingItem?.id) {
     const json = await dxFetch(`/items/world_page_presentations/${existingItem.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        presentation_mode: presentationMode,
-        background_file_id: backgroundFileId
-      })
+      body: JSON.stringify(writeBody)
     })
     saved = json?.data || null
   } else {
@@ -113,12 +142,13 @@ export default defineEventHandler(async (event) => {
       body: JSON.stringify({
         world_key: worldId,
         page_key: pageKey,
-        presentation_mode: presentationMode,
-        background_file_id: backgroundFileId
+        ...writeBody
       })
     })
     saved = json?.data || null
   }
+
+  const resolvedBackgroundSource = writeBackgroundSource || (backgroundFileId ? 'override' : 'none')
 
   return {
     success: true,
@@ -127,5 +157,6 @@ export default defineEventHandler(async (event) => {
     presentationMode: saved?.presentation_mode ? String(saved.presentation_mode) : presentationMode,
     backgroundFileId: saved?.background_file_id ? String(saved.background_file_id) : backgroundFileId,
     backgroundImageUrl: saved?.background_file_id ? `/api/assets/${saved.background_file_id}` : null,
+    backgroundSource: resolvedBackgroundSource
   }
 })

@@ -1,3 +1,5 @@
+import { pagePresentationNeedsWorldDefault, resolvePagePresentation, WORLD_DEFAULT_PAGE_KEY } from '../../../../utils/world-page-presentation'
+
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -36,11 +38,17 @@ async function fetchPresentationRow(worldId: string, pageKey: string) {
   const params = new URLSearchParams()
   params.set('filter[world_key][_eq]', worldId)
   params.set('filter[page_key][_eq]', pageKey)
-  params.append('fields[]', 'id')
-  params.append('fields[]', 'world_key')
-  params.append('fields[]', 'page_key')
-  params.append('fields[]', 'presentation_mode')
-  params.append('fields[]', 'background_file_id')
+  // Wildcard, not an itemized `fields[]` list: `background_source` is an
+  // ADDITIVE column (see scripts/directus/alter-world-page-presentations-
+  // background-source.mjs) that may not exist yet on a given Directus
+  // instance's schema. Directus rejects a `fields[]` request naming an
+  // unknown field outright, which would otherwise turn "the migration
+  // hasn't run here yet" into every page load 500ing instead of this
+  // route's own documented graceful fallback (missing field reads as
+  // undefined, resolved the same as a pre-migration row -- see
+  // resolveBackgroundSource). Matches world-presentation-settings.ts's
+  // own `fields: '*'` convention for the identical reason.
+  params.set('fields', '*')
   params.set('limit', '1')
 
   const json = await dxFetch(`/items/world_page_presentations?${params.toString()}`)
@@ -73,11 +81,29 @@ export default defineEventHandler(async (event) => {
     item = await fetchPresentationRow(worldId, 'characters')
   }
 
+  // World Background Defaults pass: the World's own default (page_key
+  // 'world-default', the SAME collection/route -- see
+  // resolvePagePresentation's own header) is fetched alongside the
+  // page's own row so an explicit-override/no-row/explicit-none page can
+  // inherit it. Skipped for the World-default row itself and for
+  // specialized keys that never read it (pagePresentationNeedsWorldDefault).
+  const worldDefaultItem = pagePresentationNeedsWorldDefault(pageKey)
+    ? await fetchPresentationRow(worldId, WORLD_DEFAULT_PAGE_KEY)
+    : null
+
+  const resolved = resolvePagePresentation(pageKey, item, worldDefaultItem)
+
   return {
     worldKey: worldId,
     pageKey,
-    presentationMode: item?.presentation_mode ? String(item.presentation_mode) : 'neutral',
-    backgroundFileId: item?.background_file_id ? String(item.background_file_id) : null,
-    backgroundImageUrl: item?.background_file_id ? `/api/assets/${item.background_file_id}` : null,
+    presentationMode: resolved.presentationMode,
+    backgroundFileId: resolved.backgroundFileId,
+    backgroundImageUrl: resolved.backgroundFileId ? `/api/assets/${resolved.backgroundFileId}` : null,
+    backgroundSource: resolved.backgroundSource,
+    worldDefaultBackgroundFileId: resolved.worldDefaultBackgroundFileId,
+    worldDefaultBackgroundImageUrl: resolved.worldDefaultBackgroundFileId
+      ? `/api/assets/${resolved.worldDefaultBackgroundFileId}`
+      : null,
+    worldDefaultPresentationMode: resolved.worldDefaultPresentationMode
   }
 })

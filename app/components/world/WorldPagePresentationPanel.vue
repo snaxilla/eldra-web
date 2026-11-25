@@ -41,6 +41,15 @@ type PresentationState = {
   presentationMode: string
   backgroundFileId: string | null
   backgroundImageUrl: string | null
+  // World Background Defaults pass. The page's OWN stored intent --
+  // 'override' (its own image), 'inherit' (showing the World default),
+  // or 'none' (explicitly nothing, even if a World default exists).
+  // `backgroundFileId`/`backgroundImageUrl` above are the RESOLVED
+  // values (what actually renders -- the inherited World default's own
+  // image when source is 'inherit'), which is why `setPresentationMode`
+  // below must never read them back as if they were this page's own
+  // override.
+  backgroundSource: 'override' | 'inherit' | 'none'
 }
 
 const sharedPresentationState = useState<PresentationState>('world-page-presentation', () => ({
@@ -48,7 +57,8 @@ const sharedPresentationState = useState<PresentationState>('world-page-presenta
   pageKey: '',
   presentationMode: 'neutral',
   backgroundFileId: null,
-  backgroundImageUrl: null
+  backgroundImageUrl: null,
+  backgroundSource: 'none'
 }))
 
 const localPresentationState = ref<PresentationState | null>(null)
@@ -66,7 +76,8 @@ const presentationState = computed<PresentationState | null>({
         pageKey: String(props.pageKey || ''),
         presentationMode: 'neutral',
         backgroundFileId: null,
-        backgroundImageUrl: null
+        backgroundImageUrl: null,
+        backgroundSource: 'none'
       }
     }
   }
@@ -120,14 +131,46 @@ const previewThumbnailUrl = computed(() =>
 // active-highlight styling at a glance in every viewport width.
 const previewMetaLine = computed(() => `Mode: ${currentMode.value}`)
 
+// World Background Defaults pass. 'world-default' has nothing above it
+// to inherit from (it IS the default); 'character-sheet' is a
+// specialized surface the owner's instruction keeps off the inheritance
+// path entirely (see world-page-presentation.ts's SPECIALIZED_PAGE_KEYS
+// for the matching server-side exclusion) -- its editor keeps the single
+// legacy "Clear" action instead of the two new ones.
+const supportsInheritance = computed(() => props.pageKey !== 'world-default' && props.pageKey !== 'character-sheet')
+
+const backgroundSource = computed(() => presentationState.value?.backgroundSource || 'none')
+
+const backgroundStateLabel = computed(() => {
+  if (!supportsInheritance.value) return null
+  if (backgroundSource.value === 'override') return 'Local override'
+  if (backgroundSource.value === 'inherit') return 'Inheriting World Default'
+  return 'No background (World Default off)'
+})
+
+// The page's OWN stored override id, never the resolved/inherited
+// display value -- `presentationState.value.backgroundFileId` is the
+// RESOLVED value (the World default's own file id while inheriting), so
+// reading it back here as if it were this page's own override would
+// silently turn "inheriting" into "explicitly overridden with the same
+// image" the moment an unrelated action (e.g. a mode click) re-saves.
+const ownBackgroundFileId = computed(() =>
+  backgroundSource.value === 'override' ? presentationState.value?.backgroundFileId || null : null
+)
+
 function fallbackState(): PresentationState {
   return {
     worldKey: String(props.worldId || ''),
     pageKey: String(props.pageKey || ''),
     presentationMode: 'neutral',
     backgroundFileId: null,
-    backgroundImageUrl: null
+    backgroundImageUrl: null,
+    backgroundSource: 'none'
   }
+}
+
+function normalizeBackgroundSource(value: unknown): 'override' | 'inherit' | 'none' {
+  return value === 'override' || value === 'inherit' ? value : 'none'
 }
 
 async function loadPresentationState() {
@@ -143,7 +186,8 @@ async function loadPresentationState() {
       pageKey: String(loaded?.pageKey || props.pageKey || ''),
       presentationMode: String(loaded?.presentationMode || 'neutral'),
       backgroundFileId: loaded?.backgroundFileId ? String(loaded.backgroundFileId) : null,
-      backgroundImageUrl: loaded?.backgroundImageUrl ? String(loaded.backgroundImageUrl) : null
+      backgroundImageUrl: loaded?.backgroundImageUrl ? String(loaded.backgroundImageUrl) : null,
+      backgroundSource: normalizeBackgroundSource(loaded?.backgroundSource)
     }
   } catch {
     presentationState.value = fallbackState()
@@ -160,12 +204,13 @@ watch(
   { immediate: true }
 )
 
-async function savePresentation(nextMode: string, backgroundFileId: string | null) {
+async function savePresentation(nextMode: string, backgroundFileId: string | null, explicitBackgroundSource?: 'inherit' | 'none') {
   const saved = await $fetch<PresentationState>(`/api/worlds/${props.worldId}/presentation/${props.pageKey}`, {
     method: 'POST',
     body: {
       presentationMode: nextMode,
-      backgroundFileId
+      backgroundFileId,
+      ...(explicitBackgroundSource ? { backgroundSource: explicitBackgroundSource } : {})
     }
   })
 
@@ -174,7 +219,8 @@ async function savePresentation(nextMode: string, backgroundFileId: string | nul
     pageKey: String(saved.pageKey || props.pageKey),
     presentationMode: saved.presentationMode || nextMode,
     backgroundFileId: saved.backgroundFileId ? String(saved.backgroundFileId) : null,
-    backgroundImageUrl: saved.backgroundImageUrl ? String(saved.backgroundImageUrl) : null
+    backgroundImageUrl: saved.backgroundImageUrl ? String(saved.backgroundImageUrl) : null,
+    backgroundSource: normalizeBackgroundSource(saved.backgroundSource)
   }
 
   presentationRefreshNonce.value++
@@ -196,7 +242,11 @@ async function setPresentationMode(nextMode: 'immersive' | 'muted' | 'neutral') 
   presentationMessageIsError.value = false
 
   try {
-    await savePresentation(nextMode, presentationState.value?.backgroundFileId || null)
+    // ownBackgroundFileId, not the resolved preview value -- changing
+    // mode while inheriting (or while explicitly showing no background)
+    // must never turn into an accidental override of this page with the
+    // World default's own image.
+    await savePresentation(nextMode, ownBackgroundFileId.value)
     presentationMessage.value = `Mode set to ${nextMode}.`
   } catch (error: any) {
     presentationMessage.value =
@@ -232,7 +282,9 @@ async function onBackgroundSelected(file: { id: string }) {
     // thumbnail URL. The square's own display below reads this back
     // through buildCardThumbnailUrl itself; the stored reference stays
     // the real id throughout, exactly as it already was for an
-    // uploaded-through-the-old-flow background.
+    // uploaded-through-the-old-flow background. Always an explicit
+    // override -- the server infers this from the file id alone, no
+    // backgroundSource needed here.
     await savePresentation(
       currentMode.value === 'neutral' ? 'immersive' : currentMode.value,
       String(file.id)
@@ -258,12 +310,67 @@ async function clearBackground() {
   presentationMessageIsError.value = false
 
   try {
-    // Clears the PAGE'S association with the file only (backgroundFileId
-    // -> null on this World/pageKey's own presentation row) -- never a
-    // file delete; the underlying asset is untouched and still exists
-    // in the Media Gallery for any other use.
+    // Legacy single-action clear -- only reachable for pages that don't
+    // support inheritance (supportsInheritance === false: Character
+    // Sheet, World Default). Deliberately passes NO explicit
+    // backgroundSource, unlike useWorldDefault/noBackground below: both
+    // resolvePagePresentation's World-default branch and its specialized
+    // -key forcing (world-page-presentation.ts) already ignore whatever
+    // background_source a Character Sheet/World Default row has stored,
+    // so writing one here would gain nothing while making this
+    // pre-existing action newly depend on the background_source column
+    // existing (see the migration script's own deployment-order note).
     await savePresentation(currentMode.value, null)
     presentationMessage.value = 'Background cleared.'
+  } catch (error: any) {
+    presentationMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to clear background.'
+    presentationMessageIsError.value = true
+  } finally {
+    presentationBusy.value = false
+  }
+}
+
+// The two explicit, unambiguous choices this task introduces -- replace
+// the single "Clear" action above for every page that supports
+// inheritance. Neither deletes the underlying media asset; both only
+// change THIS page's own association, same guarantee "Clear" already
+// made.
+async function useWorldDefault() {
+  if (presentationBusy.value) return
+
+  presentationBusy.value = true
+  presentationMessage.value = ''
+  presentationMessageIsError.value = false
+
+  try {
+    await savePresentation(currentMode.value, null, 'inherit')
+    presentationMessage.value = 'Now inheriting the World Default background.'
+  } catch (error: any) {
+    presentationMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to switch to the World Default.'
+    presentationMessageIsError.value = true
+  } finally {
+    presentationBusy.value = false
+  }
+}
+
+async function noBackground() {
+  if (presentationBusy.value) return
+
+  presentationBusy.value = true
+  presentationMessage.value = ''
+  presentationMessageIsError.value = false
+
+  try {
+    await savePresentation(currentMode.value, null, 'none')
+    presentationMessage.value = 'Background set to none for this page.'
   } catch (error: any) {
     presentationMessage.value =
       error?.data?.statusMessage ||
@@ -403,7 +510,28 @@ watch(pickerOpen, (isOpen, wasOpen) => {
         </div>
 
         <div data-page-presentation-actions class="mt-4 flex flex-wrap gap-2">
+          <template v-if="supportsInheritance">
+            <button
+              type="button"
+              class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong disabled:opacity-50"
+              :disabled="presentationBusy || loadingPresentation"
+              @click="useWorldDefault"
+            >
+              Use World Default
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong disabled:opacity-50"
+              :disabled="presentationBusy || loadingPresentation"
+              @click="noBackground"
+            >
+              No Background
+            </button>
+          </template>
+
           <button
+            v-else
             type="button"
             class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong disabled:opacity-50"
             :disabled="presentationBusy || loadingPresentation"
@@ -416,6 +544,13 @@ watch(pickerOpen, (isOpen, wasOpen) => {
         <p class="mt-4 text-sm leading-7 text-eldra-text-dim">
           {{ description }}
         </p>
+
+        <div
+          v-if="backgroundStateLabel"
+          class="mt-4 rounded-none border border-eldra-accent/22 bg-eldra-accent/8 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-eldra-accent-text"
+        >
+          {{ backgroundStateLabel }}
+        </div>
 
         <div class="mt-4 rounded-none border border-eldra-accent/16 bg-eldra-well/34 px-3 py-2 text-xs leading-5 text-eldra-text-faint">
           {{ loadingPresentation ? 'Loading presentation state...' : previewMetaLine }}

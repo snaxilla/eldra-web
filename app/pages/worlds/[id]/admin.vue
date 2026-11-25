@@ -255,6 +255,11 @@ const panels = GAME_ADMIN_SECTIONS
 
 const pageSetupSections = [
   {
+    key: 'world-default',
+    title: 'World Default',
+    description: 'The fallback background/mode every page below inherits when it has no background of its own set. An explicit per-page background always wins over this; a page can also explicitly choose "No Background" to opt out even when this is set. Never shown on the World Map (full-bleed, draws its own scene) or the Character Sheet (keeps its own independent setting, listed separately below).'
+  },
+  {
     key: 'characters',
     title: 'Characters',
     description: 'Controls the character roster and cast browsing page presentation -- cards, list, filters. Does not affect an individual Character Sheet; see the separate Character Sheet entry for that.'

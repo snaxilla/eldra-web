@@ -125,7 +125,7 @@ const navItems = computed(() => [
 
       <!-- Icon rail: scrolls on short viewports; labels are exposed as
            tooltips (hover + keyboard focus) and accessible names. -->
-      <nav aria-label="World navigation" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1">
+      <nav aria-label="World navigation" class="eldra-nav-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1">
         <div class="space-y-2">
           <UTooltip
             v-for="item in navItems"
@@ -238,7 +238,7 @@ const navItems = computed(() => [
         </div>
       </div>
 
-      <nav class="min-h-0 flex-1 overflow-y-auto px-2">
+      <nav class="eldra-nav-scroll min-h-0 flex-1 overflow-y-auto px-2">
         <div class="space-y-1">
           <NuxtLink
             v-for="item in navItems"
@@ -293,3 +293,44 @@ const navItems = computed(() => [
     </template>
   </aside>
 </template>
+
+<style scoped>
+/* Navigation Scrollbar pass. The REAL scroll containers are these two
+   `<nav>` elements (collapsed icon rail, expanded link list) -- not the
+   `<aside>` they sit inside, which never scrolls itself. A gold theme
+   rule written against the wrong element (e.g. the root `.eldra-sidebar-
+   ornate` aside) would silently never apply, since `::-webkit-scrollbar`
+   and `scrollbar-color` only affect the element that actually overflows.
+   Same class, same rule, for both the desktop column and the mobile
+   drawer -- both render this identical component. */
+.eldra-nav-scroll {
+  scrollbar-width: thin;
+}
+
+/* Left out entirely under forced-colors (Windows High Contrast): the
+   browser's own accessible scrollbar rendering must win there, not a
+   gold tint nobody asked it to override. */
+@media (forced-colors: none) {
+  .eldra-nav-scroll {
+    scrollbar-color: rgb(var(--eldra-accent-rgb) / 0.55) rgb(var(--eldra-panel-rgb) / 0.22);
+  }
+
+  .eldra-nav-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .eldra-nav-scroll::-webkit-scrollbar-track {
+    background: rgb(var(--eldra-panel-rgb) / 0.22);
+  }
+
+  .eldra-nav-scroll::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--eldra-accent-rgb) / 0.55);
+    background-clip: content-box;
+    border: 2px solid transparent;
+  }
+
+  .eldra-nav-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--eldra-accent-rgb) / 0.8);
+  }
+}
+</style>

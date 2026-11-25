@@ -270,6 +270,22 @@ function goBackContext() {
   nestedContextEntity.value = previous || null
 }
 
+// World Background Defaults pass: this component's own image lightbox
+// below is `<Teleport to="body">`-rendered, so it sits OUTSIDE
+// world-workspace.vue's inert-wrapped page-content column -- Show
+// Background's `inert` on that wrapper only reaches its own DOM subtree,
+// never content a Teleport has moved elsewhere. Reading the SAME shared
+// state directly (no prop drilling needed; this is the established
+// cross-component useState convention already used throughout this
+// workspace) lets this one Teleported panel apply the identical
+// inert/opacity treatment itself, exactly like the rest of this page's
+// content, instead of silently remaining visible and keyboard-reachable
+// while the rest of the page fades out. A no-op everywhere this
+// component is used on a page Show Background never offers (e.g. the
+// Character Sheet, which excludes the toggle entirely) -- the state
+// simply stays false there.
+const showBackgroundActive = useState<boolean>('world-show-background-active', () => false)
+
 const imageLightboxOpen = ref(false)
 
 function openImageLightbox() {
@@ -588,7 +604,10 @@ function readMore() {
     >
       <div
         v-if="imageLightboxOpen"
-        class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+        class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm motion-safe:transition-opacity motion-safe:duration-300 motion-reduce:transition-none"
+        :class="showBackgroundActive ? 'pointer-events-none opacity-0' : 'opacity-100'"
+        :inert="showBackgroundActive"
+        :aria-hidden="showBackgroundActive ? 'true' : undefined"
         @click.self="closeImageLightbox"
       >
         <button

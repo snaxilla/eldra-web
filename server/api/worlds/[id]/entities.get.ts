@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { requireCapability } from '../../../utils/authorization'
 import { directusServiceRequest } from '../../../utils/directus'
 import { getCatalogueBackedEntityRows } from '../../../utils/catalogue-entity-bridge'
 import { resolveDerivedImageUrl } from '../../../../app/lib/content-presentation/effective-image'
@@ -299,6 +300,20 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  // World Read Authorization pass -- this route previously called neither
+  // `requireCapability` nor read `event.context.principal` at all, so any
+  // authenticated Eldra account (not necessarily a member of THIS World)
+  // could list another World's full entity roster. `world.read` is held by
+  // every membership role (owner/gm/worldbuilder/player/observer), so this
+  // is exactly "is this caller a member of this World," never a narrower
+  // gate than any real role already passes. Checked BEFORE the Directus
+  // query/catalogue resolution below, not after.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId })
 
   const typeFilter = normalizeTypeFilter(query.type || query.types || query.entityType || query.entityTypes)
 

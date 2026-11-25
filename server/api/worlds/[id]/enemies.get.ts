@@ -1,3 +1,4 @@
+import { requireCapability } from '../../../utils/authorization'
 import { directusServiceRequest } from '../../../utils/directus'
 import { getCatalogueBackedEnemyRows } from '../../../utils/catalogue-entity-bridge'
 
@@ -66,6 +67,17 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'worldId is required'
     })
   }
+
+  // World Read Authorization pass -- see entities.get.ts's own comment at
+  // the identical check for the full rationale. `worldId` here is a
+  // `number` (this route's own established type, unchanged); `requireCapability`'s
+  // Scope always takes a string, so it is stringified only for this check,
+  // never for the Directus queries below.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId: String(worldId) })
 
   const entitiesRes = await directusServiceRequest('/items/entities', {
     method: 'GET',

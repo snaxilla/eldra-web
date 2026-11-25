@@ -1,3 +1,4 @@
+import { requireCapability } from '../../../../utils/authorization'
 import { directusServiceRequest } from '../../../../utils/directus'
 
 function cleanText(value: any) {
@@ -61,6 +62,14 @@ export default defineEventHandler(async (event) => {
   if (!worldId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id' })
   }
+
+  // World Read Authorization pass -- see entities.get.ts's own comment at
+  // the identical check for the full rationale.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId: String(worldId) })
 
   const prefix = worldSlugPrefix(worldId)
 

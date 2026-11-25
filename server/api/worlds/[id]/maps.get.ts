@@ -1,3 +1,5 @@
+import { requireCapability } from '../../../utils/authorization'
+
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -53,6 +55,14 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  // World Read Authorization pass -- see entities.get.ts's own comment at
+  // the identical check for the full rationale.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId })
 
   const params = new URLSearchParams()
 

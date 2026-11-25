@@ -14,9 +14,18 @@
 // shape GET /api/content-packs/preview/srd-5-1 already established for
 // "there is genuinely nothing here yet."
 //
-// No requireCapability here -- matching GET /api/worlds/:id/content,
+// World Read Authorization pass -- the comment that used to be here
+// ("No requireCapability here -- matching GET /api/worlds/:id/content,
 // GET /api/worlds/:id/catalogue, and GET /api/worlds/:id/entities/:entityId's
-// own shared precedent: reading is not gated the way writing is.
+// own shared precedent: reading is not gated the way writing is") described
+// an actual gap, not a deliberate design: none of those three routes checked
+// World membership either, and entities/:entityId.get.ts has since been
+// corrected to require `world.read`. This route now matches that correction
+// instead of the stale precedent. `assembleCharacter` already correctly
+// verifies the resolved character's own `world_id` matches the requested
+// World (character-assembly.ts line ~541, "character-not-found" otherwise)
+// -- that check is unchanged; this adds the separate, previously-missing
+// check of WHO may ask at all.
 //
 // Explicit h3 imports (rather than relying on Nitro's auto-imports, which
 // GET /api/worlds/:id/catalogue and .../content use) -- this route branches
@@ -25,6 +34,7 @@
 // GET /api/content-packs/preview/srd-5-1's own explicit-import convention.
 
 import { createError, defineEventHandler, getRouterParam } from 'h3'
+import { requireCapability } from '../../../../../utils/authorization'
 import { assembleCharacter } from '../../../../../utils/character-assembly'
 
 export default defineEventHandler(async (event) => {
@@ -34,6 +44,12 @@ export default defineEventHandler(async (event) => {
   if (!worldId || !characterId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world or character id' })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId })
 
   const result = await assembleCharacter(worldId, characterId)
 

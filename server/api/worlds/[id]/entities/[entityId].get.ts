@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { requireCapability } from '../../../../utils/authorization'
 import { directusServiceRequest } from '../../../../utils/directus'
 
 const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
@@ -162,6 +163,19 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world or entity id'
     })
   }
+
+  // World Read Authorization pass. This route already correctly checks
+  // `entity.world_id !== worldId` below (a World B entity id never
+  // resolves through a World A route) -- that check is unchanged. What it
+  // never checked is WHO may ask at all: no `requireCapability` call, no
+  // read of `event.context.principal`, so any authenticated account could
+  // fetch any entity it could correctly guess a (worldId, entityId) pair
+  // for. A protected list does not secure an unprotected detail route.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId: String(worldId) })
 
   const entityRes = await directusServiceRequest(`/items/entities/${entityId}`, {
     method: 'GET',

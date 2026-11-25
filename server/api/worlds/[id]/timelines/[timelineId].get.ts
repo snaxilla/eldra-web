@@ -1,3 +1,4 @@
+import { requireCapability } from '../../../../utils/authorization'
 import { directusServiceRequest } from '../../../../utils/directus'
 
 function cleanText(value: any) {
@@ -141,6 +142,17 @@ export default defineEventHandler(async (event) => {
   if (!worldId || !timelineKey) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world or timeline id' })
   }
+
+  // World Read Authorization pass -- see entities.get.ts's own comment at
+  // the identical check for the full rationale. `findTimeline` below
+  // already correctly verifies the resolved row's own slug prefix matches
+  // THIS worldId (a World B timeline id/slug never resolves here); this
+  // adds the separate, previously-missing check of WHO may ask at all.
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.read', { kind: 'world', worldId: String(worldId) })
 
   const timelineRow = await findTimeline(worldId, timelineKey)
 

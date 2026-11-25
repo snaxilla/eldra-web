@@ -682,6 +682,11 @@ function collectionSearchHaystack(entity: any) {
     entity?.slug,
     entity?.summary,
     summaryForEntity(entity),
+    // Rail-only content (see selectedSummary/articleDetail), included here
+    // so searching a Species/Class by trait or feature name (e.g.
+    // "Darkvision") still matches -- never rendered as card teaser text,
+    // only joined into the lowercase search string.
+    entity?.articleDetail,
     ...collectionMetaLines(entity)
   ]
     .filter(Boolean)
@@ -1086,6 +1091,18 @@ const selectedSummary = computed(() => {
 
   const overviewText = summaryForEntity(detail)
   if (overviewText) return overviewText
+
+  // Game Admin Workspace Cleanup's forebear regression fix: a catalogue
+  // species/class row's summary-mode payload never carries `.blocks`, so
+  // summaryForEntity's own blocks-based fallback above can never reach
+  // entities.get.ts's server-built article text for exactly this case.
+  // `articleDetail` is that same rich content, sent on a field the
+  // compact card and collectionSearchHaystack never read -- restoring it
+  // here (not via `summary`, which the card DOES read) is what keeps the
+  // rail's trait/feature content without reintroducing the card
+  // regression (full articles inflating Grid/List card height).
+  const articleDetail = String(detail?.articleDetail || '').trim()
+  if (articleDetail) return articleDetail
 
   return findFirstDescriptiveText(detail?.blocks?.map((block: any) => block?.data))
 })

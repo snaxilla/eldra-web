@@ -98,6 +98,28 @@ describe('formatClassFeatureRef / formatChoiceList', () => {
   it('joins an array of choice values', () => {
     expect(formatChoiceList(['str', 'dex'])).toBe('str, dex')
   })
+
+  // Species/Class Collection-Card Regression Repair -- the second,
+  // owner-reported bug fixed alongside the card regression. Reproduced with
+  // the real XPHB Bard's own `startingProficiencies.tools`:
+  // ["three {@item musical instrument|PHB|musical instruments} of your
+  // choice"] -- a plain array of strings, one of which embeds a {@item ...}
+  // tag MID-SENTENCE, not as the whole string. The tag survived verbatim
+  // because formatChoiceList's string-leaf branch returned its input
+  // unmodified.
+  it('strips a {@item ...} tag embedded mid-string in a tool-proficiency entry (the real Bard regression)', () => {
+    expect(formatChoiceList(['three {@item musical instrument|PHB|musical instruments} of your choice']))
+      .toBe('three musical instrument of your choice')
+  })
+
+  it('cleans every string in a choice-set { from: [...] } the same way, not only a bare array (e.g. a class skill-choice shape)', () => {
+    expect(formatChoiceList({ from: ['{@skill Arcana|XPHB}', 'History'] })).toBe('Arcana, History')
+  })
+
+  it('leaves untagged text completely unaffected -- clean5eText is a no-op here, not a new transform', () => {
+    expect(formatChoiceList({ from: ['Acrobatics', 'Athletics'] })).toBe('Acrobatics, Athletics')
+    expect(formatChoiceList(['str', 'dex'])).toBe('str, dex')
+  })
 })
 
 describe('buildClassArticleMarkdownFromBlocks', () => {

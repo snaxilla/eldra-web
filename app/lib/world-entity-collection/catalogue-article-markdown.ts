@@ -92,10 +92,24 @@ export function formatChoiceList(value: any): string {
     return value.map(formatChoiceList).filter(Boolean).join(', ')
   }
 
-  if (typeof value === 'string') return value
+  // Bard tool proficiencies regression ({@item musical instrument|PHB|
+  // musical instruments} leaking verbatim): a raw 5etools proficiency
+  // string can embed a {@tag ...} mid-sentence ("three {@item musical
+  // instrument|PHB|musical instruments} of your choice" -- the real XPHB
+  // Bard's own `startingProficiencies.tools`), not just as the whole
+  // string. clean5eText is a no-op on untagged text (only strips {@...}
+  // markup and collapses whitespace), so routing every string leaf
+  // through it here is safe for the plain ability-code/skill-name strings
+  // this function already handles elsewhere.
+  if (typeof value === 'string') return clean5eText(value)
 
   if (typeof value === 'object') {
-    if (Array.isArray(value.from)) return value.from.join(', ')
+    // Recurse through formatChoiceList (not a raw .join) so a `{from:
+    // [...]}` shape -- e.g. `skills: [{choose: {from: [...], count}}]`,
+    // the common shape for class skill-proficiency choices -- gets the
+    // same tag-cleaning as every other branch, not a second, inconsistent
+    // path.
+    if (Array.isArray(value.from)) return formatChoiceList(value.from)
     if (value.choose) return formatChoiceList(value.choose)
     return Object.values(value).map(formatChoiceList).filter(Boolean).join(', ')
   }

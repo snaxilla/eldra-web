@@ -243,6 +243,27 @@ function extractCatalogueArticleText(entityType: string, blocks: any[] = []) {
   return ''
 }
 
+// Species/Class Collection-Card Regression Repair. Exported (same reason
+// enemies.get.ts exports withResolvedCatalogueEnemyImages) so the one
+// property this bug was actually about -- `summary` (the compact card's
+// teaser) and `articleDetail` (the rail-only rich content) never carry the
+// SAME full-article text -- has a direct, non-Nuxt-harness unit test
+// rather than only a reasoned trace. See the inline comment at this
+// function's call sites for the full regression story.
+export function buildCollectionTextFields(row: any, entityBlocks: any[] = []) {
+  const overviewText = extractOverviewText(entityBlocks)
+  const coreText = extractCoreText(entityBlocks)
+  const articleText = extractCatalogueArticleText(row?.entity_type, entityBlocks)
+
+  return {
+    overviewText,
+    coreText,
+    articleText,
+    summary: cleanPreviewText(row?.summary || overviewText || coreText || ''),
+    fullSummary: String(row?.summary || '').trim() || overviewText || coreText
+  }
+}
+
 function shouldUseSummaryMode(query: Record<string, any>) {
   const mode = String(query.mode || '').trim().toLowerCase()
   const summary = String(query.summary || '').trim().toLowerCase()
@@ -382,16 +403,22 @@ export default defineEventHandler(async (event) => {
         spellFluffImageUrl(row)
     )
 
-    const overviewText = extractOverviewText(entityBlocks)
-    const coreText = extractCoreText(entityBlocks)
-    // Species/Class Context Content pass -- only reached when NONE of the
-    // flat sources above produced anything (today: every species/class
-    // row, since neither extractOverviewText nor extractCoreText
-    // recognizes those block keys). Never run through cleanPreviewText --
-    // see extractCatalogueArticleText's own comment for why its newlines/
-    // headings must survive.
-    const articleText = extractCatalogueArticleText(row.entity_type, entityBlocks)
-    const summary = cleanPreviewText(row?.summary || overviewText || coreText || '') || articleText
+    // Species/Class Collection-Card Regression Repair -- `summary` (the
+    // compact card's teaser, read by WorldEntityInteractivePage.vue's
+    // `summaryForEntity`/`data-collection-card-summary`) used to be OR'd
+    // with the full species/class article text below. A catalogue
+    // species/class row has no short `row.summary`/overview/core text, so
+    // every card for those two types silently rendered the ENTIRE
+    // multi-section article -- full Class Features/Starting Equipment
+    // lists, stretched artwork, exploded card height. The rail and the
+    // card must never share one field once either can hold full-article
+    // content: `articleDetail` below carries it for the rail ONLY (see
+    // `selectedSummary` in WorldEntityInteractivePage.vue); `summary`
+    // stays a short teaser (or empty, which the card already renders as
+    // "Details available in the context rail" -- the established
+    // pre-regression fallback, not a new one). See
+    // buildCollectionTextFields's own comment and its test coverage.
+    const { articleText, summary, fullSummary } = buildCollectionTextFields(row, entityBlocks)
     const collectionDisplayType = collectionSummaryDisplayType(row, entityBlocks)
     const collectionFacet = collectionSummaryFacet(row, entityBlocks)
     const collectionMetaLines = collectionSummaryMetaLines(row, entityBlocks)
@@ -408,6 +435,12 @@ export default defineEventHandler(async (event) => {
         status: row.status,
         visibility: row.visibility,
         summary,
+        // Rail-only rich content -- never read by the compact card or its
+        // search haystack's short-teaser path (see the comment above
+        // `articleText`). Empty string for every type except species/class
+        // today.
+        articleDetail: articleText,
+        article_detail: articleText,
         created_at: row.created_at,
         updated_at: row.updated_at,
         image: row.image,
@@ -445,7 +478,9 @@ export default defineEventHandler(async (event) => {
       metaLines: collectionMetaLines,
       imageUrl: derivedImageUrl,
       image_url: derivedImageUrl,
-      summary: String(row?.summary || '').trim() || overviewText || coreText || articleText
+      summary: fullSummary,
+      articleDetail: articleText,
+      article_detail: articleText
     }
   })
 })
